@@ -104,6 +104,10 @@ const chromiumSource = (input: {
 });
 
 export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition> = [
+  // No Chromium fork is importable on Windows: since Chrome 127 their cookies
+  // are encrypted to the browser's own identity (App-Bound Encryption), so no
+  // other process can read them. macOS and Linux keep working, so only the
+  // Windows segments are omitted.
   chromiumSource({
     id: "chrome",
     name: "Chrome",
@@ -205,23 +209,33 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
  * Chromium stores the database as `Cookies` under the profile directory;
  * Firefox uses `cookies.sqlite`, and its profile paths from `profiles.ini`
  * may already be absolute.
+ *
+ * Chrome 96+ moved network-related files (including Cookies) into a `Network`
+ * subdirectory for sandboxing. The candidate list includes both locations so
+ * callers tolerate fresh and legacy installs alike.
  */
-export const cookieDatabasePath = (
+export const cookieDatabaseCandidatePaths = (
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
   profileDirectory: string,
-): string | undefined => {
+): ReadonlyArray<string> => {
   const root = definition.userDataDirectory(context);
-  if (root === undefined) return undefined;
-  const fileName =
-    definition.engine === "firefox"
-      ? "cookies.sqlite"
-      : definition.engine === "safari"
-        ? "Cookies.binarycookies"
-        : "Cookies";
-  return context.path.isAbsolute(profileDirectory)
-    ? context.path.join(profileDirectory, fileName)
-    : context.path.join(root, profileDirectory, fileName);
+  if (root === undefined) return [];
+  const profilePath = context.path.isAbsolute(profileDirectory)
+    ? profileDirectory
+    : context.path.join(root, profileDirectory);
+  if (definition.engine === "firefox") {
+    return [context.path.join(profilePath, "cookies.sqlite")];
+  }
+  if (definition.engine === "safari") {
+    return [context.path.join(profilePath, "Cookies.binarycookies")];
+  }
+  // Chromium: pre-96 uses `Cookies`, 96+ use `Network/Cookies`. An upgrade
+  // leaves the legacy file behind, so prefer the current one and fall back.
+  return [
+    context.path.join(profilePath, "Network", "Cookies"),
+    context.path.join(profilePath, "Cookies"),
+  ];
 };
 
 /**
@@ -359,8 +373,11 @@ const countProfileCookies = Effect.fnUntraced(function* (
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
   directory: string,
-): Effect.fn.Return<number | undefined, never> {
-  const databasePath = cookieDatabasePath(definition, context, directory);
+): Effect.fn.Return<number | undefined, never, FileSystem.FileSystem> {
+  const candidates = cookieDatabaseCandidatePaths(definition, context, directory);
+  const databasePath = yield* Effect.forEach(candidates, (candidate) =>
+    databaseFileExists(candidate).pipe(Effect.map((exists) => (exists ? candidate : undefined))),
+  ).pipe(Effect.map((results) => results.find((p) => p !== undefined)));
   if (databasePath === undefined) return undefined;
   return yield* Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -416,23 +433,40 @@ export const listSourceProfiles = Effect.fn("BrowserImportSources.listSourceProf
       Effect.map((ini) => parseFirefoxProfiles(ini, context.path, root)),
       Effect.orElseSucceed(() => [] as ReadonlyArray<BrowserImportSourceProfile>),
     );
-    if (declared.length > 0) return yield* withCookieCounts(definition, context, declared);
+    // `profiles.ini` also lists profiles the installer created but the user
+    // never launched, which hold no cookie database and nothing to import.
+    // Only keep the ones a database proves exist, like the directory scans
+    // below do.
+    if (declared.length > 0) {
+      const found = yield* Effect.forEach(declared, (profile) =>
+        Effect.forEach(
+          cookieDatabaseCandidatePaths(definition, context, profile.directory),
+          (candidate) => databaseFileExists(candidate),
+        ).pipe(Effect.map((results) => (results.some(Boolean) ? profile : undefined))),
+      );
+      return yield* withCookieCounts(
+        definition,
+        context,
+        found.filter((profile) => profile !== undefined),
+      );
+    }
 
-    // Linux keeps profile directories directly under the Firefox root. macOS
-    // and Windows put them in `Profiles/`.
+    // No readable `profiles.ini`, so fall back to scanning the directory the
+    // profiles actually live in, keeping only the ones a cookie database
+    // proves were launched.
     const fallbackDirectory =
       context.platform === "linux" ? root : context.path.join(root, "Profiles");
-    const entries = yield* fileSystem
+    const scanned = yield* fileSystem
       .readDirectory(fallbackDirectory)
       .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
-    const found = yield* Effect.forEach(entries, (entry) => {
+    const found = yield* Effect.forEach(scanned, (entry) => {
       const directory = context.platform === "linux" ? entry : context.path.join("Profiles", entry);
-      const database = cookieDatabasePath(definition, context, directory);
-      return database === undefined
-        ? Effect.succeed(undefined)
-        : databaseFileExists(database).pipe(
-            Effect.map((exists) => (exists ? { directory, name: entry } : undefined)),
-          );
+      return Effect.forEach(
+        cookieDatabaseCandidatePaths(definition, context, directory),
+        (candidate) => databaseFileExists(candidate),
+      ).pipe(
+        Effect.map((results) => (results.some(Boolean) ? { directory, name: entry } : undefined)),
+      );
     });
     return yield* withCookieCounts(
       definition,
@@ -463,8 +497,10 @@ export const listSourceProfiles = Effect.fn("BrowserImportSources.listSourceProf
     .readDirectory(root)
     .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
   const found = yield* Effect.forEach(entries.filter(isSafeProfileDirectory), (directory) =>
-    databaseFileExists(cookieDatabasePath(definition, context, directory) ?? "").pipe(
-      Effect.map((exists) => (exists ? { directory, name: directory } : undefined)),
+    Effect.forEach(cookieDatabaseCandidatePaths(definition, context, directory), (candidate) =>
+      databaseFileExists(candidate),
+    ).pipe(
+      Effect.map((results) => (results.some(Boolean) ? { directory, name: directory } : undefined)),
     ),
   );
   return yield* withCookieCounts(
@@ -674,8 +710,16 @@ export const isSourceRunning = Effect.fn("BrowserImportSources.isSourceRunning")
   const fileSystem = yield* FileSystem.FileSystem;
   const root = definition.userDataDirectory(context);
   if (root === undefined) return false;
-  // Safari has no lock and writes its jar atomically, so a running instance is
-  // not a hazard. Chromium and Firefox hold locks while a profile is open.
+  // Both engines that hold a lock leave one for as long as an instance holds a
+  // profile, which is far cheaper and more targeted than scanning the process
+  // table. Safari keeps none, and unlike the others writes its jar atomically,
+  // so a running instance is not a hazard there.
+  //
+  // Chromium and Firefox differ in where: Chromium keeps one lock for the
+  // whole user-data directory, Firefox keeps its locks inside each profile,
+  // under three names across platforms (`lock` on macOS and Linux,
+  // `.parentlock` beside it, `parent.lock` on Windows). Looking for Firefox's
+  // at the root finds nothing and reports a running browser as importable.
   if (definition.engine === "safari") return false;
   if (definition.engine !== "firefox") {
     const currentHost = yield* HostProcessHostname;
@@ -716,9 +760,11 @@ export const isSourceInstalled = Effect.fn("BrowserImportSources.isSourceInstall
   context: BrowserImportPathContext,
 ): Effect.fn.Return<boolean, never, FileSystem.FileSystem> {
   const profiles = yield* listSourceProfiles(definition, context);
-  const found = yield* Effect.forEach(profiles, (profile) => {
-    const database = cookieDatabasePath(definition, context, profile.directory);
-    return database === undefined ? Effect.succeed(false) : databaseFileExists(database);
-  });
+  const found = yield* Effect.forEach(profiles, (profile) =>
+    Effect.forEach(
+      cookieDatabaseCandidatePaths(definition, context, profile.directory),
+      (candidate) => databaseFileExists(candidate),
+    ).pipe(Effect.map((results) => results.some(Boolean))),
+  );
   return found.some(Boolean);
 });
