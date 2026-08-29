@@ -233,7 +233,7 @@ export const make = Effect.gen(function* BrowserImportMake() {
     const read: Effect.Effect<
       CookieReadResult,
       ChromiumCookieReadError | FirefoxCookieReadError,
-      FileSystem.FileSystem | Path.Path | Scope.Scope
+      FileSystem.FileSystem | Path.Path | Scope.Scope | ChildProcessSpawner.ChildProcessSpawner
     > =
       definition.engine === "firefox"
         ? readFirefoxCookies(databasePath).pipe(
@@ -243,6 +243,7 @@ export const make = Effect.gen(function* BrowserImportMake() {
             cookieDatabasePath: databasePath,
             keychainService: definition.keychainService,
             keychainAccount: definition.keychainAccount,
+            linuxSecretApplication: definition.linuxSecretApplication,
             platform,
           });
 
