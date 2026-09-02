@@ -11,6 +11,7 @@ import type {
 } from "@t3tools/contracts";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as GitHubAccount from "../sourceControl/GitHubAccount.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRateLimit from "../sourceControl/SourceControlRateLimit.ts";
 import {
@@ -19,6 +20,8 @@ import {
   type PullRequestProviderApi,
 } from "./PullRequestProvider.ts";
 import { PullRequestProviderRegistry, fromProviders } from "./PullRequestProviderRegistry.ts";
+import * as GitHubPullRequestCli from "./GitHubPullRequestCli.ts";
+import * as GitHubPullRequestProvider from "./GitHubPullRequestProvider.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 
 function project(input: {
@@ -610,6 +613,36 @@ it.effect("calls a transient viewer failure a failed operation, not a signed-out
 
     // `cli-unauthenticated` would send the reader to `gh auth login` over a transient error.
     assert.strictEqual(error._tag, "PullRequestOperationError");
+  }),
+);
+
+it.effect("keeps the configured GitHub account in the pull request error", () =>
+  Effect.gen(function* () {
+    const accountError = new GitHubAccount.GitHubAccountUnavailableError({
+      command: "gh",
+      cwd: "/a",
+      account: "octocat",
+      cause: new Error("no token"),
+    });
+    const github = yield* GitHubPullRequestProvider.make.pipe(
+      Effect.provide(
+        Layer.mock(GitHubPullRequestCli.GitHubPullRequestCli)({
+          accountKeyFor: () => Effect.succeed("octocat"),
+          getViewerLogin: () => Effect.fail(accountError),
+        }),
+      ),
+    );
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [github],
+    });
+
+    const error = yield* Effect.flip(service.list({ state: "open" }));
+
+    assert.strictEqual(error._tag, "PullRequestOperationError");
+    assert.include(error.message, 'GitHub account "octocat"');
   }),
 );
 
