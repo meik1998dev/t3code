@@ -4,18 +4,26 @@ import {
   createEnvironmentThreadShellAtoms,
   createEnvironmentThreadStateAtoms,
   EMPTY_ENVIRONMENT_THREAD_STATE,
-  requestOlderThreadTurns,
-  threadHasOlderTurns,
   type EnvironmentThreadState,
   createThreadEnvironmentAtoms,
+  ThreadSnapshotLoader,
 } from "@t3tools/client-runtime/state/threads";
+import { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
+import {
+  createEnvironmentCommand,
+  runAtomCommand,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
   OrchestrationThread,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
@@ -52,85 +60,48 @@ export function useEnvironmentThread(
   ) as EnvironmentThreadState;
 }
 
-function readEnvironmentThreadState(threadRef: ScopedThreadRef): EnvironmentThreadState {
-  const result = appAtomRegistry.get(
-    environmentThreads.stateAtom(threadRef.environmentId, threadRef.threadId),
-  );
-  return Option.getOrElse(
-    AsyncResult.value(result),
-    () => EMPTY_ENVIRONMENT_THREAD_STATE,
-  ) as EnvironmentThreadState;
-}
+class FullThreadHistoryError extends Data.TaggedError("FullThreadHistoryError")<{
+  readonly message: string;
+}> {}
 
-function waitForOlderThreadPage(
-  threadRef: ScopedThreadRef,
-  beforeCursor: string | null,
-  timeoutMs: number,
-): Promise<EnvironmentThreadState> {
-  const atom = environmentThreads.stateAtom(threadRef.environmentId, threadRef.threadId);
-  const readResult = () => appAtomRegistry.get(atom);
-
-  return new Promise((resolve, reject) => {
-    let requestStarted = false;
-    let settled = false;
-    let unsubscribe = () => {};
-    const timeout = globalThis.setTimeout(() => {
-      unsubscribe();
-      reject(new Error("Timed out while loading the full chat history."));
-    }, timeoutMs);
-    const finish = (result: EnvironmentThreadState | Error) => {
-      if (settled) return;
-      settled = true;
-      globalThis.clearTimeout(timeout);
-      unsubscribe();
-      if (result instanceof Error) reject(result);
-      else resolve(result);
-    };
-    const check = (result: ReturnType<typeof readResult>) => {
-      if (!requestStarted) return;
-      const state = Option.getOrElse(
-        AsyncResult.value(result),
-        () => EMPTY_ENVIRONMENT_THREAD_STATE,
-      ) as EnvironmentThreadState;
-      if (Option.isSome(state.error)) {
-        finish(new Error(state.error.value));
-        return;
+const fullThreadSnapshotCommand = createEnvironmentCommand(connectionAtomRuntime, {
+  label: "environment-data:threads:full-snapshot",
+  execute: (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const supervisor = yield* EnvironmentSupervisor;
+      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+      if (Option.isNone(prepared)) {
+        return yield* new FullThreadHistoryError({
+          message: "Reconnect the environment before forking this chat.",
+        });
       }
-      const page = Option.getOrNull(state.page);
-      if (page === null || !page.hasMore || page.beforeCursor !== beforeCursor) {
-        finish(state);
+      const loader = yield* ThreadSnapshotLoader;
+      const snapshot = yield* loader.load(prepared.value, threadId);
+      if (Option.isNone(snapshot)) {
+        return yield* new FullThreadHistoryError({
+          message: "Could not load the full chat history.",
+        });
       }
-    };
+      return snapshot.value.thread;
+    }),
+});
 
-    unsubscribe = appAtomRegistry.subscribe(atom, check);
-    requestStarted = true;
-    const requested = requestOlderThreadTurns(threadRef.environmentId, threadRef.threadId);
-    const current = readEnvironmentThreadState(threadRef);
-    const currentPage = Option.getOrNull(current.page);
-    if (!requested && currentPage?.loadingOlder !== true && threadHasOlderTurns(current)) {
-      finish(new Error("Could not load the full chat history."));
-      return;
-    }
-    check(readResult());
-  });
-}
-
-/** Loads every older page and returns the complete thread snapshot. */
+/**
+ * Fetches the complete thread over HTTP with no turn window. Fork needs every
+ * message once, so this bypasses the paged thread store instead of loading
+ * every older page into it and keeping them resident.
+ */
 export async function loadFullThreadHistory(
   threadRef: ScopedThreadRef,
-  pageTimeoutMs = 30_000,
 ): Promise<OrchestrationThread> {
-  let state = readEnvironmentThreadState(threadRef);
-  const seenCursors = new Set<string | null>();
-
-  while (threadHasOlderTurns(state)) {
-    const cursor = Option.getOrThrow(state.page).beforeCursor;
-    if (seenCursors.has(cursor)) {
-      throw new Error("The chat history cursor did not advance.");
-    }
-    seenCursors.add(cursor);
-    state = await waitForOlderThreadPage(threadRef, cursor, pageTimeoutMs);
+  const result = await runAtomCommand(
+    appAtomRegistry,
+    fullThreadSnapshotCommand,
+    { environmentId: threadRef.environmentId, input: threadRef.threadId },
+    { reportFailure: false },
+  );
+  if (result._tag === "Failure") {
+    throw squashAtomCommandFailure(result);
   }
-
-  return Option.getOrThrowWith(state.data, () => new Error("The chat history is not available."));
+  return result.value;
 }

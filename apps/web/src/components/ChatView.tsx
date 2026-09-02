@@ -7073,7 +7073,14 @@ function ChatViewContent(props: ChatViewProps) {
           sourceThread.messages.map((message) => ({ kind: "message", message })),
           messageId,
         );
-        if (transcript === null) return;
+        if (transcript === null) {
+          toastManager.add({
+            type: "error",
+            title: "Could not fork chat",
+            description: "The selected message is not in the saved chat history yet.",
+          });
+          return;
+        }
 
         const fork = await handleNewThread(
           activeProjectRef,

@@ -1350,16 +1350,6 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
   const checkpointRef = ctx.forkCheckpointRefByMessageId.get(messageId);
-  const workspaceItem = (
-    <MenuItem
-      disabled={activity.isWorking || activity.isForkingMessage || checkpointRef === undefined}
-      onClick={() => {
-        if (checkpointRef) ctx.onForkMessage(messageId, "workspace", checkpointRef);
-      }}
-    >
-      Fork to new workspace
-    </MenuItem>
-  );
 
   return (
     <Menu>
@@ -1375,14 +1365,17 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
         >
           Fork to new chat
         </MenuItem>
-        {checkpointRef === undefined ? (
-          <Tooltip>
-            <TooltipTrigger render={<div />}>{workspaceItem}</TooltipTrigger>
-            <TooltipPopup side="top">No checkpoint for this message</TooltipPopup>
-          </Tooltip>
-        ) : (
-          workspaceItem
-        )}
+        <MenuItem
+          disabled={activity.isWorking || activity.isForkingMessage || checkpointRef === undefined}
+          onClick={() => {
+            if (checkpointRef) ctx.onForkMessage(messageId, "workspace", checkpointRef);
+          }}
+        >
+          Fork to new workspace
+          {checkpointRef === undefined && (
+            <span className="ms-auto text-muted-foreground text-xs">No checkpoint</span>
+          )}
+        </MenuItem>
       </MenuPopup>
     </Menu>
   );
@@ -1478,26 +1471,30 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
-        <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
-          <div className="flex items-center gap-0.5">
-            <RevertMessageButton
-              messageId={row.message.id}
-              checkpointAvailable={typeof row.revertTurnCount === "number"}
-            />
-            <AssistantCopyButton row={row} />
-            <MessageForkMenu messageId={row.message.id} />
+        {row.showAssistantMeta ? (
+          <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
+            <div className="flex items-center gap-0.5">
+              <RevertMessageButton
+                messageId={row.message.id}
+                checkpointAvailable={typeof row.revertTurnCount === "number"}
+              />
+              <AssistantCopyButton row={row} />
+              <MessageForkMenu messageId={row.message.id} />
+            </div>
+            {!row.message.streaming && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={<p className="text-muted-foreground text-xs tabular-nums" />}
+                >
+                  {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
+                </TooltipTrigger>
+                <TooltipPopup>
+                  {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
+                </TooltipPopup>
+              </Tooltip>
+            )}
           </div>
-          {!row.message.streaming && (
-            <Tooltip>
-              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-                {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
-              </TooltipTrigger>
-              <TooltipPopup>
-                {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
-              </TooltipPopup>
-            </Tooltip>
-          )}
-        </div>
+        ) : null}
       </div>
     </>
   );
