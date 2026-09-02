@@ -122,6 +122,35 @@ describe("GitHubAccount.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("reads the configured account once for accountKeyFor and envFor", () =>
+    Effect.gen(function* () {
+      mockRun
+        .mockReturnValueOnce(Effect.succeed(processOutput("octocat\n")))
+        .mockReturnValueOnce(Effect.succeed(processOutput("gho_secret\n")));
+
+      const account = yield* GitHubAccount.GitHubAccount;
+      const key = yield* account.accountKeyFor("/repo");
+      const env = yield* account.envFor("/repo");
+      const again = yield* account.accountKeyFor("/repo");
+
+      assert.strictEqual(key, "octocat");
+      assert.strictEqual(again, "octocat");
+      assert.deepEqual(Option.getOrUndefined(env), { GH_TOKEN: "gho_secret" });
+      assert.strictEqual(mockRun.mock.calls.length, 2);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("answers null for a repository that names no account", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("", 1)));
+
+      const account = yield* GitHubAccount.GitHubAccount;
+      const key = yield* account.accountKeyFor("/repo");
+
+      assert.isNull(key);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("names the account when gh holds no token for it", () =>
     Effect.gen(function* () {
       mockRun
@@ -140,7 +169,6 @@ describe("GitHubAccount.layer", () => {
             }),
           ),
         )
-        .mockReturnValueOnce(Effect.succeed(processOutput("octocat\n")))
         .mockReturnValueOnce(Effect.succeed(processOutput("gho_secret\n")));
 
       const account = yield* GitHubAccount.GitHubAccount;
@@ -150,8 +178,9 @@ describe("GitHubAccount.layer", () => {
       assert.strictEqual(error._tag, "GitHubAccountUnavailableError");
       assert.strictEqual(error.account, "octocat");
       assert.include(error.detail, "gh auth login");
+      // The failed token is not held, so the retry asks gh again; the account read is.
       assert.deepEqual(Option.getOrUndefined(env), { GH_TOKEN: "gho_secret" });
-      assert.strictEqual(mockRun.mock.calls.length, 4);
+      assert.strictEqual(mockRun.mock.calls.length, 3);
     }).pipe(Effect.provide(layer)),
   );
 });

@@ -98,14 +98,23 @@ export const make = Effect.gen(function* () {
         ),
       );
 
-  // Cache successful resolutions per cwd for 30 seconds to avoid repeating account and token
-  // subprocesses on every gh call. Failed resolutions are not cached, so a login or logout takes
-  // effect within the short TTL without requiring a server restart.
+  // Both caches hold a cwd's answer for 30 seconds, so a page that asks which account every
+  // project uses and then runs several gh commands per project spawns each subprocess once.
+  // The account read never fails; a failed token read is not held, so a login or logout takes
+  // effect within the TTL without a server restart.
+  const accountCache = yield* Cache.makeWith(
+    (cwd: string) =>
+      readAccount(cwd).pipe(Effect.map((account) => (account.length === 0 ? null : account))),
+    { capacity: ENV_CACHE_CAPACITY, timeToLive: () => ENV_CACHE_TTL },
+  );
+  const accountKeyFor: GitHubAccount["Service"]["accountKeyFor"] = (cwd) =>
+    Cache.get(accountCache, cwd);
+
   const envCache = yield* Cache.makeWith(
     (cwd: string) =>
-      readAccount(cwd).pipe(
+      accountKeyFor(cwd).pipe(
         Effect.flatMap((account) =>
-          account.length === 0
+          account === null
             ? Effect.succeedNone
             : readToken(cwd, account).pipe(Effect.map((token) => Option.some({ GH_TOKEN: token }))),
         ),
@@ -115,11 +124,7 @@ export const make = Effect.gen(function* () {
       timeToLive: (exit) => (Exit.isSuccess(exit) ? ENV_CACHE_TTL : Duration.zero),
     },
   );
-
   const envFor: GitHubAccount["Service"]["envFor"] = (cwd) => Cache.get(envCache, cwd);
-
-  const accountKeyFor: GitHubAccount["Service"]["accountKeyFor"] = (cwd) =>
-    readAccount(cwd).pipe(Effect.map((account) => (account.length === 0 ? null : account)));
 
   return GitHubAccount.of({ accountKeyFor, envFor });
 });
