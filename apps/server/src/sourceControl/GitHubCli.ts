@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as GitHubAccount from "./GitHubAccount.ts";
 import {
   decodeGitHubPullRequestJson,
   decodeGitHubPullRequestListJson,
@@ -154,6 +155,7 @@ export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubR
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
+  GitHubAccount.GitHubAccountUnavailableError,
   GitHubCliRateLimitError,
   GitHubPullRequestNotFoundError,
   GitHubCliCommandError,
@@ -337,19 +339,27 @@ function deriveRepositoryCloneUrlsFromCreateOutput(
 
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
+  // Optional so a GitHubCli built without it runs gh as the active account. The server wires it
+  // in, so a repository naming an account in git config gets that account instead.
+  const account = yield* Effect.serviceOption(GitHubAccount.GitHubAccount);
 
   const execute: GitHubCli["Service"]["execute"] = (input) =>
-    process
-      .run({
-        operation: "GitHubCli.execute",
-        command: "gh",
-        args: input.args,
-        cwd: input.cwd,
-        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
-        ...(input.maxOutputBytes !== undefined ? { maxOutputBytes: input.maxOutputBytes } : {}),
-      })
-      .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error)));
+    (Option.isSome(account) ? account.value.envFor(input.cwd) : Effect.succeedNone).pipe(
+      Effect.flatMap((env) =>
+        process
+          .run({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            args: input.args,
+            cwd: input.cwd,
+            timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
+            ...(input.maxOutputBytes !== undefined ? { maxOutputBytes: input.maxOutputBytes } : {}),
+            ...(Option.isSome(env) ? { env: env.value } : {}),
+          })
+          .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error))),
+      ),
+    );
 
   return GitHubCli.of({
     execute,
