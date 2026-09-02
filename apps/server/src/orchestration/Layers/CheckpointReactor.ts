@@ -703,17 +703,17 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const sessionRuntime = yield* resolveSessionRuntimeForThread(event.payload.threadId);
-    if (Option.isNone(sessionRuntime)) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: "No active provider session with workspace cwd is bound to this thread.",
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-    if (!isGitWorkspace(sessionRuntime.value.cwd)) {
+    // Revert must work on threads whose provider process is gone (server
+    // restart, idle thread reopened later), so the workspace comes from the
+    // thread/project record with the live session only as a preference.
+    const projects = yield* resolveThreadProjects(thread.projectId);
+    const cwd = yield* resolveCheckpointCwd({
+      threadId: event.payload.threadId,
+      thread,
+      projects,
+      preferSessionRuntime: true,
+    });
+    if (!cwd) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -756,7 +756,7 @@ const make = Effect.gen(function* () {
     }
 
     const restored = yield* checkpointStore.restoreCheckpoint({
-      cwd: sessionRuntime.value.cwd,
+      cwd,
       checkpointRef: targetCheckpointRef,
       fallbackToHead: event.payload.turnCount === 0,
     });
@@ -772,14 +772,34 @@ const make = Effect.gen(function* () {
 
     // Refresh the workspace entry index so the @-mention file picker
     // reflects the reverted filesystem state.
-    yield* workspaceEntries.refresh(sessionRuntime.value.cwd);
+    yield* workspaceEntries.refresh(cwd);
 
+    // The provider service recovers a stopped session from its persisted
+    // resume state before rolling back. When nothing is recoverable there is
+    // no provider conversation left to trim, so the revert still completes;
+    // a live session that fails to roll back is a real error and stays fatal.
     const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
     if (rolledBackTurns > 0) {
-      yield* providerService.rollbackConversation({
-        threadId: sessionRuntime.value.threadId,
+      const hasLiveSession = Option.isSome(
+        yield* resolveSessionRuntimeForThread(event.payload.threadId),
+      );
+      const rollback = providerService.rollbackConversation({
+        threadId: event.payload.threadId,
         numTurns: rolledBackTurns,
       });
+      if (hasLiveSession) {
+        yield* rollback;
+      } else {
+        yield* rollback.pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("checkpoint revert skipped provider rollback", {
+              threadId: event.payload.threadId,
+              turnCount: event.payload.turnCount,
+              detail: error.message,
+            }),
+          ),
+        );
+      }
     }
 
     const staleCheckpointRefs: Array<CheckpointRef> = [];
@@ -791,7 +811,7 @@ const make = Effect.gen(function* () {
 
     if (staleCheckpointRefs.length > 0) {
       yield* checkpointStore.deleteCheckpointRefs({
-        cwd: sessionRuntime.value.cwd,
+        cwd,
         checkpointRefs: staleCheckpointRefs,
       });
     }

@@ -56,6 +56,7 @@ import {
   type ProviderServiceShape,
 } from "../../provider/Services/ProviderService.ts";
 import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
+import { ProviderAdapterSessionNotFoundError } from "../../provider/Errors.ts";
 import { ServerConfig } from "../../config.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
@@ -1235,27 +1236,91 @@ describe("CheckpointReactor", () => {
     });
   });
 
-  it("appends an error activity when revert is requested without an active session", async () => {
+  type RevertHarness = Awaited<ReturnType<typeof createHarness>>;
+  const dispatchCommand = (
+    harness: RevertHarness,
+    command: Parameters<RevertHarness["engine"]["dispatch"]>[0],
+  ) => Effect.runPromise(harness.engine.dispatch(command));
+
+  async function seedTwoCheckpoints(harness: RevertHarness) {
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    for (const turnCount of [1, 2]) {
+      await dispatchCommand(harness, {
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make(`cmd-diff-no-session-${turnCount}`),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId(`turn-${turnCount}`),
+        completedAt: createdAt,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), turnCount),
+        status: "ready",
+        files: [],
+        checkpointTurnCount: turnCount,
+        createdAt,
+      });
+    }
+  }
+
+  it("reverts from the thread workspace when no provider session is alive", async () => {
     const harness = await createHarness({ hasSession: false });
     const createdAt = "2026-01-01T00:00:00.000Z";
+    await seedTwoCheckpoints(harness);
 
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.checkpoint.revert",
-        commandId: CommandId.make("cmd-revert-no-session"),
-        threadId: ThreadId.make("thread-1"),
-        turnCount: 1,
-        createdAt,
-      }),
+    await dispatchCommand(harness, {
+      type: "thread.checkpoint.revert",
+      commandId: CommandId.make("cmd-revert-no-session"),
+      threadId: ThreadId.make("thread-1"),
+      turnCount: 1,
+      createdAt,
+    });
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.checkpoints.length === 1,
     );
 
-    const thread = await waitForThread(harness.readModel, (entry) =>
-      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+    expect(thread.activities.some((activity) => activity.kind === "checkpoint.revert.failed")).toBe(
+      false,
+    );
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
+      threadId: ThreadId.make("thread-1"),
+      numTurns: 1,
+    });
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(
+      gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+    ).toBe(false);
+  });
+
+  it("completes the revert when a stopped session cannot be recovered for rollback", async () => {
+    const harness = await createHarness({ hasSession: false });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await seedTwoCheckpoints(harness);
+    harness.provider.rollbackConversation.mockImplementationOnce(
+      () =>
+        Effect.fail(
+          new ProviderAdapterSessionNotFoundError({ provider: "codex", threadId: "thread-1" }),
+        ) as unknown as Effect.Effect<void>,
+    );
+
+    await dispatchCommand(harness, {
+      type: "thread.checkpoint.revert",
+      commandId: CommandId.make("cmd-revert-unrecoverable"),
+      threadId: ThreadId.make("thread-1"),
+      turnCount: 1,
+      createdAt,
+    });
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.checkpoints.length === 1,
     );
 
     expect(thread.activities.some((activity) => activity.kind === "checkpoint.revert.failed")).toBe(
-      true,
+      false,
     );
-    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
   });
 });

@@ -10,7 +10,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import type { OrchestrationThread } from "@t3tools/contracts";
+import type { OrchestrationMessage, OrchestrationThread } from "@t3tools/contracts";
 
 import { applyThreadDetailEvent } from "./threadReducer.ts";
 
@@ -1234,6 +1234,83 @@ describe("applyThreadDetailEvent", () => {
         // msg-3 (turn-2) is filtered, msg-1 (no turn) and msg-2 (turn-1) remain
         expect(result.thread.messages).toHaveLength(2);
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
+      }
+    });
+
+    it("drops unbound user messages beyond the retained turn count", () => {
+      // User messages are appended before their turn exists, so none of them
+      // carry a turnId. Reverting to turn 1 must still remove the second one.
+      const userMessage = (id: string, text: string, createdAt: string): OrchestrationMessage => ({
+        id: MessageId.make(id),
+        role: "user",
+        text,
+        turnId: null,
+        streaming: false,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const threadWithData: OrchestrationThread = {
+        ...baseThread,
+        messages: [
+          userMessage("msg-1", "First", "2026-04-01T01:00:00.000Z"),
+          {
+            id: MessageId.make("msg-2"),
+            role: "assistant",
+            text: "Response 1",
+            turnId: TurnId.make("turn-1"),
+            streaming: false,
+            createdAt: "2026-04-01T02:00:00.000Z",
+            updatedAt: "2026-04-01T02:00:00.000Z",
+          },
+          userMessage("msg-3", "Second", "2026-04-01T03:00:00.000Z"),
+          {
+            id: MessageId.make("msg-4"),
+            role: "assistant",
+            text: "Response 2",
+            turnId: TurnId.make("turn-2"),
+            streaming: false,
+            createdAt: "2026-04-01T04:00:00.000Z",
+            updatedAt: "2026-04-01T04:00:00.000Z",
+          },
+        ],
+        checkpoints: [
+          {
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("ref-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: MessageId.make("msg-2"),
+            completedAt: "2026-04-01T02:00:00.000Z",
+          },
+          {
+            turnId: TurnId.make("turn-2"),
+            checkpointTurnCount: 2,
+            checkpointRef: CheckpointRef.make("ref-2"),
+            status: "ready",
+            files: [],
+            assistantMessageId: MessageId.make("msg-4"),
+            completedAt: "2026-04-01T04:00:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithData, {
+        ...baseEventFields,
+        sequence: 14,
+        occurredAt: "2026-04-01T05:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.reverted",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          turnCount: 1,
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.messages.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
       }
     });
   });

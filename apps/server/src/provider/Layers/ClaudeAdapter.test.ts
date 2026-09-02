@@ -4235,6 +4235,7 @@ describe("ClaudeAdapterLive", () => {
         resume: "550e8400-e29b-41d4-a716-446655440000",
         resumeSessionAt: "assistant-99",
         turnCount: 3,
+        turnAnchors: [null, null, null],
       });
 
       const createInput = harness.getLastCreateQueryInput();
@@ -4394,11 +4395,21 @@ describe("ClaudeAdapterLive", () => {
         ).pipe(Stream.runHead, Effect.forkChild);
 
         harness.query.emit({
+          type: "assistant",
+          session_id: "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c",
+          uuid: "assistant-first",
+          parent_tool_use_id: null,
+          message: {
+            id: "assistant-message-first",
+            content: [{ type: "text", text: "first reply" }],
+          },
+        } as unknown as SDKMessage);
+        harness.query.emit({
           type: "result",
           subtype: "success",
           is_error: false,
           errors: [],
-          session_id: "sdk-session-rollback",
+          session_id: "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c",
           uuid: "result-first",
         } as unknown as SDKMessage);
 
@@ -4420,11 +4431,21 @@ describe("ClaudeAdapterLive", () => {
         ).pipe(Stream.runHead, Effect.forkChild);
 
         harness.query.emit({
+          type: "assistant",
+          session_id: "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c",
+          uuid: "assistant-second",
+          parent_tool_use_id: null,
+          message: {
+            id: "assistant-message-second",
+            content: [{ type: "text", text: "second reply" }],
+          },
+        } as unknown as SDKMessage);
+        harness.query.emit({
           type: "result",
           subtype: "success",
           is_error: false,
           errors: [],
-          session_id: "sdk-session-rollback",
+          session_id: "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c",
           uuid: "result-second",
         } as unknown as SDKMessage);
 
@@ -4440,10 +4461,40 @@ describe("ClaudeAdapterLive", () => {
         const rolledBack = yield* adapter.rollbackThread(session.threadId, 1);
         assert.equal(rolledBack.turns.length, 1);
         assert.equal(rolledBack.turns[0]?.id, firstTurn.turnId);
+        // The live CLI still remembers the second turn, so the caller must
+        // restart the session from the pinned cursor.
+        assert.equal(rolledBack.restartRequired, true);
 
         const threadAfterRollback = yield* adapter.readThread(session.threadId);
         assert.equal(threadAfterRollback.turns.length, 1);
         assert.equal(threadAfterRollback.turns[0]?.id, firstTurn.turnId);
+
+        const liveSession = (yield* adapter.listSessions()).find(
+          (entry) => entry.threadId === session.threadId,
+        );
+        const cursor = liveSession?.resumeCursor as
+          | {
+              resumeSessionAt?: string;
+              turnCount?: number;
+              rewound?: boolean;
+              turnAnchors?: ReadonlyArray<string | null>;
+            }
+          | undefined;
+        assert.equal(cursor?.resumeSessionAt, "assistant-first");
+        assert.equal(cursor?.turnCount, 1);
+        assert.equal(cursor?.rewound, true);
+        assert.deepEqual(cursor?.turnAnchors, ["assistant-first"]);
+
+        // Resuming from the rewound cursor pins the CLI at the retained turn.
+        yield* adapter.stopSession(session.threadId);
+        const resumed = yield* adapter.startSession({
+          threadId: session.threadId,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          resumeCursor: liveSession?.resumeCursor,
+        });
+        assert.equal(harness.getLastCreateQueryInput()?.options.resumeSessionAt, "assistant-first");
+        assert.equal((yield* adapter.readThread(resumed.threadId)).turns.length, 1);
       }).pipe(
         Effect.provideService(Random.Random, makeDeterministicRandomService()),
         Effect.provide(harness.layer),

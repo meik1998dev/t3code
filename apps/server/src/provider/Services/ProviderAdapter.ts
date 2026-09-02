@@ -45,6 +45,12 @@ export interface ProviderThreadTurnSnapshot {
 export interface ProviderThreadSnapshot {
   readonly threadId: ThreadId;
   readonly turns: ReadonlyArray<ProviderThreadTurnSnapshot>;
+  /**
+   * Set by rollbackThread when the live provider process still holds the
+   * discarded turns. The caller stops the session so the next turn resumes
+   * from the rolled-back cursor instead of the stale in-process history.
+   */
+  readonly restartRequired?: boolean;
 }
 
 export interface ProviderAdapterShape<TError> {
