@@ -91,6 +91,7 @@ export function gitHubProviderFailure(
 ): PullRequestProviderFailure {
   if (error._tag === "GitHubCliUnavailableError") return { reason: "missing-tool" };
   if (error._tag === "GitHubCliAuthenticationError") return { reason: "unauthenticated" };
+  if (error._tag === "GitHubAccountUnavailableError") return { reason: "failed" };
   if (error._tag === "GitHubCliRateLimitError") return { reason: "rate-limited" };
   if (error._tag === "SourceControlRateLimitPausedError") {
     return { reason: "rate-limited", retryAt: error.retryAt };
@@ -163,6 +164,9 @@ export const make = Effect.gen(function* () {
 
     getViewer: (input) =>
       cli.getViewerLogin({ cwd: input.cwd }).pipe(Effect.mapError(fail("getViewer"))),
+
+    getViewerAccountKey: (input) =>
+      cli.accountKeyFor === undefined ? Effect.succeed(null) : cli.accountKeyFor(input.cwd),
 
     listChangeRequests: (input) =>
       cli

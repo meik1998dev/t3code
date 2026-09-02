@@ -86,6 +86,14 @@ Run a quick **Rescan** after setting up a new machine or changing credentials.
 
 You can now clone, publish, and create pull requests.
 
+**Several GitHub accounts?** Sign in to each one with `gh auth login`, then tell each repository which account to use:
+
+```bash
+git config gh.account your-login
+```
+
+T3 Code runs every GitHub command for that project as the named account, with no manual `gh auth switch`. Repositories without the key keep using the active `gh` account. The named account must be signed in to `gh` on the machine running T3 Code.
+
 ### For GitLab
 
 1. Install the GitLab CLI:
