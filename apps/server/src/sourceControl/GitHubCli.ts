@@ -339,12 +339,10 @@ function deriveRepositoryCloneUrlsFromCreateOutput(
 
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
-  // Optional so a GitHubCli built without it runs gh as the active account. The server wires it
-  // in, so a repository naming an account in git config gets that account instead.
-  const account = yield* Effect.serviceOption(GitHubAccount.GitHubAccount);
+  const account = yield* GitHubAccount.GitHubAccount;
 
   const execute: GitHubCli["Service"]["execute"] = (input) =>
-    (Option.isSome(account) ? account.value.envFor(input.cwd) : Effect.succeedNone).pipe(
+    account.envFor(input.cwd).pipe(
       Effect.flatMap((env) =>
         process
           .run({
@@ -493,4 +491,8 @@ export const make = Effect.gen(function* () {
   });
 });
 
+/** GitHub CLI layer requiring account selection and process execution services. */
 export const layer = Layer.effect(GitHubCli, make);
+
+/** Production GitHub CLI layer with live account selection, requiring only process execution. */
+export const layerLive = layer.pipe(Layer.provide(GitHubAccount.layer));

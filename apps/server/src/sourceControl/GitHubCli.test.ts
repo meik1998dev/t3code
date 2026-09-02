@@ -25,6 +25,11 @@ const layer = GitHubCli.layer.pipe(
       run: mockRun,
     }),
   ),
+  Layer.provide(
+    Layer.succeed(GitHubAccount.GitHubAccount, {
+      envFor: () => Effect.succeedNone,
+    }),
+  ),
 );
 
 afterEach(() => {
