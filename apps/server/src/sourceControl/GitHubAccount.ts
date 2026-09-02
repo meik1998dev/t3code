@@ -1,5 +1,8 @@
+import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -11,6 +14,8 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
  * with `git config gh.account <login>`; repositories without it use the active `gh` account.
  */
 export const GITHUB_ACCOUNT_CONFIG_KEY = "gh.account";
+const ENV_CACHE_CAPACITY = 256;
+const ENV_CACHE_TTL = Duration.seconds(30);
 
 /** The repository names an account, but `gh` holds no token for it. */
 export class GitHubAccountUnavailableError extends Schema.TaggedErrorClass<GitHubAccountUnavailableError>()(
@@ -66,8 +71,6 @@ export const make = Effect.gen(function* () {
         Effect.orElseSucceed(() => ""),
       );
 
-  // Read fresh on every call rather than cached, so a re-login or `gh auth logout` takes effect
-  // on the next request instead of after a server restart. It is a local file read.
   const readToken = (cwd: string, account: string) =>
     process
       .run({
@@ -95,14 +98,25 @@ export const make = Effect.gen(function* () {
         ),
       );
 
-  const envFor: GitHubAccount["Service"]["envFor"] = (cwd) =>
-    readAccount(cwd).pipe(
-      Effect.flatMap((account) =>
-        account.length === 0
-          ? Effect.succeedNone
-          : readToken(cwd, account).pipe(Effect.map((token) => Option.some({ GH_TOKEN: token }))),
+  // Cache successful resolutions per cwd for 30 seconds to avoid repeating account and token
+  // subprocesses on every gh call. Failed resolutions are not cached, so a login or logout takes
+  // effect within the short TTL without requiring a server restart.
+  const envCache = yield* Cache.makeWith(
+    (cwd: string) =>
+      readAccount(cwd).pipe(
+        Effect.flatMap((account) =>
+          account.length === 0
+            ? Effect.succeedNone
+            : readToken(cwd, account).pipe(Effect.map((token) => Option.some({ GH_TOKEN: token }))),
+        ),
       ),
-    );
+    {
+      capacity: ENV_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? ENV_CACHE_TTL : Duration.zero),
+    },
+  );
+
+  const envFor: GitHubAccount["Service"]["envFor"] = (cwd) => Cache.get(envCache, cwd);
 
   const accountKeyFor: GitHubAccount["Service"]["accountKeyFor"] = (cwd) =>
     readAccount(cwd).pipe(Effect.map((account) => (account.length === 0 ? null : account)));
