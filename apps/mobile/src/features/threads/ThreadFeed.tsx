@@ -12,6 +12,7 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
+import type { MediaActionId } from "@t3tools/client-runtime/media-actions";
 import {
   codexArtifactTemplatePresentationLabel,
   type CodexArtifactTemplate,
@@ -44,6 +45,7 @@ import {
   useRef,
   useState,
   useId,
+  type ComponentProps,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -91,6 +93,7 @@ import { hasWideMarkdownBlock } from "../../lib/wideMarkdownBlocks";
 import {
   hasNativeSelectableMarkdownText,
   SelectableMarkdownText,
+  type MarkdownFileContextMenu,
   type MarkdownImageRenderer,
   type NativeMarkdownTextStyle,
   type SelectableMarkdownSkill,
@@ -538,62 +541,58 @@ function ThreadMarkdownImageView(props: {
       style={{ alignSelf: "stretch", gap: 6 }}
     >
       {props.uri === null || failed ? (
-        <View
-          className="items-center justify-center rounded-[10px] bg-md-code-bg"
-          style={{
-            ...frameStyle,
-          }}
-        >
-          {failed ? (
-            <Text className="text-xs text-foreground-muted">Image unavailable</Text>
-          ) : (
-            <ActivityIndicator />
-          )}
-          {props.actionsSource ? (
-            <View className="absolute right-1 top-1">
-              <MediaActionsMenu media={mediaActions} />
-            </View>
-          ) : null}
-        </View>
+        <MediaActionsMenu media={mediaActions}>
+          <Pressable
+            accessibilityRole="imagebutton"
+            accessibilityLabel={props.alt ?? "Markdown image"}
+            accessibilityHint={
+              mediaActions.actions.length > 0 ? "Touch and hold for media actions" : undefined
+            }
+            className="items-center justify-center rounded-[10px] bg-md-code-bg"
+            style={frameStyle}
+          >
+            {failed ? (
+              <Text className="text-xs text-foreground-muted">Image unavailable</Text>
+            ) : (
+              <ActivityIndicator />
+            )}
+          </Pressable>
+        </MediaActionsMenu>
       ) : (
         <PresentationSource identifier={sourceIdentifier} style={{ alignSelf: "flex-start" }}>
-          <View>
-            <MediaActionsMenu media={mediaActions}>
-              <Pressable
-                accessibilityRole="imagebutton"
-                accessibilityLabel={props.alt ?? "Markdown image"}
-                onPress={() =>
-                  props.onPressPreview({
-                    kind: "image",
-                    uri: props.uri!,
-                    name: props.alt ?? "Image",
-                    sourceIdentifier,
-                    actionsSource: props.actionsSource,
-                  })
-                }
-                style={{ alignSelf: "flex-start" }}
+          <MediaActionsMenu media={mediaActions}>
+            <Pressable
+              accessibilityRole="imagebutton"
+              accessibilityLabel={props.alt ?? "Markdown image"}
+              accessibilityHint={
+                mediaActions.actions.length > 0 ? "Touch and hold for media actions" : undefined
+              }
+              onPress={() =>
+                props.onPressPreview({
+                  kind: "image",
+                  uri: props.uri!,
+                  name: props.alt ?? "Image",
+                  sourceIdentifier,
+                  actionsSource: props.actionsSource,
+                })
+              }
+              style={{ alignSelf: "flex-start" }}
+            >
+              <View
+                className="items-center justify-center overflow-hidden rounded-[10px] bg-md-code-bg"
+                style={{
+                  ...frameStyle,
+                }}
               >
-                <View
-                  className="items-center justify-center overflow-hidden rounded-[10px] bg-md-code-bg"
-                  style={{
-                    ...frameStyle,
-                  }}
-                >
-                  <ThreadMarkdownImageRequest
-                    key={props.uri}
-                    uri={props.uri}
-                    onLoad={setSourceSize}
-                    onError={() => setFailedUri(props.uri)}
-                  />
-                </View>
-              </Pressable>
-            </MediaActionsMenu>
-            {props.actionsSource ? (
-              <View className="absolute right-1 top-1">
-                <MediaActionsMenu media={mediaActions} />
+                <ThreadMarkdownImageRequest
+                  key={props.uri}
+                  uri={props.uri}
+                  onLoad={setSourceSize}
+                  onError={() => setFailedUri(props.uri)}
+                />
               </View>
-            ) : null}
-          </View>
+            </Pressable>
+          </MediaActionsMenu>
         </PresentationSource>
       )}
       {props.alt ? (
@@ -676,10 +675,7 @@ function ThreadMediaVisibility(props: { readonly children: ReactNode }) {
   return <ThreadMediaVisibleContext value={visible}>{props.children}</ThreadMediaVisibleContext>;
 }
 
-function ThreadMarkdownVideo(props: {
-  readonly source: MediaVideoPreviewSource;
-  readonly onExpand: (source: MediaVideoPreviewSource) => void;
-}) {
+function ThreadMarkdownVideo(props: { readonly source: MediaVideoPreviewSource }) {
   const { source } = props;
   const visible = useContext(ThreadMediaVisibleContext);
   const thumbnailKey = mediaVideoThumbnailKey(source);
@@ -706,7 +702,6 @@ function ThreadMarkdownVideo(props: {
       thumbnailVisible={visible}
       unavailable={"resource" in source && asset._tag === "Failure"}
       actionsSource={source.actionsSource}
-      onExpand={() => props.onExpand(source)}
     />
   );
 }
@@ -802,11 +797,98 @@ const MarkdownExternalLink = memo(function MarkdownExternalLink(props: {
 });
 
 /** Lets file chips build copy/open/share actions without threading ids through every renderer. */
-const MarkdownFileChipContext = createContext<{
+type MarkdownFileChipContextValue = {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly workspaceRoot: string | null | undefined;
-} | null>(null);
+};
+
+const MarkdownFileChipContext = createContext<MarkdownFileChipContextValue | null>(null);
+
+function markdownFileActionsSource(
+  presentation: Extract<MarkdownLinkPresentation, { readonly kind: "file" }>,
+  feed: MarkdownFileChipContextValue,
+): MediaActionsSource {
+  const media = resolveMarkdownMediaPreview(presentation.href, feed);
+  if (media?.source.actionsSource) return media.source.actionsSource;
+  const path = isAbsolutePath(presentation.path)
+    ? presentation.path
+    : resolveWorkspaceFilePath(feed.workspaceRoot ?? "", presentation.path);
+  return {
+    name: basename(presentation.path),
+    mimeType: "application/octet-stream",
+    reference: mediaFileReference(path, feed.workspaceRoot),
+    environmentId: feed.environmentId,
+    threadId: feed.threadId,
+    resource: { _tag: "media-file", threadId: feed.threadId, path },
+    canShare: false,
+  };
+}
+
+function markdownFileContextMenu(
+  href: string,
+  feed: MarkdownFileChipContextValue,
+): MarkdownFileContextMenu | undefined {
+  const presentation = resolveMarkdownLinkPresentation(href);
+  if (presentation.kind !== "file") return undefined;
+
+  const source = markdownFileActionsSource(presentation, feed);
+  const reference = source.reference;
+  if (reference?.kind !== "file") return undefined;
+
+  return {
+    title: reference.path,
+    actions: [
+      { id: "copy-full-path", title: "Copy full path" },
+      ...(reference.relativePath
+        ? [
+            { id: "copy-relative-path", title: "Copy relative path" },
+            { id: "open-file", title: "Open in file viewer" },
+          ]
+        : []),
+      ...(source.canShare === false ? [] : [{ id: "save", title: "Save or share" }]),
+    ],
+  };
+}
+
+function ThreadSelectableMarkdownText(props: ComponentProps<typeof SelectableMarkdownText>) {
+  const feed = useContext(MarkdownFileChipContext);
+  const [pendingAction, setPendingAction] = useState<
+    | {
+        readonly source: MediaActionsSource;
+        readonly actionId: MediaActionId;
+      }
+    | undefined
+  >();
+  const actionsSource = useMemo(() => pendingAction?.source, [pendingAction]);
+  const mediaActions = useMediaActions(actionsSource);
+
+  useEffect(() => {
+    if (!pendingAction) return;
+    mediaActions.actions.find(({ id }) => id === pendingAction.actionId)?.run();
+    setPendingAction(undefined);
+  }, [mediaActions.actions, pendingAction]);
+
+  const { fileContextMenu, onFileContextMenuAction, ...selectableProps } = props;
+  return (
+    <SelectableMarkdownText
+      {...selectableProps}
+      fileContextMenu={(href) =>
+        fileContextMenu?.(href) ?? (feed ? markdownFileContextMenu(href, feed) : undefined)
+      }
+      onFileContextMenuAction={(href, actionId) => {
+        onFileContextMenuAction?.(href, actionId);
+        if (!feed) return;
+        const presentation = resolveMarkdownLinkPresentation(href);
+        if (presentation.kind !== "file") return;
+        setPendingAction({
+          source: markdownFileActionsSource(presentation, feed),
+          actionId: actionId as MediaActionId,
+        });
+      }}
+    />
+  );
+}
 
 /**
  * A file reference as a tappable chip. Long-press opens the same actions the
@@ -823,19 +905,7 @@ function MarkdownFileChip(props: {
   const feed = useContext(MarkdownFileChipContext);
   const actionsSource = useMemo<MediaActionsSource | undefined>(() => {
     if (!feed) return undefined;
-    const media = resolveMarkdownMediaPreview(presentation.href, feed);
-    if (media) return media.source.actionsSource;
-    const path = isAbsolutePath(presentation.path)
-      ? presentation.path
-      : resolveWorkspaceFilePath(feed.workspaceRoot ?? "", presentation.path);
-    return {
-      name: basename(presentation.path),
-      mimeType: "application/octet-stream",
-      reference: mediaFileReference(path, feed.workspaceRoot),
-      environmentId: feed.environmentId,
-      threadId: feed.threadId,
-      resource: { _tag: "media-file", threadId: feed.threadId, path },
-    };
+    return markdownFileActionsSource(presentation, feed);
   }, [feed, presentation]);
   const mediaActions = useMediaActions(actionsSource);
   const chip = (
@@ -976,7 +1046,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
 
     const markdown = renderCodexFileCitationsAsMarkdown(segment.markdown);
     return hasNativeSelectableMarkdownText() ? (
-      <SelectableMarkdownText
+      <ThreadSelectableMarkdownText
         key={`markdown:${segment.sourceOffset}`}
         markdown={markdown}
         skills={props.skills}
@@ -1785,7 +1855,7 @@ function UserMessageContent(props: {
   if (!hasReviewComment) {
     if (hasNativeSelectableMarkdownText()) {
       return (
-        <SelectableMarkdownText
+        <ThreadSelectableMarkdownText
           markdown={props.text}
           skills={props.skills}
           textStyle={props.markdownStyles.nativeTextStyle}
@@ -1826,7 +1896,7 @@ function UserMessageContent(props: {
         }
 
         return hasNativeSelectableMarkdownText() ? (
-          <SelectableMarkdownText
+          <ThreadSelectableMarkdownText
             key={segment.id}
             markdown={text}
             skills={props.skills}
@@ -2257,7 +2327,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           <ThreadMarkdownVideo
             key={image.href}
             source={{ ...media.source, name: image.alt ?? media.source.name }}
-            onExpand={(source) => setExpandedVideo((current) => current ?? source)}
           />
         );
       }

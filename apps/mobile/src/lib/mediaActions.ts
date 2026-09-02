@@ -17,6 +17,7 @@ export type MediaActionsSource = {
   readonly reference?: MediaReference;
   readonly name: string;
   readonly mimeType: string;
+  readonly canShare?: boolean;
 } & (
   | { readonly uri: string }
   /** A composer draft; sharing leases its file so the copy never outlives the draft. */
@@ -110,7 +111,10 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
         ? { title: "Copy URL", run: () => copyTextWithHaptic(reference.url) }
         : null,
     "open-file": openFile ? { title: "Open in file viewer", run: openFile } : null,
-    save: { title: sharing ? "Opening share sheet…" : "Save or share", run: share },
+    save:
+      source?.canShare === false
+        ? null
+        : { title: sharing ? "Opening share sheet…" : "Save or share", run: share },
     "copy-image": null,
   };
   const actions: { id: MediaActionId; title: string; run: () => void; disabled?: boolean }[] =
@@ -119,7 +123,7 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
           kind: source.mimeType.startsWith("video/") ? "video" : "image",
           reference,
           canOpenFile: openFile !== undefined,
-          canFetchBytes: true,
+          canFetchBytes: source.canShare !== false,
           // Not offered on mobile: the share sheet already covers copying bytes to another app.
           canCopyImage: false,
         }).flatMap(({ id, disabled }) => {
