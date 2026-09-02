@@ -2654,7 +2654,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
                         Layer.mergeAll(
                           AzureDevOpsCli.layer,
                           BitbucketApi.layer,
-                          GitHubCli.layer,
+                          GitHubCli.layerLive,
                           GitLabCli.layer,
                         ),
                       ),

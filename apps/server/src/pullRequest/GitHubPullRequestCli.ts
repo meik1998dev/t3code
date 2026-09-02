@@ -331,6 +331,9 @@ export interface GitHubPullRequestDiffSlice {
 export class GitHubPullRequestCli extends Context.Service<
   GitHubPullRequestCli,
   {
+    /** The repository's configured GitHub account, or null for gh's active account. */
+    readonly accountKeyFor?: (cwd: string) => Effect.Effect<string | null>;
+
     readonly getViewerLogin: (input: {
       readonly cwd: string;
     }) => Effect.Effect<string, GitHubPullRequestCliError>;
@@ -1195,6 +1198,8 @@ export const make = Effect.gen(function* () {
       });
 
   return GitHubPullRequestCli.of({
+    accountKeyFor: (cwd) =>
+      github.accountKeyFor === undefined ? Effect.succeed(null) : github.accountKeyFor(cwd),
     getViewerLogin: (input) =>
       github.execute({ cwd: input.cwd, args: ["api", "user", "--jq", ".login"] }).pipe(
         Effect.flatMap((result) => {

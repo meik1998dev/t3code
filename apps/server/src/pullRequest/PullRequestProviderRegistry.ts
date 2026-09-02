@@ -55,7 +55,7 @@ export const make = Effect.map(
 export const layer = Layer.effect(PullRequestProviderRegistry, make).pipe(
   Layer.provide(
     GitHubPullRequestCli.layer.pipe(
-      Layer.provide(GitHubCli.layer),
+      Layer.provide(GitHubCli.layerLive),
       Layer.provide(GitHubGraphQlBudget.layer),
     ),
   ),

@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as GitHubAccount from "./GitHubAccount.ts";
 import {
   decodeGitHubPullRequestJson,
   decodeGitHubPullRequestListJson,
@@ -154,6 +155,7 @@ export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubR
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
+  GitHubAccount.GitHubAccountUnavailableError,
   GitHubCliRateLimitError,
   GitHubPullRequestNotFoundError,
   GitHubCliCommandError,
@@ -228,6 +230,9 @@ export interface GitHubRepositoryCloneUrls {
 export class GitHubCli extends Context.Service<
   GitHubCli,
   {
+    /** The repository's configured account, or null when gh uses its active account. */
+    readonly accountKeyFor?: (cwd: string) => Effect.Effect<string | null>;
+
     readonly execute: (input: {
       readonly cwd: string;
       readonly args: ReadonlyArray<string>;
@@ -337,21 +342,28 @@ function deriveRepositoryCloneUrlsFromCreateOutput(
 
 export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
+  const account = yield* GitHubAccount.GitHubAccount;
 
   const execute: GitHubCli["Service"]["execute"] = (input) =>
-    process
-      .run({
-        operation: "GitHubCli.execute",
-        command: "gh",
-        args: input.args,
-        cwd: input.cwd,
-        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
-        ...(input.maxOutputBytes !== undefined ? { maxOutputBytes: input.maxOutputBytes } : {}),
-      })
-      .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error)));
+    account.envFor(input.cwd).pipe(
+      Effect.flatMap((env) =>
+        process
+          .run({
+            operation: "GitHubCli.execute",
+            command: "gh",
+            args: input.args,
+            cwd: input.cwd,
+            timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
+            ...(input.maxOutputBytes !== undefined ? { maxOutputBytes: input.maxOutputBytes } : {}),
+            ...(Option.isSome(env) ? { env: env.value } : {}),
+          })
+          .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error))),
+      ),
+    );
 
   return GitHubCli.of({
+    accountKeyFor: (cwd) => account.accountKeyFor(cwd),
     execute,
     listOpenPullRequests: (input) =>
       execute({
@@ -483,4 +495,8 @@ export const make = Effect.gen(function* () {
   });
 });
 
+/** GitHub CLI layer requiring account selection and process execution services. */
 export const layer = Layer.effect(GitHubCli, make);
+
+/** Production GitHub CLI layer with live account selection, requiring only process execution. */
+export const layerLive = layer.pipe(Layer.provide(GitHubAccount.layer));

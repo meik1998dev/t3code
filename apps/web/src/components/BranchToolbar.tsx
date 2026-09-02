@@ -9,7 +9,7 @@ import {
   HistoryIcon,
   MonitorIcon,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
@@ -40,7 +40,6 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
-import { ComposerSurface } from "./chat/ComposerSurface";
 
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
@@ -224,158 +223,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
  * the expanded width without remembered values that could go stale or latch
  * the strip compact. A small hysteresis keeps the boundary from flapping.
  */
-const COMPACT_EXPAND_HYSTERESIS_PX = 16;
-const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
-const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-const COMPOSER_CONTEXT_CONTROL_SELECTOR = "[data-composer-context-control]";
-
-function useLabelsOverflow(element: HTMLDivElement | null): boolean {
-  const [overflows, setOverflows] = useState(false);
-  const pendingControlRectsRef = useRef<Map<HTMLElement, DOMRect> | null>(null);
-  const controlAnimationsRef = useRef(new Map<HTMLElement, Animation>());
-  // A render-synced mirror instead of useEffectEvent: the compiler memoizes
-  // the event callback, which left observers reading the first render's null
-  // element forever.
-  const stateRef = useRef({ element, overflows });
-  stateRef.current = { element, overflows };
-
-  const measure = useCallback(() => {
-    const { element: current, overflows: compact } = stateRef.current;
-    if (!current) return;
-    const available = current.clientWidth;
-    if (available === 0) return;
-    // flex-1 stretches the groups to fill the strip, so their own boxes always
-    // measure "full". Sum the laid-out content instead, skipping hidden form
-    // artifacts and other out-of-flow nodes.
-    const contentWidth = (parent: Element): number => {
-      const gap = Number.parseFloat(getComputedStyle(parent).columnGap) || 0;
-      let width = 0;
-      let counted = 0;
-      for (const child of parent.children) {
-        if (!(child instanceof HTMLElement)) continue;
-        if (child.offsetWidth <= 1) continue;
-        const position = getComputedStyle(child).position;
-        if (position === "absolute" || position === "fixed") continue;
-        width += child.offsetWidth;
-        counted += 1;
-      }
-      return width + gap * Math.max(0, counted - 1);
-    };
-    const stripGap = Number.parseFloat(getComputedStyle(current).columnGap) || 0;
-    let needed = 0;
-    let groups = 0;
-    for (const child of current.children) {
-      if (!(child instanceof HTMLElement)) continue;
-      const width = contentWidth(child);
-      if (width <= 1) continue;
-      needed += width;
-      groups += 1;
-    }
-    needed += stripGap * Math.max(0, groups - 1);
-    for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {
-      // The clipping can happen below the marker (SelectValue truncates
-      // internally), where the outer span's scrollWidth matches its clipped
-      // box. The text's real width is the largest scrollWidth in the subtree.
-      let textWidth = label.scrollWidth;
-      for (const inner of label.querySelectorAll<HTMLElement>("*")) {
-        textWidth = Math.max(textWidth, inner.scrollWidth);
-      }
-      if (compact) {
-        // Compact: the label is squeezed to zero width but keeps reporting
-        // the full width it would need when expanded.
-        needed += textWidth;
-      } else {
-        // Expanded: the label is in flow; only the clipped remainder is
-        // missing from the content sum.
-        needed += Math.max(0, textWidth - label.clientWidth);
-      }
-    }
-    const nextOverflows = compact
-      ? needed > available - COMPACT_EXPAND_HYSTERESIS_PX
-      : needed > available;
-    if (nextOverflows !== compact) {
-      pendingControlRectsRef.current = new Map(
-        Array.from(current.querySelectorAll<HTMLElement>(COMPOSER_CONTEXT_CONTROL_SELECTOR)).map(
-          (control) => [control, control.getBoundingClientRect()],
-        ),
-      );
-    }
-    setOverflows(nextOverflows);
-  }, []);
-
-  useLayoutEffect(() => {
-    const previousRects = pendingControlRectsRef.current;
-    if (!previousRects) return;
-    pendingControlRectsRef.current = null;
-
-    for (const animation of controlAnimationsRef.current.values()) {
-      animation.cancel();
-    }
-    controlAnimationsRef.current.clear();
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    for (const [control, previousRect] of previousRects) {
-      if (!control.isConnected) continue;
-      const nextRect = control.getBoundingClientRect();
-      const deltaX = previousRect.left - nextRect.left;
-      const deltaY = previousRect.top - nextRect.top;
-      if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) continue;
-
-      const animation = control.animate(
-        [
-          { transform: `translate3d(${deltaX}px, ${deltaY}px, 0)` },
-          { transform: "translate3d(0, 0, 0)" },
-        ],
-        {
-          duration: COMPOSER_CONTEXT_MOTION_DURATION_MS,
-          easing: COMPOSER_CONTEXT_MOTION_EASING,
-          fill: "backwards",
-        },
-      );
-      controlAnimationsRef.current.set(control, animation);
-      animation.addEventListener(
-        "finish",
-        () => {
-          if (controlAnimationsRef.current.get(control) === animation) {
-            controlAnimationsRef.current.delete(control);
-          }
-        },
-        { once: true },
-      );
-    }
-  }, [overflows]);
-
-  useEffect(
-    () => () => {
-      for (const animation of controlAnimationsRef.current.values()) {
-        animation.cancel();
-      }
-    },
-    [],
-  );
-
-  // Label widths can change without the strip box moving (font family or
-  // size preferences), so re-measure on every render as well as on resize
-  // and font loads.
-  useLayoutEffect(() => {
-    measure();
-  });
-
-  useEffect(() => {
-    if (!element) return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    document.fonts.addEventListener("loadingdone", measure);
-    return () => {
-      observer.disconnect();
-      document.fonts.removeEventListener("loadingdone", measure);
-    };
-  }, [element, measure]);
-
-  return overflows;
-}
-
 export const BranchToolbar = memo(function BranchToolbar({
   environmentId,
   threadId,
@@ -464,15 +311,13 @@ export const BranchToolbar = memo(function BranchToolbar({
     canPickEnvironment: showEnvironmentPicker,
   });
   const isMobile = useIsMobile();
-  const [stripElement, setStripElement] = useState<HTMLDivElement | null>(null);
-  const labelsOverflow = useLabelsOverflow(stripElement);
 
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <ComposerSurface.ContextStrip
-      ref={setStripElement}
-      data-compact={labelsOverflow ? "" : undefined}
+    <div
+      data-composer-context-controls
+      className="group/composer-context flex min-w-0 shrink-0 items-center gap-1"
     >
       {isMobile && showGitControls ? (
         <MobileRunContextSelector
@@ -537,6 +382,6 @@ export const BranchToolbar = memo(function BranchToolbar({
           {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
         />
       ) : null}
-    </ComposerSurface.ContextStrip>
+    </div>
   );
 });

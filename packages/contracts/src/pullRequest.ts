@@ -461,6 +461,12 @@ export const PullRequestListEntry = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   viewerReviewRequested: Schema.Boolean,
+  /**
+   * The signed-in login the row was read as. Per row rather than per host because one host can
+   * hold repositories signed in as different accounts. Absent only in listings recorded before
+   * it was carried, which fall back to `viewers`.
+   */
+  viewer: Schema.optional(TrimmedNonEmptyString),
   labels: Schema.Array(PullRequestLabel),
   /** Absent where the host does not summarise its reviews, which is every host but GitHub. */
   reviewDecision: Schema.optional(PullRequestReviewDecision),

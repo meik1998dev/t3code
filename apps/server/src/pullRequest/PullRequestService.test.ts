@@ -11,6 +11,7 @@ import type {
 } from "@t3tools/contracts";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as GitHubAccount from "../sourceControl/GitHubAccount.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRateLimit from "../sourceControl/SourceControlRateLimit.ts";
 import {
@@ -19,6 +20,8 @@ import {
   type PullRequestProviderApi,
 } from "./PullRequestProvider.ts";
 import { PullRequestProviderRegistry, fromProviders } from "./PullRequestProviderRegistry.ts";
+import * as GitHubPullRequestCli from "./GitHubPullRequestCli.ts";
+import * as GitHubPullRequestProvider from "./GitHubPullRequestProvider.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 
 function project(input: {
@@ -610,6 +613,36 @@ it.effect("calls a transient viewer failure a failed operation, not a signed-out
 
     // `cli-unauthenticated` would send the reader to `gh auth login` over a transient error.
     assert.strictEqual(error._tag, "PullRequestOperationError");
+  }),
+);
+
+it.effect("keeps the configured GitHub account in the pull request error", () =>
+  Effect.gen(function* () {
+    const accountError = new GitHubAccount.GitHubAccountUnavailableError({
+      command: "gh",
+      cwd: "/a",
+      account: "octocat",
+      cause: new Error("no token"),
+    });
+    const github = yield* GitHubPullRequestProvider.make.pipe(
+      Effect.provide(
+        Layer.mock(GitHubPullRequestCli.GitHubPullRequestCli)({
+          accountKeyFor: () => Effect.succeed("octocat"),
+          getViewerLogin: () => Effect.fail(accountError),
+        }),
+      ),
+    );
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [github],
+    });
+
+    const error = yield* Effect.flip(service.list({ state: "open" }));
+
+    assert.strictEqual(error._tag, "PullRequestOperationError");
+    assert.include(error.message, 'GitHub account "octocat"');
   }),
 );
 
@@ -1302,6 +1335,80 @@ it.effect("keeps two hosts of one provider kind as two accounts", () =>
   }),
 );
 
+it.effect("keeps GitHub viewers separate by account and shares one lookup per account", () =>
+  Effect.gen(function* () {
+    const viewerCalls: string[] = [];
+    const listCalls: Array<{ cwd: string; viewer: string }> = [];
+    const accountFor: Record<string, string> = {
+      "/personal-a": "personal",
+      "/personal-b": "personal",
+      "/work": "work",
+    };
+    const viewerFor: Record<string, string> = {
+      "/personal-a": "bilal",
+      "/work": "octocat",
+    };
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "personal-a",
+          workspaceRoot: "/personal-a",
+          repository: "acme/a",
+        }),
+        project({
+          id: "p2",
+          title: "personal-b",
+          workspaceRoot: "/personal-b",
+          repository: "acme/b",
+        }),
+        project({ id: "p3", title: "work", workspaceRoot: "/work", repository: "acme/c" }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getViewerAccountKey: (input) => Effect.succeed(accountFor[input.cwd] ?? null),
+          getViewer: (input) =>
+            Effect.sync(() => {
+              viewerCalls.push(input.cwd);
+              return viewerFor[input.cwd] ?? "unknown";
+            }),
+          listChangeRequests: (input) =>
+            Effect.sync(() => {
+              listCalls.push({ cwd: input.cwd, viewer: input.viewer });
+              return {
+                items: [changeRequest(listCalls.length, "2026-07-02T00:00:00Z")],
+                truncated: false,
+                continues: true,
+              };
+            }),
+        }),
+      ],
+    });
+
+    const result = yield* service.list({ state: "open", involvement: "authored" });
+
+    assert.deepStrictEqual(
+      result.entries
+        .map((entry) => [entry.repository, entry.viewer])
+        .toSorted(([left], [right]) => left!.localeCompare(right!)),
+      [
+        ["acme/a", "bilal"],
+        ["acme/b", "bilal"],
+        ["acme/c", "octocat"],
+      ],
+    );
+    assert.deepStrictEqual(viewerCalls.toSorted(), ["/personal-a", "/work"]);
+    assert.deepStrictEqual(
+      listCalls.toSorted((left, right) => left.cwd.localeCompare(right.cwd)),
+      [
+        { cwd: "/personal-a", viewer: "bilal" },
+        { cwd: "/personal-b", viewer: "bilal" },
+        { cwd: "/work", viewer: "octocat" },
+      ],
+    );
+  }),
+);
+
 it.effect("reports repositories on a host that could not be read", () =>
   Effect.gen(function* () {
     const service = yield* makeService({
@@ -1333,12 +1440,14 @@ it.effect("reports repositories on a host that could not be read", () =>
 
     const result = yield* service.list({ state: "open" });
 
-    // The healthy host still lists, and the unreadable one is named rather than dropped.
+    // The healthy host still lists, and the unreadable one is named rather than dropped, with
+    // the reason it could not be read.
     assert.strictEqual(result.entries.length, 1);
     assert.deepStrictEqual(
       result.errors.map((error) => error.projectId),
       ["p2"],
     );
+    assert.match(result.errors[0]!.message, /^acme\/api could not be read: .+/);
   }),
 );
 

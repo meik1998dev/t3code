@@ -1596,7 +1596,7 @@ describe("ProviderCommandReactor", () => {
         type: "thread.meta.update",
         commandId: CommandId.make("cmd-thread-branch"),
         threadId: ThreadId.make("thread-1"),
-        branch: "t3code/1234abcd",
+        branch: "1234abcd",
         worktreePath: "/tmp/provider-project-worktree",
       }),
     );
@@ -1640,6 +1640,11 @@ describe("ProviderCommandReactor", () => {
     );
     expect(harness.generateBranchName.mock.calls[0]?.[0].message).not.toContain("t3-citation://");
     expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe("/tmp/provider-project-worktree");
+    expect(harness.renameBranch).toHaveBeenCalledWith({
+      cwd: "/tmp/provider-project-worktree",
+      oldBranch: "1234abcd",
+      newBranch: "feature/gpt-5-6-luna",
+    });
     const readModel = await harness.readModel();
     expect(
       readModel.threads

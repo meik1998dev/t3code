@@ -6,6 +6,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessExitError, VcsProcessSpawnError } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as GitHubAccount from "./GitHubAccount.ts";
 import * as GitHubCli from "./GitHubCli.ts";
 
 const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
@@ -22,6 +23,12 @@ const layer = GitHubCli.layer.pipe(
   Layer.provide(
     Layer.mock(VcsProcess.VcsProcess)({
       run: mockRun,
+    }),
+  ),
+  Layer.provide(
+    Layer.succeed(GitHubAccount.GitHubAccount, {
+      accountKeyFor: () => Effect.succeed(null),
+      envFor: () => Effect.succeedNone,
     }),
   ),
 );
@@ -404,5 +411,43 @@ describe("GitHubCli.layer", () => {
       assert.strictEqual(error.cause, cause);
       assert.notInclude(error.message, "user ID");
     }).pipe(Effect.provide(layer)),
+  );
+});
+
+describe("GitHubCli.layer with GitHubAccount", () => {
+  const envFor = vi.fn<GitHubAccount.GitHubAccount["Service"]["envFor"]>();
+  const layerWithAccount = GitHubCli.layer.pipe(
+    Layer.provide(Layer.mock(VcsProcess.VcsProcess)({ run: mockRun })),
+    Layer.provide(Layer.mock(GitHubAccount.GitHubAccount)({ envFor })),
+  );
+
+  afterEach(() => {
+    envFor.mockReset();
+  });
+
+  it.effect("runs gh with the repository's account token", () =>
+    Effect.gen(function* () {
+      envFor.mockReturnValueOnce(Effect.succeedSome({ GH_TOKEN: "gho_secret" }));
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("main\n")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const branch = yield* gh.getDefaultBranch({ cwd: "/repo" });
+
+      assert.strictEqual(branch, "main");
+      assert.deepEqual(envFor.mock.calls[0], ["/repo"]);
+      assert.deepEqual(mockRun.mock.calls[0]?.[0].env, { GH_TOKEN: "gho_secret" });
+    }).pipe(Effect.provide(layerWithAccount)),
+  );
+
+  it.effect("leaves the environment alone when the repository names no account", () =>
+    Effect.gen(function* () {
+      envFor.mockReturnValueOnce(Effect.succeedNone);
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("main\n")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.getDefaultBranch({ cwd: "/repo" });
+
+      assert.notProperty(mockRun.mock.calls[0]?.[0], "env");
+    }).pipe(Effect.provide(layerWithAccount)),
   );
 });

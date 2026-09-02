@@ -74,7 +74,13 @@ describe("isTemporaryWorktreeBranch", () => {
     ).toBe(true);
   });
 
-  it("matches generated temporary worktree refs", () => {
+  it("matches generated temporary worktree refs without a prefix", () => {
+    expect(isTemporaryWorktreeBranch("deadbeef")).toBe(true);
+    expect(isTemporaryWorktreeBranch(" deadbeef ")).toBe(true);
+    expect(isTemporaryWorktreeBranch("DEADBEEF")).toBe(true);
+  });
+
+  it("matches legacy prefixed temporary worktree refs", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef`)).toBe(true);
     expect(isTemporaryWorktreeBranch(` ${WORKTREE_BRANCH_PREFIX}/deadbeef `)).toBe(true);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/DEADBEEF`)).toBe(true);
@@ -82,7 +88,7 @@ describe("isTemporaryWorktreeBranch", () => {
 
   it("normalizes a UUID-shaped random callback to the canonical 8-hex form", () => {
     expect(buildTemporaryWorktreeBranchName(() => "f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12")).toBe(
-      `${WORKTREE_BRANCH_PREFIX}/f4ae4e0e`,
+      "f4ae4e0e",
     );
   });
 
@@ -106,6 +112,7 @@ describe("isTemporaryWorktreeBranch", () => {
   it("rejects non-temporary refName names", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
+    expect(isTemporaryWorktreeBranch("deadbeef-extra")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
   });
 });
