@@ -27,7 +27,7 @@ export class GitHubAccountUnavailableError extends Schema.TaggedErrorClass<GitHu
   }
 
   override get message(): string {
-    return `GitHub CLI failed in resolveAccount: ${this.detail}`;
+    return `GitHub CLI failed in envFor: ${this.detail}`;
   }
 }
 
