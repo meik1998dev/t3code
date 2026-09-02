@@ -18,7 +18,7 @@ import {
   resolvePreviousWorktreeSeed,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
-  shouldShowComposerContextStrip,
+  shouldShowComposerContextControls,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
 
@@ -423,10 +423,10 @@ describe("shouldShowEnvironmentIndicator", () => {
   });
 });
 
-describe("shouldShowComposerContextStrip", () => {
+describe("shouldShowComposerContextControls", () => {
   it("keeps the environment indicator visible for a non-Git project", () => {
     expect(
-      shouldShowComposerContextStrip({
+      shouldShowComposerContextControls({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: true,
@@ -436,7 +436,7 @@ describe("shouldShowComposerContextStrip", () => {
 
   it("hides the strip when a non-Git project has no environment indicator", () => {
     expect(
-      shouldShowComposerContextStrip({
+      shouldShowComposerContextControls({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: false,
@@ -446,7 +446,7 @@ describe("shouldShowComposerContextStrip", () => {
 
   it("shows Git controls without requiring an environment indicator", () => {
     expect(
-      shouldShowComposerContextStrip({
+      shouldShowComposerContextControls({
         hasActiveProject: true,
         isGitRepo: true,
         showEnvironmentIndicator: false,

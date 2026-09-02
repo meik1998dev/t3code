@@ -108,7 +108,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   if (pendingAction) {
     return (
-      <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
+      <div className={cn("flex shrink-0 items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
         {isRunning ? renderStopGenerationButton(true) : null}
         {pendingAction.questionIndex > 0 ? (
           compact ? (

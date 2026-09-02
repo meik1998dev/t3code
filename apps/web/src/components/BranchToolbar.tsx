@@ -40,7 +40,6 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
-import { ComposerSurface } from "./chat/ComposerSurface";
 
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
@@ -469,9 +468,11 @@ export const BranchToolbar = memo(function BranchToolbar({
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <ComposerSurface.ContextStrip
+    <div
       ref={setStripElement}
+      data-composer-context-controls
       data-compact={labelsOverflow ? "" : undefined}
+      className="group/composer-context flex min-w-0 shrink items-center gap-1"
     >
       {isMobile && showGitControls ? (
         <MobileRunContextSelector
@@ -536,6 +537,6 @@ export const BranchToolbar = memo(function BranchToolbar({
           {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
         />
       ) : null}
-    </ComposerSurface.ContextStrip>
+    </div>
   );
 });
