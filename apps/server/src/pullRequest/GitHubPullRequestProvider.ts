@@ -165,6 +165,9 @@ export const make = Effect.gen(function* () {
     getViewer: (input) =>
       cli.getViewerLogin({ cwd: input.cwd }).pipe(Effect.mapError(fail("getViewer"))),
 
+    getViewerAccountKey: (input) =>
+      cli.accountKeyFor === undefined ? Effect.succeed(null) : cli.accountKeyFor(input.cwd),
+
     listChangeRequests: (input) =>
       cli
         .listPullRequests({

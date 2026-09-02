@@ -230,6 +230,9 @@ export interface GitHubRepositoryCloneUrls {
 export class GitHubCli extends Context.Service<
   GitHubCli,
   {
+    /** The repository's configured account, or null when gh uses its active account. */
+    readonly accountKeyFor?: (cwd: string) => Effect.Effect<string | null>;
+
     readonly execute: (input: {
       readonly cwd: string;
       readonly args: ReadonlyArray<string>;
@@ -360,6 +363,7 @@ export const make = Effect.gen(function* () {
     );
 
   return GitHubCli.of({
+    accountKeyFor: (cwd) => account.accountKeyFor(cwd),
     execute,
     listOpenPullRequests: (input) =>
       execute({

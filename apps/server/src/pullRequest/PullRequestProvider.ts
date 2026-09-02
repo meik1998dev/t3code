@@ -239,6 +239,9 @@ export interface PullRequestProviderApi {
     readonly cwd: string;
   }) => Effect.Effect<string, PullRequestProviderError>;
 
+  /** The account that answers getViewer for this checkout, or null for a provider-wide account. */
+  readonly getViewerAccountKey?: (input: { readonly cwd: string }) => Effect.Effect<string | null>;
+
   readonly listChangeRequests: (
     input: ProviderRepositoryRef & {
       readonly state: PullRequestListState;

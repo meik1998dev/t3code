@@ -27,6 +27,7 @@ const layer = GitHubCli.layer.pipe(
   ),
   Layer.provide(
     Layer.succeed(GitHubAccount.GitHubAccount, {
+      accountKeyFor: () => Effect.succeed(null),
       envFor: () => Effect.succeedNone,
     }),
   ),

@@ -34,6 +34,9 @@ export class GitHubAccountUnavailableError extends Schema.TaggedErrorClass<GitHu
 export class GitHubAccount extends Context.Service<
   GitHubAccount,
   {
+    /** The configured account for this repository, or null when `gh` should use its active account. */
+    readonly accountKeyFor: (cwd: string) => Effect.Effect<string | null>;
+
     /**
      * Environment overrides for `gh` runs in this repository: a `GH_TOKEN` for the configured
      * account, or none when the repository names no account.
@@ -101,7 +104,10 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  return GitHubAccount.of({ envFor });
+  const accountKeyFor: GitHubAccount["Service"]["accountKeyFor"] = (cwd) =>
+    readAccount(cwd).pipe(Effect.map((account) => (account.length === 0 ? null : account)));
+
+  return GitHubAccount.of({ accountKeyFor, envFor });
 });
 
 export const layer = Layer.effect(GitHubAccount, make);
