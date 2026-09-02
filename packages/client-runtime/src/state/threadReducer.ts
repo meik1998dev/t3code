@@ -548,7 +548,11 @@ export function applyThreadDetailEvent(
       );
 
       const retainedTurnIds = new Set(Arr.map(checkpoints, (entry) => entry.turnId));
-      const messages = retainMessagesAfterRevert(thread.messages, retainedTurnIds);
+      const messages = retainMessagesAfterRevert(
+        thread.messages,
+        retainedTurnIds,
+        event.payload.turnCount,
+      );
       const proposedPlans = pipe(
         thread.proposedPlans,
         Arr.filter((plan) => plan.turnId === null || retainedTurnIds.has(plan.turnId)),
@@ -741,16 +745,39 @@ function rebindCheckpointAssistantMessage(
 function retainMessagesAfterRevert(
   messages: ReadonlyArray<OrchestrationMessage>,
   retainedTurnIds: ReadonlySet<string>,
+  turnCount: number,
 ): OrchestrationMessage[] {
-  // Keep messages that belong to a retained turn, plus system messages and
-  // messages without a turn binding (pre-turn-0 user messages).
-  return Arr.filter(messages, (message) => {
+  // Mirrors the server projector: keep system messages and messages bound to
+  // a retained turn. User messages are appended before their turn exists and
+  // carry no turn binding, so the earliest unbound ones fill the retained
+  // turn count; anything beyond that belongs to a reverted turn and goes.
+  const retainedIds = new Set<string>();
+  for (const message of messages) {
     if (message.role === "system") {
-      return true;
+      retainedIds.add(message.id);
+    } else if (message.turnId !== null && retainedTurnIds.has(message.turnId)) {
+      retainedIds.add(message.id);
     }
-    if (message.turnId === null) {
-      return true;
+  }
+  for (const role of ["user", "assistant"] as const) {
+    const retainedCount = messages.filter(
+      (message) => message.role === role && retainedIds.has(message.id),
+    ).length;
+    const missingCount = Math.max(0, turnCount - retainedCount);
+    if (missingCount === 0) continue;
+    const unbound = messages
+      .filter(
+        (message) =>
+          message.role === role && !retainedIds.has(message.id) && message.turnId === null,
+      )
+      .toSorted(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+      )
+      .slice(0, missingCount);
+    for (const message of unbound) {
+      retainedIds.add(message.id);
     }
-    return retainedTurnIds.has(message.turnId);
-  });
+  }
+  return Arr.filter(messages, (message) => retainedIds.has(message.id));
 }

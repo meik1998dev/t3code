@@ -134,6 +134,17 @@ interface ClaudeResumeState {
   readonly resume?: string;
   readonly resumeSessionAt?: string;
   readonly turnCount?: number;
+  /**
+   * Set by rollbackThread: the next resume pins `resumeSessionAt` so the CLI
+   * drops the discarded turns. Cleared once the resumed session emits a
+   * top-level assistant message, after which normal resumes stay unpinned.
+   */
+  readonly rewound?: boolean;
+  /**
+   * Last top-level assistant uuid per completed turn (null when unknown), so
+   * a rollback on a resumed session still knows where each turn ended.
+   */
+  readonly turnAnchors?: ReadonlyArray<string | null>;
 }
 
 interface ClaudeTurnState {
@@ -153,6 +164,8 @@ interface ClaudeTurnState {
   latestAssistantUsage: unknown | undefined;
   compactedSinceLatestAssistantUsage: boolean;
   nextSyntheticAssistantBlockIndex: number;
+  /** Uuid of the turn's latest top-level assistant message; becomes the turn's resume anchor. */
+  lastTopLevelAssistantUuid: string | undefined;
 }
 
 interface AssistantTextBlockState {
@@ -295,6 +308,8 @@ interface ClaudeSessionContext {
   readonly turns: Array<{
     id: TurnId;
     items: Array<unknown>;
+    /** Last top-level assistant uuid of the turn; the resume anchor a rollback pins. */
+    resumeSessionAt?: string;
   }>;
   readonly inFlightTools: Map<number, ToolInFlight>;
   readonly claudeTasks: Map<string, ClaudeTaskState>;
@@ -320,6 +335,11 @@ interface ClaudeSessionContext {
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
   lastAssistantUuid: string | undefined;
+  /**
+   * Resume anchor pinned by rollbackThread. While set, the persisted cursor
+   * points here (not at the latest assistant uuid) and is marked rewound.
+   */
+  rewindAnchor: string | undefined;
   lastThreadStartedId: string | undefined;
   stopped: boolean;
 }
@@ -686,6 +706,8 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     sessionId?: unknown;
     resumeSessionAt?: unknown;
     turnCount?: unknown;
+    rewound?: unknown;
+    turnAnchors?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -703,6 +725,9 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
   const resumeSessionAt =
     typeof cursor.resumeSessionAt === "string" ? cursor.resumeSessionAt : undefined;
   const turnCountValue = typeof cursor.turnCount === "number" ? cursor.turnCount : undefined;
+  const turnAnchors = Array.isArray(cursor.turnAnchors)
+    ? cursor.turnAnchors.map((entry) => (typeof entry === "string" ? entry : null))
+    : undefined;
 
   return {
     ...(threadId ? { threadId } : {}),
@@ -711,7 +736,25 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
       ? { turnCount: turnCountValue }
       : {}),
+    ...(cursor.rewound === true ? { rewound: true } : {}),
+    ...(turnAnchors ? { turnAnchors } : {}),
   };
+}
+
+// A resumed session re-creates one placeholder per completed turn so the turn
+// count and per-turn resume anchors survive process restarts; a rollback on
+// the resumed session can then still pin the right anchor.
+function resumedTurnPlaceholders(
+  resumeState: ClaudeResumeState | undefined,
+): Array<{ id: TurnId; items: Array<unknown>; resumeSessionAt?: string }> {
+  const anchors =
+    resumeState?.turnAnchors ??
+    Array.from({ length: resumeState?.turnCount ?? 0 }, (): string | null => null);
+  return anchors.map((anchor, index) => ({
+    id: TurnId.make(`resumed-turn-${index + 1}`),
+    items: [],
+    ...(anchor ? { resumeSessionAt: anchor } : {}),
+  }));
 }
 
 function readToolImagePath(toolName: string, input: Record<string, unknown>): string | undefined {
@@ -1840,11 +1883,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const threadId = context.session.threadId;
     if (!threadId) return;
 
+    const resumeSessionAt = context.rewindAnchor ?? context.lastAssistantUuid;
     const resumeCursor = {
       threadId,
       ...(context.resumeSessionId ? { resume: context.resumeSessionId } : {}),
-      ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
+      ...(resumeSessionAt ? { resumeSessionAt } : {}),
       turnCount: context.turns.length,
+      turnAnchors: context.turns.map((turn) => turn.resumeSessionAt ?? null),
+      ...(context.rewindAnchor ? { rewound: true } : {}),
     };
 
     context.session = {
@@ -2397,6 +2443,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context.turns.push({
       id: turnState.turnId,
       items: [...turnState.items],
+      ...(turnState.lastTopLevelAssistantUuid
+        ? { resumeSessionAt: turnState.lastTopLevelAssistantUuid }
+        : {}),
     });
 
     yield* emitThreadTokenUsage(context, usageSnapshot, {
@@ -2965,6 +3014,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         capturedProposedPlanKeys: new Set(),
         latestAssistantUsage: undefined,
         compactedSinceLatestAssistantUsage: false,
+        lastTopLevelAssistantUuid: undefined,
         nextSyntheticAssistantBlockIndex: -1,
       };
       context.session = {
@@ -3036,8 +3086,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         context.turnState.compactedSinceLatestAssistantUsage = false;
       }
       yield* backfillAssistantTextBlocksFromSnapshot(context, message);
+      context.turnState.lastTopLevelAssistantUuid = message.uuid;
     }
 
+    // A top-level assistant message proves the CLI resumed at the pinned
+    // anchor (or never needed one), so later resumes track the tip again.
+    context.rewindAnchor = undefined;
     context.lastAssistantUuid = message.uuid;
     yield* updateResumeCursor(context);
   });
@@ -4368,6 +4422,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           : {}),
         ...(Object.keys(settings).length > 0 ? { settings } : {}),
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
+        // Only a rollback pins the resume point. Normal resumes stay unpinned
+        // because the latest uuid can belong to a subagent snapshot.
+        ...(existingResumeSessionId && resumeState?.rewound && resumeState.resumeSessionAt
+          ? { resumeSessionAt: resumeState.resumeSessionAt }
+          : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
         canUseTool,
@@ -4431,6 +4490,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           }),
       });
 
+      const resumedTurns = resumedTurnPlaceholders(resumeState);
       const session: ProviderSession = {
         threadId,
         provider: PROVIDER,
@@ -4444,7 +4504,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(threadId ? { threadId } : {}),
           ...(sessionId ? { resume: sessionId } : {}),
           ...(resumeState?.resumeSessionAt ? { resumeSessionAt: resumeState.resumeSessionAt } : {}),
-          turnCount: resumeState?.turnCount ?? 0,
+          turnCount: resumedTurns.length,
+          turnAnchors: resumedTurns.map((turn) => turn.resumeSessionAt ?? null),
+          ...(resumeState?.rewound ? { rewound: true } : {}),
         },
         createdAt: startedAt,
         updatedAt: startedAt,
@@ -4462,7 +4524,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         resumeSessionId: sessionId,
         pendingApprovals,
         pendingUserInputs,
-        turns: [],
+        turns: resumedTurns,
         inFlightTools,
         claudeTasks,
         taskAgents,
@@ -4474,6 +4536,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownTokenUsage: undefined,
         lastKnownTotalProcessedTokens: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
+        rewindAnchor: resumeState?.rewound ? resumeState.resumeSessionAt : undefined,
         lastThreadStartedId: undefined,
         stopped: false,
       };
@@ -4626,6 +4689,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         capturedProposedPlanKeys: new Set(),
         latestAssistantUsage: undefined,
         compactedSinceLatestAssistantUsage: false,
+        lastTopLevelAssistantUuid: undefined,
         nextSyntheticAssistantBlockIndex: -1,
       };
 
@@ -4712,8 +4776,25 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const context = yield* requireSession(threadId);
       const nextLength = Math.max(0, context.turns.length - numTurns);
       context.turns.splice(nextLength);
+      // The live CLI still holds the discarded turns, so the caller restarts
+      // the session. The pinned anchor makes that resume stop at the last
+      // retained turn; with no retained turn the next session starts fresh.
+      const anchor = context.turns.at(-1)?.resumeSessionAt;
+      if (nextLength === 0) {
+        context.resumeSessionId = undefined;
+        context.rewindAnchor = undefined;
+        context.lastAssistantUuid = undefined;
+      } else if (anchor) {
+        context.rewindAnchor = anchor;
+        context.lastAssistantUuid = anchor;
+      } else {
+        yield* Effect.logWarning("claude rollback has no resume anchor for the retained turn", {
+          threadId,
+          retainedTurns: nextLength,
+        });
+      }
       yield* updateResumeCursor(context);
-      return yield* snapshotThread(context);
+      return { ...(yield* snapshotThread(context)), restartRequired: true };
     },
   );
 

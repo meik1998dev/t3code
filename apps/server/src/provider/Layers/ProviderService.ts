@@ -1129,7 +1129,32 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "provider.thread_id": input.threadId,
         "provider.rollback_turns": input.numTurns,
       });
-      yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
+      const snapshot = yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
+      // Persist the rolled-back cursor right away: nothing else writes it
+      // before the next turn, and a restart in between would otherwise resume
+      // the discarded turns.
+      const sessions = yield* routed.adapter.listSessions();
+      const session = sessions.find((entry) => entry.threadId === input.threadId);
+      if (session) {
+        yield* upsertSessionBinding(
+          { ...session, providerInstanceId: routed.instanceId },
+          input.threadId,
+        );
+      }
+      if (snapshot.restartRequired) {
+        yield* routed.adapter.stopSession(routed.threadId);
+        yield* clearMcpSession(input.threadId);
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: routed.adapter.provider,
+          providerInstanceId: routed.instanceId,
+          status: "stopped",
+          ...(session?.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
+          runtimePayload: {
+            activeTurnId: null,
+          },
+        });
+      }
       yield* analytics.record("provider.conversation.rolled_back", {
         provider: routed.adapter.provider,
         turns: input.numTurns,
