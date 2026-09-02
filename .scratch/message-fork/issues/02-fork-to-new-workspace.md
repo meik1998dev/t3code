@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — Fork to new chat.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Worktree bootstrap accepts an optional start ref; server uses it as the base commit and keeps the base branch label
-- [ ] Focused server test: worktree created from a checkpoint ref has that ref's files
-- [ ] "Fork to new workspace" opens a draft in worktree mode carrying the start ref, transcript pre-filled
-- [ ] First send creates the worktree from the checkpoint; the new thread shows its worktree path
-- [ ] Item disabled with tooltip when no checkpoint exists for the fork point
-- [ ] User docs section updated with the workspace variant
+- [x] Worktree bootstrap accepts an optional start ref; server uses it as the base commit and keeps the base branch label
+- [x] Focused server test: worktree created from a checkpoint ref has that ref's files
+- [x] "Fork to new workspace" opens a draft in worktree mode carrying the start ref, transcript pre-filled
+- [x] First send creates the worktree from the checkpoint; the new thread shows its worktree path
+- [x] Item disabled with tooltip when no checkpoint exists for the fork point
+- [x] User docs section updated with the workspace variant

@@ -1,6 +1,7 @@
 import {
   type AssistantCitation,
   type ChatFileAttachment,
+  type CheckpointRef,
   type EnvironmentId,
   type MessageId,
   type ScopedThreadRef,
@@ -25,6 +26,13 @@ const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
+const NOOP_FORK_MESSAGE = (
+  _messageId: MessageId,
+  _destination: "chat" | "workspace",
+  _startRef?: CheckpointRef,
+) => {};
+const EMPTY_FORK_CHECKPOINT_REFS = new Map<MessageId, CheckpointRef>();
+const EMPTY_ASSISTANT_REVERT_TURN_COUNTS = new Map<MessageId, number>();
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   createContext,
@@ -73,6 +81,7 @@ import {
   CircleAlertIcon,
   DownloadIcon,
   EyeIcon,
+  EllipsisIcon,
   FileIcon,
   GlobeIcon,
   HammerIcon,
@@ -89,6 +98,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
@@ -183,6 +193,12 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
+  forkCheckpointRefByMessageId: ReadonlyMap<MessageId, CheckpointRef>;
+  onForkMessage: (
+    messageId: MessageId,
+    destination: "chat" | "workspace",
+    startRef?: CheckpointRef,
+  ) => void;
   onUseArtifactTemplate: (template: CodexArtifactTemplate) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
@@ -198,6 +214,7 @@ interface TimelineRowSharedState {
 
 interface TimelineRowActivityState {
   isWorking: boolean;
+  isForkingMessage: boolean;
   isPreparingWorktree: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
@@ -281,9 +298,17 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
+  revertTurnCountByAssistantMessageId?: ReadonlyMap<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
+  forkCheckpointRefByMessageId?: ReadonlyMap<MessageId, CheckpointRef>;
+  onForkMessage?: (
+    messageId: MessageId,
+    destination: "chat" | "workspace",
+    startRef?: CheckpointRef,
+  ) => void;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   isRevertingCheckpoint: boolean;
+  isForkingMessage?: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen?: (attachment: ChatFileAttachment) => void;
   openingVideoAttachmentId: string | null;
@@ -332,9 +357,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   routeThreadKey,
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
+  revertTurnCountByAssistantMessageId = EMPTY_ASSISTANT_REVERT_TURN_COUNTS,
   onRevertUserMessage,
+  forkCheckpointRefByMessageId = EMPTY_FORK_CHECKPOINT_REFS,
+  onForkMessage = NOOP_FORK_MESSAGE,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   isRevertingCheckpoint,
+  isForkingMessage = false,
   onImageExpand,
   onFileOpen = NOOP_OPEN_ATTACHMENT,
   openingVideoAttachmentId,
@@ -490,6 +519,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeTurnStartedAt,
         turnDiffSummaryByAssistantMessageId,
         revertTurnCountByUserMessageId,
+        revertTurnCountByAssistantMessageId,
       }),
     [
       timelineEntries,
@@ -501,6 +531,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeTurnStartedAt,
       turnDiffSummaryByAssistantMessageId,
       revertTurnCountByUserMessageId,
+      revertTurnCountByAssistantMessageId,
     ],
   );
   const rows = useStableRows(rawRows);
@@ -633,6 +664,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      forkCheckpointRefByMessageId,
+      onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
       onFileOpen,
@@ -656,6 +689,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      forkCheckpointRefByMessageId,
+      onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
       onFileOpen,
@@ -672,11 +707,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const activityState = useMemo<TimelineRowActivityState>(
     () => ({
       isWorking,
+      isForkingMessage,
       isPreparingWorktree,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
     }),
-    [isRevertingCheckpoint, isWorking, isPreparingWorktree, latestTurn?.turnId],
+    [isForkingMessage, isRevertingCheckpoint, isWorking, isPreparingWorktree, latestTurn?.turnId],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -1298,10 +1334,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </TooltipPopup>
           </Tooltip>
           <div className="flex items-center gap-0.5">
-            {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
+            {canRevertAgentWork && <RevertMessageButton messageId={row.message.id} />}
             {displayedUserMessage.copyText && (
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
             )}
+            <MessageForkMenu messageId={row.message.id} />
           </div>
         </div>
       </div>
@@ -1309,7 +1346,55 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
 }
 
-function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
+function MessageForkMenu({ messageId }: { messageId: MessageId }) {
+  const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
+  const checkpointRef = ctx.forkCheckpointRefByMessageId.get(messageId);
+  const workspaceItem = (
+    <MenuItem
+      disabled={activity.isWorking || activity.isForkingMessage || checkpointRef === undefined}
+      onClick={() => {
+        if (checkpointRef) ctx.onForkMessage(messageId, "workspace", checkpointRef);
+      }}
+    >
+      Fork to new workspace
+    </MenuItem>
+  );
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={<Button type="button" size="xs" variant="ghost" aria-label="Message actions" />}
+      >
+        <EllipsisIcon aria-hidden="true" className="size-3" />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <MenuItem
+          disabled={activity.isWorking || activity.isForkingMessage}
+          onClick={() => ctx.onForkMessage(messageId, "chat")}
+        >
+          Fork to new chat
+        </MenuItem>
+        {checkpointRef === undefined ? (
+          <Tooltip>
+            <TooltipTrigger render={<div />}>{workspaceItem}</TooltipTrigger>
+            <TooltipPopup side="top">No checkpoint for this message</TooltipPopup>
+          </Tooltip>
+        ) : (
+          workspaceItem
+        )}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+function RevertMessageButton({
+  messageId,
+  checkpointAvailable = true,
+}: {
+  messageId: MessageId;
+  checkpointAvailable?: boolean;
+}) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
 
@@ -1321,15 +1406,23 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
             type="button"
             size="xs"
             variant="ghost"
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertUserMessage(messageId)}
+            aria-disabled={
+              !checkpointAvailable || activity.isRevertingCheckpoint || activity.isWorking
+            }
+            onClick={() => {
+              if (checkpointAvailable) ctx.onRevertUserMessage(messageId);
+            }}
             aria-label="Revert to this message"
           />
         }
       >
         <Undo2Icon className="size-3" />
       </TooltipTrigger>
-      <TooltipPopup side="top">Revert to this message</TooltipPopup>
+      <TooltipPopup side="top">
+        {checkpointAvailable ? "Revert to this message" : "No checkpoint for this message"}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -1385,23 +1478,26 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
-        {row.showAssistantMeta ? (
-          <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
+        <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
+          <div className="flex items-center gap-0.5">
+            <RevertMessageButton
+              messageId={row.message.id}
+              checkpointAvailable={typeof row.revertTurnCount === "number"}
+            />
             <AssistantCopyButton row={row} />
-            {!row.message.streaming && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={<p className="text-muted-foreground text-xs tabular-nums" />}
-                >
-                  {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
-                </TooltipTrigger>
-                <TooltipPopup>
-                  {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
-                </TooltipPopup>
-              </Tooltip>
-            )}
+            <MessageForkMenu messageId={row.message.id} />
           </div>
-        ) : null}
+          {!row.message.streaming && (
+            <Tooltip>
+              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+                {formatDayAwareTimestamp(row.message.updatedAt, ctx.timestampFormat)}
+              </TooltipTrigger>
+              <TooltipPopup>
+                {formatChatTimestampTooltip(row.message.updatedAt, ctx.timestampFormat)}
+              </TooltipPopup>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </>
   );

@@ -4,10 +4,10 @@
 
 **Blocked by:** None — can start immediately. Prefer to land after 01 to avoid conflicts in the timeline files.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Revert icon on assistant messages, same look as on user messages
-- [ ] Revert restores files to the checkpoint after that turn and removes later turns
-- [ ] Logic test: assistant message maps to the correct turn count, including the last turn and a turn without checkpoint
-- [ ] Disabled states match the user-message button
-- [ ] User docs mention revert from an assistant reply
+- [x] Revert icon on assistant messages, same look as on user messages
+- [x] Revert restores files to the checkpoint after that turn and removes later turns
+- [x] Logic test: assistant message maps to the correct turn count, including the last turn and a turn without checkpoint
+- [x] Disabled states match the user-message button
+- [x] User docs mention revert from an assistant reply

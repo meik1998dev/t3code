@@ -184,6 +184,7 @@ export function BranchToolbarBranchSelector({
         branch,
         worktreePath,
         envMode: nextDraftEnvMode,
+        startRef: null,
         projectRef: scopeProjectRef(environmentId, activeProject.id),
       });
     },

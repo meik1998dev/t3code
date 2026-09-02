@@ -622,6 +622,7 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
+  revertTurnCountByAssistantMessageId?: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
   const durationStartByMessageId = computeMessageDurationStart(
@@ -910,7 +911,7 @@ export function deriveMessagesTimelineRows(input: {
       revertTurnCount:
         timelineEntry.message.role === "user"
           ? input.revertTurnCountByUserMessageId.get(timelineEntry.message.id)
-          : undefined,
+          : input.revertTurnCountByAssistantMessageId?.get(timelineEntry.message.id),
     });
   }
 

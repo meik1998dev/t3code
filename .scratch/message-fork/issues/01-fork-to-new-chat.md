@@ -4,12 +4,12 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] "..." menu appears on hover for user and assistant messages on web and desktop
-- [ ] "Fork to new chat" opens a new draft thread on the same branch/worktree, same provider and model, and navigates to it
-- [ ] Composer holds the transcript, nothing is sent automatically
-- [ ] Transcript helper lives in client-runtime, is pure, and has a unit test covering order, fork point inclusion, and dropped tool content
-- [ ] Menu items are disabled while a turn is running
-- [ ] Glossary terms "Fork" and "Fork point" are used in code names and docs
-- [ ] Short "Fork a chat" section in the user docs
+- [x] "..." menu appears on hover for user and assistant messages on web and desktop
+- [x] "Fork to new chat" opens a new draft thread on the same branch/worktree, same provider and model, and navigates to it
+- [x] Composer holds the transcript, nothing is sent automatically
+- [x] Transcript helper lives in client-runtime, is pure, and has a unit test covering order, fork point inclusion, and dropped tool content
+- [x] Menu items are disabled while a turn is running
+- [x] Glossary terms "Fork" and "Fork point" are used in code names and docs
+- [x] Short "Fork a chat" section in the user docs

@@ -62,6 +62,21 @@ Model options shown as provider defaults remain display values until you choose 
 T3 Code only sends options you selected explicitly, so an unset reasoning level or service tier can
 still come from the provider's own configuration.
 
+## Fork a chat
+
+On web and desktop, hover over any user or assistant message and open its **...** menu. Choose
+**Fork to new chat** to open a new draft in the same workspace. The draft keeps the source thread's
+provider and model, and contains the conversation text through the selected message. Tool activity,
+attachments, and reasoning are not copied. Review or edit the draft before sending it.
+
+Choose **Fork to new workspace** to start the draft in a separate worktree. When you send the first
+message, the new worktree starts with the files from the selected message's checkpoint. This option
+is unavailable when that message has no saved checkpoint.
+
+Use the **Revert** icon under a user message to return to the state before its turn. Use the same
+icon under an assistant reply to return to the state after that reply. Revert restores the saved
+files and removes all later turns from the chat.
+
 ## Quote an assistant response
 
 On web and desktop, select text in an assistant response, then choose **Cite in composer** from the
