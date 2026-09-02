@@ -1385,8 +1385,18 @@ it.effect("keeps GitHub viewers separate by account and shares one lookup per ac
       ],
     });
 
-    yield* service.list({ state: "open", involvement: "authored" });
+    const result = yield* service.list({ state: "open", involvement: "authored" });
 
+    assert.deepStrictEqual(
+      result.entries
+        .map((entry) => [entry.repository, entry.viewer])
+        .toSorted(([left], [right]) => left!.localeCompare(right!)),
+      [
+        ["acme/a", "bilal"],
+        ["acme/b", "bilal"],
+        ["acme/c", "octocat"],
+      ],
+    );
     assert.deepStrictEqual(viewerCalls.toSorted(), ["/personal-a", "/work"]);
     assert.deepStrictEqual(
       listCalls.toSorted((left, right) => left.cwd.localeCompare(right.cwd)),
@@ -1430,12 +1440,14 @@ it.effect("reports repositories on a host that could not be read", () =>
 
     const result = yield* service.list({ state: "open" });
 
-    // The healthy host still lists, and the unreadable one is named rather than dropped.
+    // The healthy host still lists, and the unreadable one is named rather than dropped, with
+    // the reason it could not be read.
     assert.strictEqual(result.entries.length, 1);
     assert.deepStrictEqual(
       result.errors.map((error) => error.projectId),
       ["p2"],
     );
+    assert.match(result.errors[0]!.message, /^acme\/api could not be read: .+/);
   }),
 );
 

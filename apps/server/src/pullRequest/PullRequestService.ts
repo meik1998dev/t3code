@@ -939,6 +939,7 @@ export const make = Effect.gen(function* () {
       viewerReviewRequested:
         input.item.author?.login.toLowerCase() !== viewer &&
         input.item.reviewRequestLogins.some((login) => login.toLowerCase() === viewer),
+      viewer: input.viewer,
       labels: input.item.labels,
       ...(input.item.reviewDecision === undefined || input.item.reviewDecision === null
         ? {}
@@ -1034,11 +1035,18 @@ export const make = Effect.gen(function* () {
       // Reporting them keeps "N repositories were unavailable" honest instead of dropping them.
       const unreadable = selected
         .filter((project) => viewerLoginFor(project) === null)
-        .map(({ project, repository }) => ({
-          projectId: project.id,
-          projectTitle: project.title,
-          message: `${repository} could not be read.`,
-        }));
+        .map((candidate) => {
+          const { project, repository } = candidate;
+          const error = viewerFor(candidate)?.error ?? null;
+          return {
+            projectId: project.id,
+            projectTitle: project.title,
+            message:
+              error === null
+                ? `${repository} could not be read.`
+                : `${repository} could not be read: ${providerDetail(error)}`,
+          };
+        });
       if (readable.length === 0) {
         // No host this request covers can be read, so it is not a per-project problem. An
         // unusable host is preferred as the reported cause because it names the fix; a host

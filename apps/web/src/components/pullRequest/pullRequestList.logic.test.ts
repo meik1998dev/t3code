@@ -1002,6 +1002,20 @@ describe('who "I" am, per server', () => {
     ).toEqual([1]);
   });
 
+  it("lets a row's own login outrank the host's, where one host holds two accounts", () => {
+    // Two repositories on github.com read as different accounts share one host key, which can
+    // only name one of them. The row carries the login it was actually read as.
+    const rows = [
+      entry({ number: 1, author: byBilal, viewer: "Bilal" }),
+      entry({ number: 2, author: byBilal, viewer: "Octocat" }),
+    ];
+    expect(
+      filterPullRequestsByInvolvement(rows, { "github.com": "Octocat" }, "authored").map(
+        (row) => row.number,
+      ),
+    ).toEqual([1]);
+  });
+
   it("still reads a single server's host-keyed viewers, which is what a snapshot carries", () => {
     expect(
       filterPullRequestsByInvolvement(
