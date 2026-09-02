@@ -19,6 +19,7 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveAssistantRevertTurnCounts,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getStartedThreadModelChangeBlockReason,
@@ -49,6 +50,26 @@ describe("isVideoPreviewRequestCurrent", () => {
     expect(isVideoPreviewRequestCurrent("thread-1", "thread-2", 1, 1)).toBe(false);
     expect(isVideoPreviewRequestCurrent("thread-1", "thread-1", 1, 2)).toBe(false);
     expect(isVideoPreviewRequestCurrent("thread-1", "thread-1", 2, 2)).toBe(true);
+  });
+});
+
+describe("deriveAssistantRevertTurnCounts", () => {
+  it("maps ready assistant checkpoints, including the last turn", () => {
+    const assistantMessageId = MessageId.make("assistant-last");
+    expect(
+      deriveAssistantRevertTurnCounts([
+        { assistantMessageId, checkpointTurnCount: 4, status: "ready" },
+      ]).get(assistantMessageId),
+    ).toBe(4);
+  });
+
+  it("omits assistant turns without a ready checkpoint", () => {
+    const assistantMessageId = MessageId.make("assistant-missing");
+    const counts = deriveAssistantRevertTurnCounts([
+      { assistantMessageId, checkpointTurnCount: 3, status: "missing" },
+      { assistantMessageId: null, checkpointTurnCount: 4, status: "ready" },
+    ]);
+    expect(counts.has(assistantMessageId)).toBe(false);
   });
 });
 

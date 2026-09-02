@@ -145,6 +145,14 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
+#### Fork point
+
+The message a user picks to fork or revert from. Its workspace state is the checkpoint on its side of the turn: a user message means the state before its turn, an assistant message means the state after its turn. Web exposes this through the message action menu in `MessagesTimeline.tsx`.
+
+#### Fork
+
+Starting a new thread from a fork point. The new thread begins as a client draft whose composer holds a plain-text transcript of the source thread up to the fork point. "Fork to new chat" keeps the source thread's worktree and branch. "Fork to new workspace" creates a new worktree from the fork point's checkpoint ref when the first message is sent. The source thread is never changed.
+
 ### Appearance
 
 #### Environment theme

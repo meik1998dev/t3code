@@ -2,6 +2,7 @@ import {
   type AssistantCitation,
   type ApprovalRequestId,
   type ChatFileAttachment,
+  type CheckpointRef,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -26,6 +27,10 @@ import {
   TerminalOpenInput,
 } from "@t3tools/contracts";
 import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import {
+  buildForkTranscript,
+  resolveForkPointCheckpointRef,
+} from "@t3tools/client-runtime/fork-transcript";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import { type CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
@@ -273,7 +278,7 @@ import {
   serverEnvironment,
 } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
-import { threadEnvironment, useEnvironmentThread } from "../state/threads";
+import { loadFullThreadHistory, threadEnvironment, useEnvironmentThread } from "../state/threads";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
@@ -345,6 +350,7 @@ import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
   buildExpiredTerminalContextToastCopy,
+  deriveAssistantRevertTurnCounts,
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
   buildThreadTurnInterruptInput,
@@ -1527,6 +1533,7 @@ function ChatViewContent(props: ChatViewProps) {
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [isForkingMessage, setIsForkingMessage] = useState(false);
   const [maximizedRightPanelThreadKey, setMaximizedRightPanelThreadKey] = useState<string | null>(
     null,
   );
@@ -2884,6 +2891,31 @@ function ChatViewContent(props: ChatViewProps) {
 
     return byUserMessageId;
   }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+  const revertTurnCountByAssistantMessageId = useMemo(
+    () => deriveAssistantRevertTurnCounts(turnDiffSummaries),
+    [turnDiffSummaries],
+  );
+  const revertTurnCountByMessageId = useMemo(
+    () =>
+      new Map<MessageId, number>([
+        ...revertTurnCountByUserMessageId,
+        ...revertTurnCountByAssistantMessageId,
+      ]),
+    [revertTurnCountByAssistantMessageId, revertTurnCountByUserMessageId],
+  );
+  const forkCheckpointRefByMessageId = useMemo(() => {
+    const refs = new Map<MessageId, CheckpointRef>();
+    if (!activeThread) return refs;
+    for (const message of timelineMessages) {
+      const checkpointRef = resolveForkPointCheckpointRef(
+        activeThread.id,
+        message,
+        activeThread.checkpoints,
+      );
+      if (checkpointRef) refs.set(message.id, checkpointRef);
+    }
+    return refs;
+  }, [activeThread, timelineMessages]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -6200,6 +6232,7 @@ function ChatViewContent(props: ChatViewProps) {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
                       branch: buildTemporaryWorktreeBranchName(randomHex),
+                      ...(draftThread?.startRef ? { startRef: draftThread.startRef } : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
                     },
                     runSetupScript: true,
@@ -6958,6 +6991,7 @@ function ChatViewContent(props: ChatViewProps) {
       if (isLocalDraftThread) {
         setDraftThreadContext(composerDraftTarget, {
           envMode: mode,
+          startRef: null,
           startFromOrigin: resolveNewDraftStartFromOrigin({
             envMode: mode,
             newWorktreesStartFromOrigin: primaryServerSettings.newWorktreesStartFromOrigin,
@@ -6990,6 +7024,7 @@ function ChatViewContent(props: ChatViewProps) {
     }
     if (isLocalDraftThread) {
       setDraftThreadContext(composerDraftTarget, {
+        startRef: null,
         startFromOrigin: nextStartFromOrigin,
       });
     }
@@ -7014,8 +7049,8 @@ function ChatViewContent(props: ChatViewProps) {
   );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
-  const revertTurnCountRef = useRef(revertTurnCountByUserMessageId);
-  revertTurnCountRef.current = revertTurnCountByUserMessageId;
+  const revertTurnCountRef = useRef(revertTurnCountByMessageId);
+  revertTurnCountRef.current = revertTurnCountByMessageId;
   const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
   onRevertToTurnCountRef.current = onRevertToTurnCount;
   const onRevertUserMessage = useCallback((messageId: MessageId) => {
@@ -7025,6 +7060,71 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
+  const onForkMessage = useCallback(
+    async (messageId: MessageId, destination: "chat" | "workspace", startRef?: CheckpointRef) => {
+      if (!activeThread || !activeProjectRef || isWorking || isForkingMessage) return;
+      if (destination === "workspace" && !startRef) return;
+
+      setIsForkingMessage(true);
+      try {
+        const sourceThread = await loadFullThreadHistory(routeThreadRef);
+        const transcript = buildForkTranscript(
+          sourceThread.title,
+          sourceThread.messages.map((message) => ({ kind: "message", message })),
+          messageId,
+        );
+        if (transcript === null) {
+          toastManager.add({
+            type: "error",
+            title: "Could not fork chat",
+            description: "The selected message is not in the saved chat history yet.",
+          });
+          return;
+        }
+
+        const fork = await handleNewThread(
+          activeProjectRef,
+          destination === "workspace"
+            ? {
+                branch: activeThread.branch,
+                worktreePath: null,
+                envMode: "worktree",
+                startFromOrigin: false,
+                ...(startRef ? { startRef } : {}),
+              }
+            : {
+                branch: activeThread.branch,
+                worktreePath: activeThread.worktreePath,
+                envMode: activeThread.worktreePath ? "worktree" : "local",
+              },
+        );
+        if (!fork) return;
+        setComposerDraftModelSelection(fork.draftId, activeThread.modelSelection, {
+          explicit: true,
+          replaceOptions: true,
+        });
+        setComposerDraftPrompt(fork.draftId, transcript);
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Could not fork chat",
+          description: chatActionErrorMessage(error),
+        });
+      } finally {
+        setIsForkingMessage(false);
+      }
+    },
+    [
+      activeProjectRef,
+      activeThread,
+      handleNewThread,
+      isForkingMessage,
+      isWorking,
+      routeThreadRef,
+      setComposerDraftModelSelection,
+      setComposerDraftPrompt,
+    ],
+  );
 
   // Empty state: no active thread
   if (!activeThread) {
@@ -7298,9 +7398,13 @@ function ChatViewContent(props: ChatViewProps) {
                 routeThreadKey={routeThreadKey}
                 onOpenTurnDiff={onOpenTurnDiff}
                 revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+                revertTurnCountByAssistantMessageId={revertTurnCountByAssistantMessageId}
                 onRevertUserMessage={onRevertUserMessage}
+                forkCheckpointRefByMessageId={forkCheckpointRefByMessageId}
+                onForkMessage={onForkMessage}
                 onUseArtifactTemplate={useArtifactTemplate}
                 isRevertingCheckpoint={isRevertingCheckpoint}
+                isForkingMessage={isForkingMessage}
                 onImageExpand={onExpandTimelineImage}
                 onFileOpen={openFileAttachment}
                 openingVideoAttachmentId={openingVideoAttachmentId}

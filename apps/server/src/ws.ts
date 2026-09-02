@@ -1091,10 +1091,12 @@ const makeWsRpcLayer = (
             }
 
             if (bootstrap?.prepareWorktree) {
-              let worktreeBaseRef = bootstrap.prepareWorktree.baseBranch;
+              let worktreeBaseRef =
+                bootstrap.prepareWorktree.startRef ?? bootstrap.prepareWorktree.baseBranch;
               // "Start from origin" is a stored default; repos without the
               // requested remote branch fall back to the local base branch.
               const startFromOrigin =
+                bootstrap.prepareWorktree.startRef === undefined &&
                 bootstrap.prepareWorktree.startFromOrigin === true &&
                 (yield* gitWorkflow.remoteExists({
                   cwd: bootstrap.prepareWorktree.projectCwd,

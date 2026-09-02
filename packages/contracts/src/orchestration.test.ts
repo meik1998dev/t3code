@@ -427,6 +427,7 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
         prepareWorktree: {
           projectCwd: "/tmp/workspace",
           baseBranch: "main",
+          startRef: "refs/t3/checkpoints/thread-1/turn/2",
           branch: "t3code/example",
           startFromOrigin: true,
         },
@@ -436,6 +437,10 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
     });
     assert.strictEqual(parsed.bootstrap?.createThread?.projectId, "project-1");
     assert.strictEqual(parsed.bootstrap?.prepareWorktree?.baseBranch, "main");
+    assert.strictEqual(
+      parsed.bootstrap?.prepareWorktree?.startRef,
+      "refs/t3/checkpoints/thread-1/turn/2",
+    );
     assert.strictEqual(parsed.bootstrap?.prepareWorktree?.startFromOrigin, true);
     assert.strictEqual(parsed.bootstrap?.runSetupScript, true);
   }),

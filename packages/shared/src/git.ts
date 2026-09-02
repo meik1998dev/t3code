@@ -1,4 +1,6 @@
 import type {
+  CheckpointRef,
+  ThreadId,
   VcsRef,
   SourceControlProviderInfo,
   VcsStatusLocalResult,
@@ -6,11 +8,20 @@ import type {
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "@t3tools/contracts";
+import { CheckpointRef as CheckpointRefSchema } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
+import * as Encoding from "effect/Encoding";
 import * as Result from "effect/Result";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "t3code";
+export const CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
+
+export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
+  return CheckpointRefSchema.make(
+    `${CHECKPOINT_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/turn/${turnCount}`,
+  );
+}
 // Canonical form is `<8 hex>`. Older clients generated `t3code/<8 hex>` and some
 // mobile builds generated `t3code/<uuid>` via Crypto.randomUUID() (always RFC 4122
 // v4), so the matcher accepts those exact legacy shapes to keep existing threads

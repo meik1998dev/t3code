@@ -1489,6 +1489,40 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("creates a worktree with the files from a checkpoint ref", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "fork.txt", "at checkpoint\n");
+        yield* git(cwd, ["add", "fork.txt"]);
+        yield* git(cwd, ["commit", "-m", "checkpoint state"]);
+        const checkpointRef = "refs/t3/checkpoints/thread-fork/turn/1";
+        yield* git(cwd, ["update-ref", checkpointRef, "HEAD"]);
+        yield* writeTextFile(cwd, "fork.txt", "after checkpoint\n");
+        yield* git(cwd, ["commit", "-am", "later state"]);
+
+        const pathService = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const worktreePath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "checkpoint-worktree",
+        );
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: checkpointRef,
+          newRefName: "feature/from-checkpoint",
+          baseRefName: "main",
+        });
+
+        assert.equal(
+          yield* fileSystem.readFileString(pathService.join(worktreePath, "fork.txt")),
+          "at checkpoint\n",
+        );
+      }),
+    );
+
     it.effect("removes the same worktree path twice without failing", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
