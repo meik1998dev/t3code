@@ -54,7 +54,7 @@ export function shouldShowEnvironmentIndicator(input: {
   return input.activeEnvironment !== null && !input.activeEnvironment.isPrimary;
 }
 
-export function shouldShowComposerContextStrip(input: {
+export function shouldShowComposerContextControls(input: {
   hasActiveProject: boolean;
   isGitRepo: boolean;
   showEnvironmentIndicator: boolean;

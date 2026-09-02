@@ -737,6 +737,8 @@ export interface ChatComposerProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
   openingVideoAttachmentId: string | null;
+  /** Workspace and branch selectors, rendered in the footer next to the send button. */
+  contextControls?: ReactNode;
 }
 
 // --------------------------------------------------------------------------
@@ -816,6 +818,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onExpandImage,
     onFileOpen,
     openingVideoAttachmentId,
+    contextControls,
   } = props;
   const activeTasksProgress = props.threadSyncPhase === null ? props.activeTasksProgress : null;
   const activeTaskSteps = props.threadSyncPhase === null ? props.activeTaskSteps : null;
@@ -4223,7 +4226,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
               >
-                <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="-m-1 -ms-3.5 flex min-w-0 flex-auto items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {noProviderAvailable ? (
                     <Button
                       type="button"
@@ -4302,8 +4305,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-primary-actions-compact={
                     isComposerPrimaryActionsCompact ? "true" : "false"
                   }
-                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                  className="flex min-w-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  {contextControls}
                   {fileStagingLimit !== null && pendingUserInputs.length === 0 ? (
                     <>
                       <input
@@ -4328,6 +4332,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               onPointerDown={(event) => event.preventDefault()}
                               onClick={() => attachmentInputRef.current?.click()}
                               aria-label="Attach files"
+                              className="shrink-0 sm:hidden"
                             />
                           }
                         >
