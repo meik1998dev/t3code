@@ -654,7 +654,9 @@ export function BranchToolbarBranchSelector({
               <span className="truncate font-medium">
                 Checkout {sourceControlPresentation.terminology.singular}
               </span>
-              <span className="truncate text-muted-foreground text-xs">{prReference}</span>
+              <span className="truncate font-mono text-muted-foreground text-xs">
+                {prReference}
+              </span>
             </span>
           </div>
         </ComboboxItem>
@@ -700,7 +702,7 @@ export function BranchToolbarBranchSelector({
         onContextMenu={(event) => handleBranchContextMenu(event, itemValue)}
       >
         <div className="flex w-full min-w-0 items-center justify-between gap-2">
-          <span className="min-w-0 flex-1 truncate">{itemValue}</span>
+          <span className="min-w-0 flex-1 truncate font-mono">{itemValue}</span>
           {badge && <span className="shrink-0 text-[10px] text-muted-foreground/45">{badge}</span>}
         </div>
       </ComboboxItem>
@@ -770,7 +772,11 @@ export function BranchToolbarBranchSelector({
             >
               <span
                 data-composer-label-motion
-                className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+                className={cn(
+                  "block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity",
+                  // Ref names read as code; the "Select ref" placeholder stays in the UI font.
+                  resolvedActiveBranch && "font-mono",
+                )}
               >
                 {triggerLabel}
               </span>

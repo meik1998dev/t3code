@@ -332,7 +332,7 @@ function SidebarThreadTooltip({
           {thread.branch ? (
             <div className="flex min-w-0 items-center gap-2">
               <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
-              <div className="min-w-0 truncate text-foreground/75">{thread.branch}</div>
+              <div className="min-w-0 truncate font-mono text-foreground/75">{thread.branch}</div>
             </div>
           ) : null}
           {branchMismatch ? (
@@ -1571,7 +1571,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
+                  <span className="min-w-0 flex-1 truncate whitespace-nowrap font-mono">
+                    {thread.branch}
+                  </span>
                 </>
               ) : (
                 <span className="flex-1" />
