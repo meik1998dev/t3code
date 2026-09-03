@@ -177,6 +177,23 @@ describe("detectComposerTrigger", () => {
     });
   });
 
+  it("detects slash command trigger in the middle of existing text", () => {
+    const text = "Please run /rev";
+    const trigger = detectComposerTrigger(text, text.length);
+
+    expect(trigger).toEqual({
+      kind: "slash-command",
+      query: "rev",
+      rangeStart: "Please run ".length,
+      rangeEnd: text.length,
+    });
+  });
+
+  it("does not treat a slash inside a word as a command trigger", () => {
+    const text = "open src/app";
+    expect(detectComposerTrigger(text, text.length)).toBeNull();
+  });
+
   it("detects $skill trigger at cursor", () => {
     const text = "Use $gh-fi";
     const trigger = detectComposerTrigger(text, text.length);
