@@ -88,7 +88,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    * Compact UI geometry. Keep these values semantic so sidebar, palette,
    * tooltip, and toolbar controls cannot quietly drift apart.
    */
-  --control-radius: 0.5rem;
+  --control-radius: 0.3rem;
   --sidebar-content-inset: 0.5rem;
   --sidebar-control-gap: 0.5rem;
   --sidebar-icon-color: color-mix(
@@ -200,12 +200,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Multiplicative scale so one change to --radius scales every corner
+     by the same ratio. Ratios match the old additive steps at 10px. */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
   @keyframes skeleton {
     /* Transform-only so the highlight sweep stays on the compositor, then a
        long hold with the band parked off-screen instead of a constant shimmer. */
@@ -765,7 +767,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   [data-settings-page-scroll] div.settings-search-target-pulse,
   [data-settings-page-scroll] section.settings-search-target-pulse > div:first-child {
     animation: settings-search-target-pulse 650ms ease-in-out 2;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
   }
 
   /* The pulse is the destination indicator; without it (reduced motion), the
@@ -926,7 +928,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
+  --radius: 0.375rem;
   --background: var(--color-zinc-25);
   --app-chrome-background: var(--background);
   --toolbar-background: var(--app-chrome-background);
@@ -1224,7 +1226,7 @@ html[data-theme-token-probe] *::after {
   overflow: hidden;
   padding: 0.2rem 0.45rem;
   border: 1px solid color-mix(in oklab, var(--ring) 48%, var(--contrast-border));
-  border-radius: 0.4rem;
+  border-radius: var(--radius-md);
   background: var(--popover);
   box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
   color: var(--contrast-popover-foreground);
@@ -1767,7 +1769,7 @@ code {
 
 .chat-markdown :not(pre) > code {
   border: 1px solid var(--contrast-border);
-  border-radius: 0.375rem;
+  border-radius: var(--radius-sm);
   background: var(--muted);
   padding: 0.1rem 0.35rem;
   color: var(--contrast-foreground);
@@ -1789,7 +1791,7 @@ code {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--contrast-border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: var(--muted);
   padding: 0.8rem 0.9rem;
   scrollbar-width: thin;
