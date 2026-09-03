@@ -95,7 +95,6 @@ export const ComposerSettingsMenu = memo(function ComposerSettingsMenu(props: {
             />
           ) : null}
           {traits ? <span>{traits.label}</span> : null}
-          <ComposerControlIcon icon={runtimeModeOption.icon} />
           {traits ? null : <span>{runtimeModeOption.label}</span>}
         </MenuTrigger>
         <TooltipPopup side="top">{tooltip}</TooltipPopup>
