@@ -51,21 +51,21 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
   if (envLocked) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 items-center gap-1 border border-transparent px-1.5 text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs"
+        className="inline-flex h-7 min-w-0 items-center gap-1 border border-transparent px-1 text-sm font-medium text-muted-foreground/70 sm:h-5 sm:text-[11px]"
         data-composer-context-control
       >
         {activeWorktreePath ? (
-          <FolderGitIcon className="size-3 shrink-0" />
+          <FolderGitIcon className="size-2.5 shrink-0" />
         ) : (
-          <FolderIcon className="size-3 shrink-0" />
+          <FolderIcon className="size-2.5 shrink-0" />
         )}
         <span
           data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
+          className="min-w-0 max-w-[180px] group-data-[compact]/composer-context:max-w-0"
         >
           <span
             data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+            className="block w-full min-w-0 max-w-[180px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
           >
             {resolveLockedWorkspaceLabel(activeWorktreePath)}
           </span>
@@ -90,24 +90,24 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="min-w-0 shrink font-medium px-1.5 sm:text-xs"
+        className="min-w-0 shrink font-medium px-1 sm:h-5 sm:text-[11px]"
         aria-label="Workspace"
         data-composer-context-control
       >
         {effectiveEnvMode === "worktree" ? (
-          <FolderGit2Icon className="size-3" />
+          <FolderGit2Icon className="size-2.5" />
         ) : activeWorktreePath ? (
-          <FolderGitIcon className="size-3" />
+          <FolderGitIcon className="size-2.5" />
         ) : (
-          <FolderIcon className="size-3" />
+          <FolderIcon className="size-2.5" />
         )}
         <span
           data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
+          className="min-w-0 max-w-[180px] group-data-[compact]/composer-context:max-w-0"
         >
           <span
             data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+            className="block w-full min-w-0 max-w-[180px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
           >
             <SelectValue />
           </span>
@@ -119,16 +119,16 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           <SelectItem value="local">
             <span className="inline-flex items-center gap-1.5">
               {activeWorktreePath ? (
-                <FolderGitIcon className="size-3" />
+                <FolderGitIcon className="size-2.5" />
               ) : (
-                <FolderIcon className="size-3" />
+                <FolderIcon className="size-2.5" />
               )}
               {resolveCurrentWorkspaceLabel(activeWorktreePath)}
             </span>
           </SelectItem>
           <SelectItem value="worktree">
             <span className="inline-flex items-center gap-1.5">
-              <FolderGit2Icon className="size-3" />
+              <FolderGit2Icon className="size-2.5" />
               {resolveEnvModeLabel("worktree")}
             </span>
           </SelectItem>
