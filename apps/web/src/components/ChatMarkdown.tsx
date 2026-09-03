@@ -117,6 +117,7 @@ import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
+import { MermaidDiagram } from "./MermaidDiagram";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
@@ -2706,6 +2707,20 @@ function ChatMarkdown({
 
         const language = extractFenceLanguage(codeBlock.className);
         const fenceTitle = extractFenceTitle(extractPreCodeMeta(node));
+        const plainCode = <pre {...props}>{children}</pre>;
+        const highlightedCode = (
+          <Suspense fallback={plainCode}>
+            <SuspenseShikiCodeBlock
+              className={codeBlock.className}
+              code={codeBlock.code}
+              themeName={diffThemeName}
+              isStreaming={isStreaming}
+            />
+          </Suspense>
+        );
+        // Diagrams wait for the stream to finish: a half-written diagram is a
+        // parse error on every token, and the code is more useful meanwhile.
+        const renderDiagram = language === "mermaid" && !isStreaming;
         return (
           <MarkdownCodeBlock
             code={codeBlock.code}
@@ -2713,15 +2728,16 @@ function ChatMarkdown({
             fenceTitle={fenceTitle}
             theme={resolvedTheme}
           >
-            <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
-              <Suspense fallback={<pre {...props}>{children}</pre>}>
-                <SuspenseShikiCodeBlock
-                  className={codeBlock.className}
+            <RenderErrorBoundary fallback={plainCode}>
+              {renderDiagram ? (
+                <MermaidDiagram
                   code={codeBlock.code}
-                  themeName={diffThemeName}
-                  isStreaming={isStreaming}
+                  theme={resolvedTheme}
+                  fallback={highlightedCode}
                 />
-              </Suspense>
+              ) : (
+                highlightedCode
+              )}
             </RenderErrorBoundary>
           </MarkdownCodeBlock>
         );

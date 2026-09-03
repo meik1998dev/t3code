@@ -1566,6 +1566,27 @@ code {
   font-size: var(--font-size-code, inherit);
 }
 
+/* Mermaid emits a fixed-width SVG; cap it to the bubble and let long charts
+   scroll sideways instead of stretching the thread. */
+.chat-markdown .chat-markdown-mermaid {
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.chat-markdown .chat-markdown-mermaid > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.chat-markdown .chat-markdown-mermaid-error {
+  margin: 0;
+  padding: 0.25rem 0.75rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--destructive);
+}
+
 /* @pierre/diffs surfaces (diffs, file previews, annotatable code, search
    lines) render inside shadow roots but consult these hooks with their own
    literal stacks as fallback. Custom properties inherit across the shadow
