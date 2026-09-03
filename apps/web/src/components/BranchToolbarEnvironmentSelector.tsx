@@ -49,7 +49,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   if (envLocked || onEnvironmentChange === undefined) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-[13px]"
+        className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-1.5 text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs"
         data-composer-context-control
       >
         {activeEnvironment?.isPrimary ? (
@@ -82,7 +82,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="min-w-0 max-w-full font-medium sm:text-[13px]"
+        className="min-w-0 max-w-full font-medium px-1.5 sm:text-xs"
         aria-label="Run on"
         data-composer-context-control
       >
