@@ -2,7 +2,8 @@
 
 A permission mode controls how much the agent does on its own and when it stops to ask you.
 
-The mode is set per thread, from the mode control in the message composer. Changing it in one
+The mode is set per thread, from the settings pill in the message composer (the control that
+shows the effort and access mode next to the model name). Changing it in one
 thread does not change any other thread. A thread created from inside another thread keeps that
 thread's mode; otherwise new threads start in **Full access** unless you pick something else
 before sending.

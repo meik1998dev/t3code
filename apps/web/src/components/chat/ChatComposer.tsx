@@ -142,12 +142,12 @@ import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../Compos
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
-import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ComposerSettingsMenu } from "./ComposerSettingsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
-import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import {
   searchSlashCommandItems,
@@ -156,8 +156,8 @@ import {
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
+  getProviderTraitsTriggerDisplay,
   renderProviderTraitsMenuContent,
-  renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { resolveContextWindowModelDisplayName } from "./ContextWindowMeter.logic";
@@ -168,7 +168,6 @@ import {
 } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
-import { Separator } from "../ui/separator";
 import {
   getComposerPromptLengthValidationMessage,
   getComposerSubmissionValidationMessage,
@@ -295,7 +294,6 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
   );
 }
 import { Button } from "../ui/button";
-import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
@@ -305,12 +303,7 @@ import {
   PaperclipIcon,
   PencilRulerIcon,
   PlayIcon,
-  type LucideIcon,
-  LockIcon,
-  LockOpenIcon,
-  PenLineIcon,
   RotateCcwIcon,
-  SparklesIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -343,33 +336,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
-const runtimeModeConfig: Record<
-  RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
-> = {
-  "approval-required": {
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
-    icon: LockIcon,
-  },
-  "auto-accept-edits": {
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
-    icon: PenLineIcon,
-  },
-  auto: {
-    label: "Auto",
-    description: "Supported providers approve routine actions; others still ask.",
-    icon: SparklesIcon,
-  },
-  "full-access": {
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
-    icon: LockOpenIcon,
-  },
-};
-
-const runtimeModeOptions = Object.keys(runtimeModeConfig) as RuntimeMode[];
 const COMPOSER_FLOATING_LAYER_SELECTOR = [
   '[data-composer-drawer-layer="true"]',
   '[data-slot="popover-popup"]',
@@ -411,95 +377,43 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
   return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
 }
 
-const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
-  showInteractionModeToggle: boolean;
+const ComposerInteractionModeToggle = memo(function ComposerInteractionModeToggle(props: {
   interactionMode: ProviderInteractionMode;
-  runtimeMode: RuntimeMode;
   onToggleInteractionMode: () => void;
-  onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
-  const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
-  const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeTooltip =
     props.interactionMode === "plan"
       ? "Plan mode — click to return to normal build mode"
       : "Default mode — click to enter plan mode";
 
-  const interactionModeToggle = props.showInteractionModeToggle ? (
-    <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerControl
-              className={cn(
-                "shrink-0 whitespace-nowrap",
-                props.interactionMode === "plan"
-                  ? "bg-accent text-accent-foreground hover:bg-accent/80"
-                  : "text-secondary-label hover:text-foreground",
-              )}
-              type="button"
-              onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeTooltip}
-            />
-          }
-        >
-          {props.interactionMode === "plan" ? (
-            <ComposerControlIcon icon={PencilRulerIcon} className="text-current opacity-100" />
-          ) : (
-            <ComposerControlIcon icon={BotIcon} opticalSize="large" />
-          )}
-          <span className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? "Plan" : "Build"}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-      </Tooltip>
-    </>
-  ) : null;
-
   return (
-    <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-
-      <Tooltip>
-        <Select
-          value={props.runtimeMode}
-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
-        >
-          <TooltipTrigger
-            render={<ComposerSelectControl className="font-medium" aria-label="Runtime mode" />}
-          >
-            <ComposerControlIcon icon={RuntimeModeIcon} />
-            <SelectValue>{runtimeModeOption.label}</SelectValue>
-          </TooltipTrigger>
-          <SelectPopup alignItemWithTrigger={false}>
-            {runtimeModeOptions.map((mode) => {
-              const option = runtimeModeConfig[mode];
-              const OptionIcon = option.icon;
-              return (
-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
-                      </span>
-                    </div>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectPopup>
-        </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
-      </Tooltip>
-
-      {interactionModeToggle}
-    </>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ComposerControl
+            className={cn(
+              "shrink-0 whitespace-nowrap",
+              props.interactionMode === "plan"
+                ? "bg-accent text-accent-foreground hover:bg-accent/80"
+                : "text-secondary-label hover:text-foreground",
+            )}
+            type="button"
+            onClick={props.onToggleInteractionMode}
+            aria-label={interactionModeTooltip}
+          />
+        }
+      >
+        {props.interactionMode === "plan" ? (
+          <ComposerControlIcon icon={PencilRulerIcon} className="text-current opacity-100" />
+        ) : (
+          <ComposerControlIcon icon={BotIcon} opticalSize="large" />
+        )}
+        <span className="sr-only sm:not-sr-only">
+          {props.interactionMode === "plan" ? "Plan" : "Build"}
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
+    </Tooltip>
   );
 });
 
@@ -1559,7 +1473,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onPromptChange: setPromptFromTraits,
     planModeEnabled: settings.planModeEnabled,
   });
-  const providerTraitsPicker = renderProviderTraitsPicker({
+  const providerTraitsTriggerDisplay = getProviderTraitsTriggerDisplay({
     provider: selectedProvider,
     instanceId: selectedInstanceId,
     ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
@@ -4222,7 +4136,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 className={cn(
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-4",
                   pendingUserInputs.length > 0 && "pt-2",
-                  isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
+                  isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-1",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
               >
@@ -4242,6 +4156,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   ) : (
                     <ProviderModelPicker
                       compact={isComposerFooterCompact}
+                      hideChevron
                       activeInstanceId={selectedInstanceId}
                       model={selectedModelForPickerWithCustomFallback}
                       lockedProvider={lockedProvider}
@@ -4266,37 +4181,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     />
                   )}
 
-                  {isComposerFooterCompact ? (
-                    <CompactComposerControlsMenu
+                  <ComposerSettingsMenu
+                    provider={selectedProvider}
+                    interactionMode={interactionMode}
+                    runtimeMode={runtimeMode}
+                    showInteractionModeToggle={
+                      isComposerFooterCompact && composerProviderControls.showInteractionModeToggle
+                    }
+                    traitsMenuContent={providerTraitsMenuContent}
+                    traitsTriggerDisplay={providerTraitsTriggerDisplay}
+                    onToggleInteractionMode={toggleInteractionMode}
+                    onRuntimeModeChange={handleRuntimeModeChange}
+                  />
+                  {!isComposerFooterCompact &&
+                  composerProviderControls.showInteractionModeToggle ? (
+                    <ComposerInteractionModeToggle
                       interactionMode={interactionMode}
-                      runtimeMode={runtimeMode}
-                      showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
-                      traitsMenuContent={providerTraitsMenuContent}
                       onToggleInteractionMode={toggleInteractionMode}
-                      onRuntimeModeChange={handleRuntimeModeChange}
                     />
-                  ) : (
-                    <>
-                      {providerTraitsPicker ? (
-                        <>
-                          <Separator
-                            orientation="vertical"
-                            className="mx-0.5 hidden h-4 sm:block"
-                          />
-                          {providerTraitsPicker}
-                        </>
-                      ) : null}
-                      <ComposerFooterModeControls
-                        showInteractionModeToggle={
-                          composerProviderControls.showInteractionModeToggle
-                        }
-                        interactionMode={interactionMode}
-                        runtimeMode={runtimeMode}
-                        onToggleInteractionMode={toggleInteractionMode}
-                        onRuntimeModeChange={handleRuntimeModeChange}
-                      />
-                    </>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}
