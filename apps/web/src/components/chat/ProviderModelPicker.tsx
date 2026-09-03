@@ -14,8 +14,8 @@ import { ModelPickerContent } from "./ModelPickerContent";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
+  getComposerTriggerModelName,
   getTriggerDisplayModelLabel,
-  getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
@@ -41,6 +41,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   triggerAriaLabel?: string;
+  /** Hide the dropdown chevron; the composer footer renders a plain pill. */
+  hideChevron?: boolean;
   onOpenChange?: (open: boolean) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
@@ -64,7 +66,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const selectedModel =
     selectedInstanceOptions.find((option) => option.slug === props.model) ??
     (activeEntry?.driverKind === "opencode" ? undefined : selectedInstanceOptions[0]);
-  const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
+  const triggerTitle = selectedModel
+    ? getComposerTriggerModelName(selectedModel, activeEntry?.driverKind)
+    : props.model;
   const triggerLabel = selectedModel
     ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
     : props.model;
@@ -186,9 +190,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </Badge>
           ) : null}
         </span>
-        <span aria-hidden="true" className="flex items-center">
-          <ComposerControlChevron />
-        </span>
+        {props.hideChevron ? null : (
+          <span aria-hidden="true" className="flex items-center">
+            <ComposerControlChevron />
+          </span>
+        )}
       </PopoverTrigger>
       <PopoverPopup
         align="start"

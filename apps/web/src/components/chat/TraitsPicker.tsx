@@ -250,6 +250,29 @@ function getTraitsSectionVisibility(input: {
   };
 }
 
+/**
+ * Resolve the short trait summary ("Medium · 1M") shown on the composer
+ * settings pill. Returns null when the model exposes no trait controls.
+ */
+export function getTraitsTriggerDisplay(input: {
+  provider: ProviderDriverKind;
+  models: ReadonlyArray<ServerProviderModel>;
+  model: string | null | undefined;
+  prompt: string;
+  modelOptions: ProviderOptions | null | undefined;
+  allowPromptInjectedEffort?: boolean;
+  planModeEnabled: boolean;
+}): { label: string; showFastModeIcon: boolean } | null {
+  const visibility = getTraitsSectionVisibility(input);
+  if (!visibility.hasAnyControls) return null;
+  return buildTraitsTriggerDisplay({
+    provider: input.provider,
+    descriptors: visibility.descriptors,
+    primarySelectDescriptorId: visibility.primarySelectDescriptor?.id ?? null,
+    ultrathinkPromptControlled: visibility.ultrathinkPromptControlled,
+  });
+}
+
 export function shouldRenderTraitsControls(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;

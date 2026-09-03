@@ -45,6 +45,24 @@ export function getTriggerDisplayModelName(model: ModelEsque): string {
   return getDisplayModelName(model, { preferShortName: true });
 }
 
+/**
+ * Brand word repeated by the provider icon next to the composer trigger, so
+ * the trigger drops it: "Claude Sonnet 5" reads "Sonnet 5" under the Claude
+ * star. Other providers name model families the icon does not show.
+ */
+const TRIGGER_BRAND_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
+  [ProviderDriverKind.make("claudeAgent")]: "Claude",
+};
+
+export function getComposerTriggerModelName(
+  model: ModelEsque,
+  driverKind: ProviderDriverKind | null | undefined,
+): string {
+  const name = getTriggerDisplayModelName(model);
+  const brand = driverKind ? TRIGGER_BRAND_BY_PROVIDER[driverKind] : undefined;
+  return stripLeadingQualifier(name, brand);
+}
+
 export function getTriggerDisplayModelLabel(model: ModelEsque): string {
   return getTriggerDisplayModelName(model);
 }

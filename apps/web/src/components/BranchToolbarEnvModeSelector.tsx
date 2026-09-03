@@ -51,7 +51,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
   if (envLocked) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-[13px]"
+        className="inline-flex h-7 min-w-0 items-center gap-1 border border-transparent px-1.5 text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs"
         data-composer-context-control
       >
         {activeWorktreePath ? (
@@ -90,7 +90,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="min-w-0 shrink font-medium sm:text-[13px]"
+        className="min-w-0 shrink font-medium px-1.5 sm:text-xs"
         aria-label="Workspace"
         data-composer-context-control
       >
