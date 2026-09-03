@@ -74,6 +74,19 @@ export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): 
   return activeWorktreePath ? "Worktree" : "Local checkout";
 }
 
+/**
+ * Once a thread has started, its workspace is pinned. A pinned local checkout
+ * carries no information the branch selector does not already show, so the
+ * env-mode control disappears. A pinned worktree keeps its label so the user
+ * can see the thread runs off the main checkout.
+ */
+export function shouldShowEnvModeControl(input: {
+  envModeLocked: boolean;
+  activeWorktreePath: string | null;
+}): boolean {
+  return !input.envModeLocked || input.activeWorktreePath !== null;
+}
+
 export interface PreviousWorktreeSeed {
   branch: string | null;
   worktreePath: string;

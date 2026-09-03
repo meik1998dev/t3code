@@ -20,6 +20,7 @@ import {
   shouldIncludeBranchPickerItem,
   shouldShowComposerContextControls,
   shouldShowEnvironmentIndicator,
+  shouldShowEnvModeControl,
 } from "./BranchToolbar.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -174,6 +175,22 @@ describe("resolveBranchToolbarValue", () => {
         currentGitBranch: "main",
       }),
     ).toBe("main");
+  });
+});
+
+describe("shouldShowEnvModeControl", () => {
+  it("shows the control while the thread is still a draft", () => {
+    expect(shouldShowEnvModeControl({ envModeLocked: false, activeWorktreePath: null })).toBe(true);
+  });
+
+  it("hides a pinned local checkout once the thread has started", () => {
+    expect(shouldShowEnvModeControl({ envModeLocked: true, activeWorktreePath: null })).toBe(false);
+  });
+
+  it("keeps the worktree label once the thread has started", () => {
+    expect(
+      shouldShowEnvModeControl({ envModeLocked: true, activeWorktreePath: "/repo/.wt/a" }),
+    ).toBe(true);
   });
 });
 
