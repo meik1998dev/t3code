@@ -853,6 +853,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
 export * from "./archivedThreads.ts";
 export * from "./checkpointDiff.ts";
 export * from "./threadSnapshotHttp.ts";
+export * from "./fullThreadHistory.ts";
 export * from "./composerPathSearch.ts";
 export * from "./threadCommands.ts";
 export * from "./threadFeedback.ts";

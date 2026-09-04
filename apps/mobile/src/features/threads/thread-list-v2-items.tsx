@@ -25,6 +25,7 @@ import { useThreadPr } from "../../state/use-thread-pr";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
+import { COPY_TRANSCRIPT_MENU_ACTION, useCopyThreadTranscript } from "./use-copy-thread-transcript";
 import {
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozeGateExpiryMs,
@@ -433,6 +434,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () => onRegenerateThreadTitle(thread),
     [onRegenerateThreadTitle, thread],
   );
+  const handleCopyTranscript = useCopyThreadTranscript(thread);
   const handleSettle = useCallback(() => onSettleThread(thread), [onSettleThread, thread]);
   const handleSnooze = useCallback(
     (snoozedUntil: string) => onSnoozeThread(thread, snoozedUntil),
@@ -541,6 +543,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       },
       ...pinMenuItem,
       ...titleRegenerationMenuItems,
+      COPY_TRANSCRIPT_MENU_ACTION,
       { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
     ],
     [pinMenuItem, snoozePresetActions, titleRegenerationMenuItems],
@@ -550,6 +553,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       CARD_MENU_ACTIONS[0]!,
       ...pinMenuItem,
       ...titleRegenerationMenuItems,
+      COPY_TRANSCRIPT_MENU_ACTION,
       ...CARD_MENU_ACTIONS.slice(1),
     ],
     [pinMenuItem, titleRegenerationMenuItems],
@@ -559,16 +563,27 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       SLIM_MENU_ACTIONS[0]!,
       ...(thread.pinnedAt != null ? pinMenuItem : []),
       ...titleRegenerationMenuItems,
+      COPY_TRANSCRIPT_MENU_ACTION,
       SLIM_MENU_ACTIONS[1]!,
     ],
     [pinMenuItem, thread.pinnedAt, titleRegenerationMenuItems],
   );
   const snoozedMenuActions = useMemo<MenuAction[]>(
-    () => [SNOOZED_MENU_ACTIONS[0]!, ...titleRegenerationMenuItems, SNOOZED_MENU_ACTIONS[1]!],
+    () => [
+      SNOOZED_MENU_ACTIONS[0]!,
+      ...titleRegenerationMenuItems,
+      COPY_TRANSCRIPT_MENU_ACTION,
+      SNOOZED_MENU_ACTIONS[1]!,
+    ],
     [titleRegenerationMenuItems],
   );
   const legacyMenuActions = useMemo<MenuAction[]>(
-    () => [LEGACY_MENU_ACTIONS[0]!, ...titleRegenerationMenuItems, LEGACY_MENU_ACTIONS[1]!],
+    () => [
+      LEGACY_MENU_ACTIONS[0]!,
+      ...titleRegenerationMenuItems,
+      COPY_TRANSCRIPT_MENU_ACTION,
+      LEGACY_MENU_ACTIONS[1]!,
+    ],
     [titleRegenerationMenuItems],
   );
   const handleMenuAction = useCallback(
@@ -582,6 +597,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "move-pin-down") handleMovePinnedDown();
       if (nativeEvent.event === "archive") handleArchive();
       if (nativeEvent.event === "regenerate-title") handleRegenerateTitle();
+      if (nativeEvent.event === "copy-transcript") void handleCopyTranscript();
       if (nativeEvent.event === "delete") handleDelete();
       const snoozeSelection = resolveThreadListV2SnoozeMenuSelection({
         event: nativeEvent.event,
@@ -596,6 +612,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     },
     [
       handleArchive,
+      handleCopyTranscript,
       handleDelete,
       handleRegenerateTitle,
       handleMovePinnedDown,

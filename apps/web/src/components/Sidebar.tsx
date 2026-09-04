@@ -187,6 +187,7 @@ import {
 } from "../providerInstances";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import { copyThreadTranscript } from "./threadTranscriptCopy";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -3403,6 +3404,9 @@ export default function Sidebar() {
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            return;
+          case "copy-transcript":
+            await copyThreadTranscript(threadRef, thread.title);
             return;
           case "archive": {
             if (confirmThreadArchive) {
