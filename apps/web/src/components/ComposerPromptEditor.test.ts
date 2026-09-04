@@ -14,6 +14,7 @@ import {
 } from "lexical";
 
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
+import { registerComposerPastedTextPaste } from "./composerPastedTextPaste";
 import {
   $consumeComposerCitationCommentRequest,
   $createComposerCitationNode,
@@ -614,5 +615,56 @@ describe("citation comment opening", () => {
       expect($getRoot().getTextContent()).toBe(citationSource);
       expect($consumeComposerCitationCommentRequest(requestRef)).toBeNull();
     });
+  });
+});
+
+describe("registerComposerPastedTextPaste", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function createPastedTextEditor() {
+    vi.stubGlobal("ClipboardEvent", TestClipboardEvent);
+    const editor = createEditor();
+    const plainTextFallback = vi.fn(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return false;
+      selection.insertText("fallback");
+      return true;
+    });
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        $getRoot().append(paragraph);
+        paragraph.append($createTextNode("Fix "));
+        paragraph.selectEnd();
+      },
+      { discrete: true },
+    );
+    registerComposerPastedTextPaste(editor, {
+      createPastedTextNode: (text) => $createTextNode(`<pasted:${text.split("\n").length}>`),
+    });
+    editor.registerCommand(PASTE_COMMAND, plainTextFallback, COMMAND_PRIORITY_EDITOR);
+    return { editor, plainTextFallback };
+  }
+
+  it("folds a large paste into one chip and skips the plain-text fallback", () => {
+    const { editor, plainTextFallback } = createPastedTextEditor();
+    const text = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+
+    const event = pasteText(editor, text);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(plainTextFallback).not.toHaveBeenCalled();
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("Fix <pasted:12>");
+  });
+
+  it("lets small pastes fall through untouched", () => {
+    const { editor, plainTextFallback } = createPastedTextEditor();
+
+    pasteText(editor, "one\ntwo");
+
+    expect(plainTextFallback).toHaveBeenCalledTimes(1);
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("Fix fallback");
   });
 });

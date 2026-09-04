@@ -7,6 +7,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { type ServerProviderSkill } from "@t3tools/contracts";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
+import { ClipboardIcon } from "lucide-react";
 import {
   $applyNodeReplacement,
   $createRangeSelectionFromDom,
@@ -68,6 +69,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
+import { formatPastedTextLabel, previewPastedText, serializePastedText } from "~/lib/pastedText";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -75,6 +77,7 @@ import {
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import {
+  COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -87,6 +90,7 @@ import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
+import { registerComposerPastedTextPaste } from "./composerPastedTextPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
 import {
   $consumeComposerCitationCommentRequest,
@@ -138,6 +142,15 @@ type SerializedComposerTerminalContextNode = Spread<
   {
     context: TerminalContextDraft;
     type: "composer-terminal-context";
+    version: 1;
+  },
+  SerializedLexicalNode
+>;
+
+type SerializedComposerPastedTextNode = Spread<
+  {
+    text: string;
+    type: "composer-pasted-text";
     version: 1;
   },
   SerializedLexicalNode
@@ -439,18 +452,106 @@ function $createComposerTerminalContextNode(
   return $applyNodeReplacement(new ComposerTerminalContextNode(context));
 }
 
+function ComposerPastedTextDecorator(props: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className={COMPOSER_INLINE_CHIP_CLASS_NAME} data-composer-pasted-text-chip="true">
+            <ClipboardIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
+            <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>
+              {formatPastedTextLabel(props.text)}
+            </span>
+          </span>
+        }
+      />
+      <TooltipPopup
+        side="top"
+        className="max-w-120 font-mono text-[11px] whitespace-pre-wrap leading-tight wrap-anywhere"
+      >
+        {previewPastedText(props.text)}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * One chip standing in for a large paste. Its text content is the marker-
+ * wrapped source so the controlled prompt value round-trips through
+ * `splitPromptIntoComposerSegments` without any side table.
+ */
+class ComposerPastedTextNode extends DecoratorNode<React.ReactElement> {
+  __text: string;
+
+  static override getType(): string {
+    return "composer-pasted-text";
+  }
+
+  static override clone(node: ComposerPastedTextNode): ComposerPastedTextNode {
+    return new ComposerPastedTextNode(node.__text, node.__key);
+  }
+
+  static override importJSON(
+    serializedNode: SerializedComposerPastedTextNode,
+  ): ComposerPastedTextNode {
+    return $createComposerPastedTextNode(serializedNode.text).updateFromJSON(serializedNode);
+  }
+
+  constructor(text: string, key?: NodeKey) {
+    super(key);
+    this.__text = text;
+  }
+
+  override exportJSON(): SerializedComposerPastedTextNode {
+    return {
+      ...super.exportJSON(),
+      text: this.__text,
+      type: "composer-pasted-text",
+      version: 1,
+    };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME;
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return serializePastedText(this.__text);
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerPastedTextDecorator text={this.__text} />;
+  }
+}
+
+function $createComposerPastedTextNode(text: string): ComposerPastedTextNode {
+  return $applyNodeReplacement(new ComposerPastedTextNode(text));
+}
+
 type ComposerInlineTokenNode =
   | ComposerMentionNode
   | ComposerSkillNode
   | ComposerCitationNode
-  | ComposerTerminalContextNode;
+  | ComposerTerminalContextNode
+  | ComposerPastedTextNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
     candidate instanceof ComposerMentionNode ||
     candidate instanceof ComposerSkillNode ||
     candidate instanceof ComposerCitationNode ||
-    candidate instanceof ComposerTerminalContextNode
+    candidate instanceof ComposerTerminalContextNode ||
+    candidate instanceof ComposerPastedTextNode
   );
 }
 
@@ -871,6 +972,10 @@ function $setComposerEditorPrompt(
       }
       continue;
     }
+    if (segment.type === "pasted-text") {
+      paragraph.append($createComposerPastedTextNode(segment.text));
+      continue;
+    }
     $appendTextWithLineBreaks(paragraph, segment.text);
   }
 }
@@ -1282,6 +1387,20 @@ function ComposerInlineTokenPastePlugin() {
         createMentionNode: $createComposerMentionNode,
         createCitationNode: $createComposerCitationNode,
         getExpandedAbsoluteOffsetForPoint,
+      }),
+    [editor],
+  );
+
+  return null;
+}
+
+function ComposerPastedTextPastePlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(
+    () =>
+      registerComposerPastedTextPaste(editor, {
+        createPastedTextNode: $createComposerPastedTextNode,
       }),
     [editor],
   );
@@ -1947,6 +2066,7 @@ function ComposerPromptEditorInner({
           <ComposerInlineTokenSelectionNormalizePlugin />
           <ComposerInlineTokenBackspacePlugin />
           <ComposerInlineTokenPastePlugin />
+          <ComposerPastedTextPastePlugin />
           <ComposerChipSelectionPlugin />
           <HistoryPlugin />
         </div>
@@ -1988,6 +2108,7 @@ export function ComposerPromptEditor({
         ComposerSkillNode,
         ComposerCitationNode,
         ComposerTerminalContextNode,
+        ComposerPastedTextNode,
       ],
       editorState: () => {
         $setComposerEditorPrompt(
