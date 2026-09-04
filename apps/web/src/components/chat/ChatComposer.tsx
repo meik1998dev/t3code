@@ -152,13 +152,11 @@ import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   getRestingComposerImagePreviewCounts,
-  resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
 } from "../composerFooterLayout";
-import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
@@ -839,50 +837,6 @@ const terminalContextIdListsEqual = (
 ): boolean =>
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
-function useRestingComposerControlsLayout(host: HTMLDivElement | null) {
-  const controlsRef = useRef<HTMLDivElement>(null);
-  const hostRef = useRef(host);
-  hostRef.current = host;
-  const [layout, setLayout] = useState({ hiddenCount: 0, visible: true });
-
-  const measure = useCallback(() => {
-    const currentHost = hostRef.current;
-    const controls = controlsRef.current;
-    // The controls only mount while the composer rests, so the expanded
-    // composer pays no layout reads here despite the every-render effect.
-    if (currentHost === null || !controls) return;
-
-    const measurement = measureRestingComposerControls(controls);
-    if (!measurement) return;
-    const hostWidth = currentHost.clientWidth;
-
-    setLayout((current) => {
-      const next = resolveRestingComposerControlsLayout({
-        ...measurement,
-        hostWidth,
-        previous: current,
-      });
-      return next.hiddenCount === current.hiddenCount && next.visible === current.visible
-        ? current
-        : next;
-    });
-  }, []);
-
-  useLayoutEffect(measure);
-  useEffect(() => {
-    if (!host) return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(host);
-    document.fonts.addEventListener("loadingdone", measure);
-    return () => {
-      observer.disconnect();
-      document.fonts.removeEventListener("loadingdone", measure);
-    };
-  }, [host, measure]);
-
-  return { controlsRef, hiddenBlockCount: layout.hiddenCount, controlsVisible: layout.visible };
-}
-
 const ComposerInteractionModeToggle = memo(function ComposerInteractionModeToggle(props: {
   interactionMode: ProviderInteractionMode;
   size?: "sm" | "xs";
@@ -1139,9 +1093,8 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
-  restingControlsHost: HTMLDivElement | null;
-  restingControlsHaveLeadingContext: boolean;
-  onRestingControlsVisibilityChange: (visible: boolean) => void;
+  /** Branch, worktree, and environment controls rendered in the footer row. */
+  contextControls?: ReactNode;
   getTimelineScrollableNode: () => HTMLElement | null;
   isTimelineAtLogicalEnd: () => boolean;
   onComposerOverlayHeightChange: (height: number) => void;
@@ -1248,9 +1201,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
-    restingControlsHost,
-    restingControlsHaveLeadingContext,
-    onRestingControlsVisibilityChange,
+    contextControls,
     getTimelineScrollableNode,
     isTimelineAtLogicalEnd,
     onComposerOverlayHeightChange,
@@ -2014,11 +1965,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isComposerOwned: true,
   } satisfies Parameters<typeof getProviderTraitsTriggerDisplay>[0];
   const providerTraitsTriggerDisplay = getProviderTraitsTriggerDisplay(providerTraitsPickerInput);
-  const {
-    controlsRef: restingComposerControlsRef,
-    hiddenBlockCount: restingControlsHiddenBlockCount,
-    controlsVisible: restingControlsVisible,
-  } = useRestingComposerControlsLayout(restingControlsHost);
+  // Nothing hosts the footer controls while the composer rests: the branch
+  // controls share the footer row, so a resting composer simply hides them
+  // until it expands again.
+  const restingComposerControlsRef = useRef<HTMLDivElement>(null);
+  const restingControlsHiddenBlockCount = 0;
+  const restingControlsVisible = false;
   const pendingPrimaryAction = useMemo(
     () =>
       activePendingProgress
@@ -3502,14 +3454,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // collapse. Both leave the footer unrendered, so the strip is the only place
   // to see or change the model without expanding the composer.
   const composerControlsInStrip = isComposerResting || isComposerCollapsedMobile;
-  const composerControlsVisibleInStrip = composerControlsInStrip && restingControlsVisible;
   const composerControlsHidden = composerControlsInStrip && !restingControlsVisible;
   if (composerControlsHidden && isComposerModelPickerOpen) {
     setIsComposerModelPickerOpen(false);
   }
-  useLayoutEffect(() => {
-    onRestingControlsVisibilityChange(composerControlsVisibleInStrip);
-  }, [composerControlsVisibleInStrip, onRestingControlsVisibilityChange]);
   useLayoutEffect(() => {
     onRestingChange(isComposerResting);
   }, [isComposerResting, onRestingChange]);
@@ -3746,13 +3694,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     </Button>
   ) : (
     <>
-      {composerControlsInStrip && restingControlsHaveLeadingContext ? (
-        <ComposerControlSeparator
-          size="xs"
-          className="@max-[400px]/composer-surface:hidden"
-          data-resting-controls-separator="true"
-        />
-      ) : null}
       <ProviderModelPicker
         isComposerOwned
         compact={composerControlsCompact}
@@ -4612,23 +4553,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className="mx-auto w-full min-w-0 max-w-3xl"
       data-chat-composer-form="true"
     >
-      {composerControlsInStrip && restingControlsHost
-        ? createPortal(
-            <div
-              ref={restingComposerControlsRef}
-              data-chat-composer-resting-controls="true"
-              aria-hidden={restingControlsVisible ? undefined : true}
-              inert={restingControlsVisible ? undefined : true}
-              className={cn(
-                "relative flex w-max min-w-0 max-w-full items-center gap-1 font-normal text-muted-foreground/70 [&_button]:text-xs!",
-                !restingControlsVisible && "invisible",
-              )}
-            >
-              {composerControls}
-            </div>,
-            restingControlsHost,
-          )
-        : null}
       <ComposerBanner.Dock>
         <ComposerBanner.Column>
           <ComposerBannerStack
@@ -5365,6 +5289,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex min-w-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  {contextControls}
                   {showComposerAttachAction ? (
                     <>
                       <input
