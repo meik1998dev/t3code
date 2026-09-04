@@ -263,11 +263,13 @@ export const make = Effect.gen(function* () {
               Effect.fail(
                 requestError(
                   operation,
-                  failed.status === 401 || failed.status === 400
+                  failed.status === 401 || failed.status === 403
                     ? "Linear rejected the API key."
-                    : failed.status === 429
-                      ? "Linear rate limit reached. Try again in a minute."
-                      : `Linear answered with status ${failed.status}.`,
+                    : failed.status === 400
+                      ? "Linear rejected the request."
+                      : failed.status === 429
+                        ? "Linear rate limit reached. Try again in a minute."
+                        : `Linear answered with status ${failed.status}.`,
                   { status: failed.status },
                 ),
               ),
@@ -301,16 +303,24 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  const managedByEnvironment = Option.isSome(config.apiKey);
+
   const getStatus: Effect.Effect<LinearStatus, LinearServiceError> = Effect.gen(function* () {
     const apiKey = yield* readStoredApiKey;
     if (Option.isNone(apiKey)) {
-      return { configured: false, viewer: null };
+      return { configured: false, managedByEnvironment, viewer: null };
     }
     const viewer = yield* fetchViewer(apiKey.value);
-    return { configured: true, viewer };
+    return { configured: true, managedByEnvironment, viewer };
   });
 
   const setApiKey = Effect.fn("LinearService.setApiKey")(function* (input: LinearSetApiKeyInput) {
+    if (managedByEnvironment) {
+      return yield* requestError(
+        "write-key",
+        "This server reads its Linear key from T3CODE_LINEAR_API_KEY. Change it there.",
+      );
+    }
     if (input.apiKey === null) {
       yield* secretStore
         .remove(LINEAR_API_KEY_SECRET_NAME)
@@ -319,7 +329,7 @@ export const make = Effect.gen(function* () {
             requestError("remove-key", "Could not remove the Linear API key.", { cause }),
           ),
         );
-      return { configured: false, viewer: null } satisfies LinearStatus;
+      return { configured: false, managedByEnvironment, viewer: null } satisfies LinearStatus;
     }
     // Check the key before storing it so a typo never lands in the secret store.
     const viewer = yield* fetchViewer(input.apiKey);
@@ -330,7 +340,7 @@ export const make = Effect.gen(function* () {
           requestError("write-key", "Could not store the Linear API key.", { cause }),
         ),
       );
-    return { configured: true, viewer } satisfies LinearStatus;
+    return { configured: true, managedByEnvironment, viewer } satisfies LinearStatus;
   });
 
   const listMyIssues: Effect.Effect<LinearListMyIssuesResult, LinearServiceError> = Effect.gen(
@@ -395,8 +405,9 @@ export const layer = Layer.effect(LinearService, make);
 export const layerTest = Layer.succeed(
   LinearService,
   LinearService.of({
-    getStatus: Effect.succeed({ configured: false, viewer: null }),
-    setApiKey: () => Effect.succeed({ configured: false, viewer: null }),
+    getStatus: Effect.succeed({ configured: false, managedByEnvironment: false, viewer: null }),
+    setApiKey: () =>
+      Effect.succeed({ configured: false, managedByEnvironment: false, viewer: null }),
     listMyIssues: Effect.fail(new LinearNotConfiguredError()),
     getIssue: () => Effect.fail(new LinearNotConfiguredError()),
   }),

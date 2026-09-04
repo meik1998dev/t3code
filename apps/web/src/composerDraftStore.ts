@@ -1551,12 +1551,15 @@ function createDraftThreadState(
         ? null
         : (existingThread?.startRef ?? null)
       : (options.startRef ?? null);
-  const nextWorktreeBranch =
-    options?.worktreeBranch === undefined
-      ? projectChanged
-        ? null
-        : (existingThread?.worktreeBranch ?? null)
-      : (options.worktreeBranch ?? null);
+  const nextEnvMode =
+    options?.envMode ?? (nextWorktreePath ? "worktree" : (existingThread?.envMode ?? "local"));
+  const nextWorktreeBranch = resolveDraftWorktreeBranch({
+    requested: options?.worktreeBranch,
+    existing: existingThread?.worktreeBranch ?? null,
+    projectChanged,
+    envMode: nextEnvMode,
+    worktreePath: nextWorktreePath,
+  });
   return {
     threadId,
     environmentId: projectRef.environmentId,
@@ -1568,13 +1571,34 @@ function createDraftThreadState(
       options?.interactionMode ?? existingThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
-    envMode:
-      options?.envMode ?? (nextWorktreePath ? "worktree" : (existingThread?.envMode ?? "local")),
+    envMode: nextEnvMode,
     startFromOrigin: nextStartFromOrigin,
     startRef: nextStartRef,
     worktreeBranch: nextWorktreeBranch,
     promotedTo: null,
   };
+}
+
+/**
+ * A picked branch name only makes sense for a worktree that does not exist
+ * yet. Leaving new-worktree mode, reusing a worktree, or moving the draft to
+ * another project drops it so a later return to worktree mode cannot revive a
+ * stale name.
+ */
+function resolveDraftWorktreeBranch(input: {
+  requested: string | null | undefined;
+  existing: string | null;
+  projectChanged: boolean;
+  envMode: DraftThreadEnvMode;
+  worktreePath: string | null;
+}): string | null {
+  if (input.envMode !== "worktree" || input.worktreePath !== null) {
+    return null;
+  }
+  if (input.requested === undefined) {
+    return input.projectChanged ? null : input.existing;
+  }
+  return input.requested ?? null;
 }
 
 function scopedThreadRefsEqual(
@@ -2721,12 +2745,15 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                   ? null
                   : existing.startRef
                 : (options.startRef ?? null);
-            const nextWorktreeBranch =
-              options.worktreeBranch === undefined
-                ? projectChanged
-                  ? null
-                  : existing.worktreeBranch
-                : (options.worktreeBranch ?? null);
+            const nextEnvMode =
+              options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local"));
+            const nextWorktreeBranch = resolveDraftWorktreeBranch({
+              requested: options.worktreeBranch,
+              existing: existing.worktreeBranch,
+              projectChanged,
+              envMode: nextEnvMode,
+              worktreePath: nextWorktreePath,
+            });
             const nextDraftThread: DraftThreadState = {
               threadId: existing.threadId,
               environmentId: nextProjectRef.environmentId,
@@ -2740,8 +2767,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               interactionMode: options.interactionMode ?? existing.interactionMode,
               branch: nextBranch,
               worktreePath: nextWorktreePath,
-              envMode:
-                options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local")),
+              envMode: nextEnvMode,
               startFromOrigin: nextStartFromOrigin,
               startRef: nextStartRef,
               worktreeBranch: nextWorktreeBranch,

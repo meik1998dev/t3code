@@ -23,13 +23,14 @@ export function createLinearEnvironmentAtoms<R, E>(
     tag: WS_METHODS.linearGetStatus,
     staleTimeMs: 5 * 60_000,
   });
+  const myIssues = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:linear:my-issues",
+    tag: WS_METHODS.linearListMyIssues,
+    staleTimeMs: 60_000,
+  });
   return {
     status,
-    myIssues: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:linear:my-issues",
-      tag: WS_METHODS.linearListMyIssues,
-      staleTimeMs: 60_000,
-    }),
+    myIssues,
     getIssue: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:linear:get-issue",
       tag: WS_METHODS.linearGetIssue,
@@ -47,6 +48,7 @@ export function createLinearEnvironmentAtoms<R, E>(
       onSettled: (target, registry) =>
         Effect.sync(() => {
           registry.refresh(status({ environmentId: target.environmentId, input: {} }));
+          registry.refresh(myIssues({ environmentId: target.environmentId, input: {} }));
         }),
     }),
   };

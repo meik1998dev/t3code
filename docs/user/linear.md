@@ -9,7 +9,7 @@ Start a new worktree from one of your Linear issues. T3 Code names the branch af
 
 T3 Code checks the key with Linear before saving it. The key is stored on the environment you are connected to and never sent to other clients. **Disconnect** removes it.
 
-Server operators can also set the `T3CODE_LINEAR_API_KEY` environment variable. It wins over a key saved in Settings.
+Settings connect the environment you are paired with as primary. For any other environment, set the `T3CODE_LINEAR_API_KEY` environment variable on that server. When the variable is set, it wins over a saved key and Settings shows the key as managed by the server.
 
 ## Start from an issue
 
@@ -25,7 +25,13 @@ After the pick:
 
 If a branch with that name already exists, T3 Code tells you and leaves the branch unchanged. Pick the existing branch from the branch selector to continue that work.
 
+## Change your mind
+
+The Linear button shows the branch name it will create. Open it and choose **Forget** to drop the name; the composer text stays. Switching to Local mode or reusing an existing worktree also drops the name.
+
 ## Limits
+
+- Web and desktop only for now. The mobile app does not show the picker.
 
 - Done and canceled issues are not listed.
 - Up to 500 issues are loaded. Use the search box to narrow the list.

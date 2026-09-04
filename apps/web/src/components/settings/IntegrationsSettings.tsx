@@ -550,19 +550,20 @@ function LinearApiKeySetting() {
         : statusQuery.error
           ? statusQuery.error
           : status?.configured
-            ? `Connected as ${status.viewer?.name ?? "unknown"}${status.viewer?.email ? ` (${status.viewer.email})` : ""}.`
+            ? `Connected as ${status.viewer?.name ?? "unknown"}${status.viewer?.email ? ` (${status.viewer.email})` : ""}${status.managedByEnvironment ? ". Set by T3CODE_LINEAR_API_KEY on the server." : "."}`
             : statusQuery.isPending
               ? "Checking…"
               : "Not connected.";
+  const managedByEnvironment = status?.managedByEnvironment === true;
 
   return (
     <SettingsRow
       serverScoped
       {...searchableSetting("linear-api-key")}
-      description="Paste a personal API key from Linear → Settings → Security & access. Lets the composer start a worktree from one of your issues. The key stays on this environment's server."
+      description="Paste a personal API key from Linear → Settings → Security & access. Lets the composer start a worktree from one of your issues. The key stays on the primary environment's server; other environments read T3CODE_LINEAR_API_KEY."
       status={statusText}
       control={
-        status?.configured ? (
+        managedByEnvironment ? null : status?.configured ? (
           <Button
             variant="outline"
             size="sm"

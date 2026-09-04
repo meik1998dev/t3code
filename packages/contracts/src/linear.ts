@@ -62,8 +62,10 @@ export const LinearViewer = Schema.Struct({
 export type LinearViewer = typeof LinearViewer.Type;
 
 export const LinearStatus = Schema.Struct({
-  /** True when an API key is stored on this environment. */
+  /** True when an API key is available on this environment. */
   configured: Schema.Boolean,
+  /** True when the key comes from `T3CODE_LINEAR_API_KEY`; Settings cannot change it then. */
+  managedByEnvironment: Schema.Boolean,
   /** The account the key belongs to. Null when not configured. */
   viewer: Schema.NullOr(LinearViewer),
 });

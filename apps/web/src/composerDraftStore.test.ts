@@ -1540,6 +1540,33 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startRef).toBeNull();
   });
 
+  it("keeps a picked worktree branch only while a new worktree is still pending", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, {
+      threadId,
+      envMode: "worktree",
+      branch: "main",
+    });
+    store.setDraftThreadContext(draftId, { worktreeBranch: "meik/eng-1-login" });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.worktreeBranch).toBe(
+      "meik/eng-1-login",
+    );
+
+    // Leaving worktree mode drops the name; coming back does not revive it.
+    store.setDraftThreadContext(draftId, { envMode: "local" });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.worktreeBranch).toBeNull();
+    store.setDraftThreadContext(draftId, { envMode: "worktree" });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.worktreeBranch).toBeNull();
+
+    // Reusing an existing worktree drops it too.
+    store.setDraftThreadContext(draftId, { worktreeBranch: "meik/eng-2-signup" });
+    store.setDraftThreadContext(draftId, {
+      branch: "feature/next",
+      worktreePath: "/tmp/feature-next",
+    });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.worktreeBranch).toBeNull();
+  });
+
   it("preserves existing branch and worktree when setProjectDraftThreadId receives undefined", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {

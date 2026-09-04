@@ -16,7 +16,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon, SearchIcon } from "lucide-react";
+import { ChevronDownIcon, SearchIcon, XIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
@@ -41,6 +41,9 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
+/** More rows than this and the list asks for a search term instead of rendering them all. */
+const MAX_RENDERED_ISSUES = 100;
+
 interface LinearIssuePickerProps {
   environmentId: EnvironmentId;
   draftId: DraftId;
@@ -62,6 +65,40 @@ export function mergeLinearPrompt(existingPrompt: string, issuePrompt: string): 
   return existing.length === 0 ? issuePrompt : `${issuePrompt}\n\n${existing}`;
 }
 
+interface DraftTarget {
+  readonly environmentId: string;
+  readonly projectId: string;
+  readonly envMode: string;
+  readonly worktreePath: string | null;
+}
+
+function snapshotDraftTarget(draftId: DraftId): DraftTarget | null {
+  const session = useComposerDraftStore.getState().getDraftSession(draftId);
+  return session
+    ? {
+        environmentId: session.environmentId,
+        projectId: session.projectId,
+        envMode: session.envMode,
+        worktreePath: session.worktreePath,
+      }
+    : null;
+}
+
+function draftTargetMatches(draftId: DraftId, target: DraftTarget): boolean {
+  const current = snapshotDraftTarget(draftId);
+  return (
+    current !== null &&
+    current.environmentId === target.environmentId &&
+    current.projectId === target.projectId &&
+    current.envMode === target.envMode &&
+    current.worktreePath === target.worktreePath
+  );
+}
+
+function failureMessage(failure: unknown): string | undefined {
+  return failure instanceof Error ? failure.message : undefined;
+}
+
 export function LinearIssuePicker({
   environmentId,
   draftId,
@@ -78,14 +115,21 @@ export function LinearIssuePicker({
     isOpen ? linearEnvironment.myIssues({ environmentId, input: {} }) : null,
   );
   const getIssue = useAtomCommand(linearEnvironment.getIssue, { reportFailure: false });
-  const listRefs = useAtomQueryRunner(vcsEnvironment.listRefs, { reportFailure: false });
+  // Always fresh: a cached answer could miss a branch created a moment ago.
+  const listRefs = useAtomQueryRunner(vcsEnvironment.listRefs, {
+    reportFailure: false,
+    refresh: true,
+  });
   const setPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
+  const pickedBranch = useComposerDraftStore(
+    (store) => store.getDraftSession(draftId)?.worktreeBranch ?? null,
+  );
 
   const issues = issuesQuery.data?.issues ?? [];
   const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues]);
   const itemIds = useMemo(() => issues.map((issue) => issue.id), [issues]);
-  const filteredItemIds = useMemo(() => {
+  const matchingItemIds = useMemo(() => {
     if (deferredQuery.length === 0) return itemIds;
     return issues
       .filter(
@@ -95,24 +139,58 @@ export function LinearIssuePicker({
       )
       .map((issue) => issue.id);
   }, [deferredQuery, issues, itemIds]);
+  const filteredItemIds = useMemo(
+    () =>
+      matchingItemIds.length > MAX_RENDERED_ISSUES
+        ? matchingItemIds.slice(0, MAX_RENDERED_ISSUES)
+        : matchingItemIds,
+    [matchingItemIds],
+  );
+  const hiddenCount = matchingItemIds.length - filteredItemIds.length;
 
   if (!statusQuery.data?.configured) {
     return null;
   }
 
+  const clearPick = () => {
+    setIsOpen(false);
+    setDraftThreadContext(draftId, { worktreeBranch: null });
+    onComposerFocusRequest?.();
+  };
+
   const pickIssue = (issue: LinearIssueSummary) => {
     setIsOpen(false);
     setQuery("");
+    // The two requests take a moment. Everything below must still describe the
+    // same draft when they land, or the text and branch go to the wrong place.
+    const target = snapshotDraftTarget(draftId);
+    if (!target) return;
+    const branchName = resolveLinearBranchName(issue);
     startPicking(async () => {
-      const detail = await getIssue({ environmentId, input: { issueId: issue.id } });
+      const [detail, refs] = await Promise.all([
+        getIssue({ environmentId, input: { issueId: issue.id } }),
+        listRefs({ environmentId, input: { cwd: projectCwd, query: branchName, limit: 10 } }),
+      ]);
+      if (!draftTargetMatches(draftId, target)) return;
       if (detail._tag !== "Success") {
         if (!isAtomCommandInterrupted(detail)) {
-          const failure = squashAtomCommandFailure(detail);
           toastManager.add(
             stackedThreadToast({
               type: "error",
               title: `Could not load ${issue.identifier}.`,
-              description: failure instanceof Error ? failure.message : undefined,
+              description: failureMessage(squashAtomCommandFailure(detail)),
+            }),
+          );
+        }
+        return;
+      }
+      if (refs._tag !== "Success") {
+        if (!isAtomCommandInterrupted(refs)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not check existing branches.",
+              description: failureMessage(squashAtomCommandFailure(refs)),
             }),
           );
         }
@@ -121,14 +199,10 @@ export function LinearIssuePicker({
       const existingPrompt =
         useComposerDraftStore.getState().getComposerDraft(draftId)?.prompt ?? "";
       setPrompt(draftId, mergeLinearPrompt(existingPrompt, buildLinearIssuePrompt(detail.value)));
-
-      const branchName = resolveLinearBranchName(issue);
-      const refs = await listRefs({
-        environmentId,
-        input: { cwd: projectCwd, query: branchName, limit: 10 },
-      });
-      const branchExists =
-        refs._tag === "Success" && refs.value.refs.some((ref) => ref.name === branchName);
+      const branchExists = refs.value.refs.some((ref) => ref.name === branchName);
+      // A previous pick's name must not outlive this pick, so the branch is
+      // always replaced: with the new name, or with nothing on a collision.
+      setDraftThreadContext(draftId, { worktreeBranch: branchExists ? null : branchName });
       if (branchExists) {
         toastManager.add(
           stackedThreadToast({
@@ -137,8 +211,6 @@ export function LinearIssuePicker({
             description: "Pick it from the branch list to continue that work.",
           }),
         );
-      } else {
-        setDraftThreadContext(draftId, { worktreeBranch: branchName });
       }
       onComposerFocusRequest?.();
     });
@@ -165,14 +237,24 @@ export function LinearIssuePicker({
               aria-label="Start from a Linear issue"
             >
               <LinearIcon className="size-2.5 shrink-0 opacity-70" />
-              <span data-composer-label className="hidden sm:inline">
-                {isPicking ? "Loading…" : "Linear"}
+              <span
+                data-composer-label
+                className={cn(
+                  "hidden max-w-[160px] truncate sm:inline",
+                  pickedBranch && "font-mono",
+                )}
+              >
+                {isPicking ? "Loading…" : (pickedBranch ?? "Linear")}
               </span>
               <ChevronDownIcon className="size-2.5 shrink-0 opacity-50" />
             </ComboboxTrigger>
           }
         />
-        <TooltipPopup side="top">Start from one of your Linear issues</TooltipPopup>
+        <TooltipPopup side="top">
+          {pickedBranch
+            ? `First send creates branch ${pickedBranch}`
+            : "Start from one of your Linear issues"}
+        </TooltipPopup>
       </Tooltip>
       <ComboboxPopup align="end" side="top" className="flex w-96 flex-col">
         <div className="shrink-0 px-3 pt-2.5">
@@ -201,6 +283,18 @@ export function LinearIssuePicker({
                 ? issuesQuery.error
                 : "No open issues assigned to you."}
           </ComboboxEmpty>
+          {pickedBranch ? (
+            <button
+              type="button"
+              className="mx-1 mt-1 flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={clearPick}
+            >
+              <XIcon className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">
+                Forget <span className="font-mono">{pickedBranch}</span>
+              </span>
+            </button>
+          ) : null}
           <ComboboxList className="max-h-72">
             {filteredItemIds.map((issueId) => {
               const issue = issueById.get(issueId);
@@ -236,7 +330,9 @@ export function LinearIssuePicker({
               );
             })}
           </ComboboxList>
-          {issues.length > 0 ? (
+          {hiddenCount > 0 ? (
+            <ComboboxStatus>{hiddenCount} more not shown. Type to narrow the list.</ComboboxStatus>
+          ) : issues.length > 0 ? (
             <ComboboxStatus>Grouped by status, newest update first.</ComboboxStatus>
           ) : null}
         </div>

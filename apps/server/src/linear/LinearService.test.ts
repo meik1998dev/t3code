@@ -104,7 +104,11 @@ describe("LinearService", () => {
         Effect.flatMap((service) => service.getStatus),
         Effect.provide(layer),
       );
-      assert.deepStrictEqual(status, { configured: false, viewer: null });
+      assert.deepStrictEqual(status, {
+        configured: false,
+        managedByEnvironment: false,
+        viewer: null,
+      });
       assert.strictEqual(calls.length, 0);
     }),
   );
@@ -118,6 +122,7 @@ describe("LinearService", () => {
       );
       assert.deepStrictEqual(status, {
         configured: true,
+        managedByEnvironment: false,
         viewer: { name: "Meik", email: "meik@example.com" },
       });
       assert.strictEqual(calls[0]?.authorization, "lin_api_123");
@@ -151,7 +156,11 @@ describe("LinearService", () => {
         Effect.flatMap((service) => service.setApiKey({ apiKey: null })),
         Effect.provide(layer),
       );
-      assert.deepStrictEqual(status, { configured: false, viewer: null });
+      assert.deepStrictEqual(status, {
+        configured: false,
+        managedByEnvironment: false,
+        viewer: null,
+      });
       assert.isFalse(secrets.has(LinearService.LINEAR_API_KEY_SECRET_NAME));
     }),
   );
@@ -163,11 +172,44 @@ describe("LinearService", () => {
         storedKey: "stored",
         env: { T3CODE_LINEAR_API_KEY: "from-env" },
       });
-      yield* LinearService.LinearService.pipe(
+      const status = yield* LinearService.LinearService.pipe(
         Effect.flatMap((service) => service.getStatus),
         Effect.provide(layer),
       );
       assert.strictEqual(calls[0]?.authorization, "from-env");
+      assert.isTrue(status.managedByEnvironment);
+    }),
+  );
+
+  it.effect("refuses to change a key that comes from the environment", () =>
+    Effect.gen(function* () {
+      const { layer, secrets } = makeLayer({
+        respond: () => json(viewerResponse),
+        storedKey: "stored",
+        env: { T3CODE_LINEAR_API_KEY: "from-env" },
+      });
+      const error = yield* LinearService.LinearService.pipe(
+        Effect.flatMap((service) => service.setApiKey({ apiKey: null })),
+        Effect.provide(layer),
+        Effect.flip,
+      );
+      assert.strictEqual(error._tag, "LinearRequestError");
+      assert.isTrue(secrets.has(LinearService.LINEAR_API_KEY_SECRET_NAME));
+    }),
+  );
+
+  it.effect("maps a 400 to a request error, not a key error", () =>
+    Effect.gen(function* () {
+      const { layer } = makeLayer({
+        storedKey: "key",
+        respond: () => json({ errors: [{ message: "bad query" }] }, 400),
+      });
+      const error = yield* LinearService.LinearService.pipe(
+        Effect.flatMap((service) => service.listMyIssues),
+        Effect.provide(layer),
+        Effect.flip,
+      );
+      assert.strictEqual(error.message, "Linear rejected the request.");
     }),
   );
 
