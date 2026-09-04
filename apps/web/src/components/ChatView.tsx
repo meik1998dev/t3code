@@ -6705,7 +6705,10 @@ export default function ChatView(props: ChatViewProps) {
                     prepareWorktree: {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
-                      branch: buildTemporaryWorktreeBranchName(randomHex),
+                      // A name the user chose (a Linear issue pick) is final; the temporary
+                      // name is what the server renames once it knows the task.
+                      branch:
+                        draftThread?.worktreeBranch ?? buildTemporaryWorktreeBranchName(randomHex),
                       ...(draftThread?.startRef ? { startRef: draftThread.startRef } : {}),
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
                     },

@@ -28,6 +28,7 @@ import {
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
+import { LinearIssuePicker } from "./LinearIssuePicker";
 import { Button } from "./ui/button";
 import {
   Menu,
@@ -586,6 +587,19 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
+      {showGitControls &&
+      draftId &&
+      serverThread === null &&
+      activeProject &&
+      effectiveEnvMode === "worktree" &&
+      !activeWorktreePath ? (
+        <LinearIssuePicker
+          environmentId={environmentId}
+          draftId={draftId}
+          projectCwd={activeProject.workspaceRoot}
+          {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
+        />
+      ) : null}
       {showGitControls ? (
         <BranchToolbarBranchSelector
           className="min-w-0 flex-initial justify-end @3xl/composer-surface:ml-auto"

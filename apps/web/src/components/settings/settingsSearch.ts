@@ -341,6 +341,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     providerSettingsOnly: true,
   },
   {
+    id: "linear-api-key",
+    title: "Linear API key",
+    to: "/settings/integrations",
+    searchTerms: ["linear issues tasks connect token worktree branch"],
+  },
+  {
     id: "agent-browser-access",
     title: "Agent browser access",
     to: "/settings/integrations",
