@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { ContextMenuItem, EnvironmentId, VcsRef, ThreadId } from "@t3tools/contracts";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
-import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { GitBranchIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -783,12 +783,12 @@ export function BranchToolbarBranchSelector({
             <GitBranchIcon className="size-2.5 shrink-0 opacity-70" />
             <span
               data-composer-label
-              className="min-w-0 max-w-[180px] group-data-[compact]/composer-context:max-w-0"
+              className="min-w-0 max-w-[180px] overflow-hidden group-data-[chat-composer-footer-compact=true]/composer-footer:max-w-0"
             >
               <span
                 data-composer-label-motion
                 className={cn(
-                  "block w-full min-w-0 max-w-[180px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity",
+                  "block w-full min-w-0 max-w-[180px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[chat-composer-footer-compact=true]/composer-footer:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[chat-composer-footer-compact=true]/composer-footer:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity",
                   // Ref names read as code; the "Select ref" placeholder stays in the UI font.
                   resolvedActiveBranch && "font-mono",
                 )}
@@ -796,7 +796,6 @@ export function BranchToolbarBranchSelector({
                 {triggerLabel}
               </span>
             </span>
-            <ChevronDownIcon className="size-2.5 shrink-0 opacity-50" />
           </ComboboxTrigger>
         </span>
       </div>
