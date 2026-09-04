@@ -27,6 +27,7 @@ import { useThreadPr, type ThreadPrPresentation } from "../../state/use-thread-p
 import type { HomeGroupDisplayAction } from "../home/homeListItems";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
+import { COPY_TRANSCRIPT_MENU_ACTION, useCopyThreadTranscript } from "./use-copy-thread-transcript";
 import { resolveThreadStatus } from "./threadPresentation";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
@@ -481,6 +482,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     () => onRegenerateThreadTitle(thread),
     [onRegenerateThreadTitle, thread],
   );
+  const handleCopyTranscript = useCopyThreadTranscript(thread);
   const menuActions = useMemo<MenuAction[]>(
     () => [
       THREAD_ROW_MENU_ACTIONS[0]!,
@@ -488,6 +490,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
         supported: props.titleRegenerationSupported,
         isRegenerating: thread.titleRegeneration != null,
       }),
+      COPY_TRANSCRIPT_MENU_ACTION,
       THREAD_ROW_MENU_ACTIONS[1]!,
     ],
     [props.titleRegenerationSupported, thread.titleRegeneration],
@@ -505,9 +508,10 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       if (nativeEvent.event === "archive") handleArchive();
       if (nativeEvent.event === "regenerate-title") handleRegenerateTitle();
+      if (nativeEvent.event === "copy-transcript") void handleCopyTranscript();
       if (nativeEvent.event === "delete") handleDelete();
     },
-    [handleArchive, handleDelete, handleRegenerateTitle],
+    [handleArchive, handleCopyTranscript, handleDelete, handleRegenerateTitle],
   );
 
   const statusPill = effectiveStatus ? (

@@ -31,6 +31,10 @@
       "types": "./src/forkTranscript.ts",
       "default": "./src/forkTranscript.ts"
     },
+    "./thread-transcript": {
+      "types": "./src/threadTranscript.ts",
+      "default": "./src/threadTranscript.ts"
+    },
     "./media-source": {
       "types": "./src/mediaSource.ts",
       "default": "./src/mediaSource.ts"
