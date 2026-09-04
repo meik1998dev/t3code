@@ -99,6 +99,7 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { ChangeRequestStatusIcon, prStatusIndicator } from "./ThreadStatusIndicators";
 
 interface GitActionsControlProps {
   gitCwd: string | null;
@@ -1114,6 +1115,12 @@ export default function GitActionsControl({
   );
   const changeRequestTerminology = sourceControlPresentation.terminology;
   const SourceControlIcon = sourceControlPresentation.Icon;
+  // PR pill shown beside the git quick action when the checked-out branch has one.
+  const branchPr = gitStatus?.pr ?? null;
+  const branchPrStatus = prStatusIndicator(branchPr, gitStatus?.sourceControlProvider);
+  const branchPrTooltip = branchPr
+    ? `Open ${changeRequestTerminology.singular} #${branchPr.number} (${branchPr.state})`
+    : "";
   // Default to true while loading so we don't flash init controls.
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
@@ -1700,6 +1707,37 @@ export default function GitActionsControl({
         </Button>
       ) : (
         <Group aria-label="Git actions" className="shrink-0">
+          {branchPr && branchPrStatus ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    aria-label={branchPrTooltip}
+                    className={cn("px-1.5 tabular-nums", branchPrStatus.colorClass)}
+                    onClick={(event) => {
+                      if (branchPr.state === "open") {
+                        void openExistingPr();
+                        return;
+                      }
+                      openPrLink(event, branchPrStatus.url);
+                    }}
+                  />
+                }
+              >
+                <ChangeRequestStatusIcon
+                  state={branchPr.state}
+                  isDraft={branchPr.isDraft}
+                  className="size-3.5"
+                />
+                <span className="ml-0.5">#{branchPr.number}</span>
+              </TooltipTrigger>
+              <TooltipPopup side="bottom" align="start">
+                {branchPrStatus.tooltip}
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
           {quickActionDisabledReason ? (
             <Popover>
               <PopoverTrigger
