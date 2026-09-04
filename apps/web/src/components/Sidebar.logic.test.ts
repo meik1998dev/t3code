@@ -8,9 +8,11 @@ import {
   buildMultiSelectThreadContextMenuItems,
   createThreadJumpHintVisibilityController,
   filterSidebarProjectScopeItems,
+  formatSidebarProjectScopeLabel,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
+  resolveSidebarProjectScopeKeys,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
@@ -812,30 +814,51 @@ describe("filterSidebarProjectScopeItems", () => {
     { value: "alpha", label: "Alpha workspace" },
     { value: "beta", label: "Beta tools" },
   ] as const;
-  const filter = (activeScopeKey: string | null, query: string) =>
+  const filter = (activeScopeKeys: readonly string[], query: string) =>
     filterSidebarProjectScopeItems({
       items,
-      activeScopeKey,
+      activeScopeKeys: new Set(activeScopeKeys),
       query,
       matches: (item, candidate) =>
         item.label.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
     });
 
   it("omits the reset row when the sidebar is already unscoped", () => {
-    expect(filter(null, "")).toEqual(items.slice(1));
+    expect(filter([], "")).toEqual(items.slice(1));
   });
 
   it("shows the reset row first while a project scope is active", () => {
-    expect(filter("alpha", "")).toEqual(items);
+    expect(filter(["alpha"], "")).toEqual(items);
+    expect(filter(["alpha", "beta"], "")).toEqual(items);
   });
 
   it("hides the reset row while filtering an active scope", () => {
-    expect(filter("alpha", "all")).toEqual([]);
+    expect(filter(["alpha"], "all")).toEqual([]);
   });
 
   it("returns matching projects in source order and supports no-match results", () => {
-    expect(filter(null, "WORK")).toEqual([items[1]]);
-    expect(filter(null, "missing")).toEqual([]);
+    expect(filter([], "WORK")).toEqual([items[1]]);
+    expect(filter([], "missing")).toEqual([]);
+  });
+});
+
+describe("resolveSidebarProjectScopeKeys", () => {
+  it("keeps the chosen project keys as the scope", () => {
+    expect(resolveSidebarProjectScopeKeys(["alpha", "beta"])).toEqual(new Set(["alpha", "beta"]));
+    expect(resolveSidebarProjectScopeKeys(["beta"])).toEqual(new Set(["beta"]));
+  });
+
+  it("clears every project when the reset row is picked", () => {
+    expect(resolveSidebarProjectScopeKeys(["alpha", "beta", "all"])).toEqual(new Set());
+    expect(resolveSidebarProjectScopeKeys(["all"])).toEqual(new Set());
+  });
+});
+
+describe("formatSidebarProjectScopeLabel", () => {
+  it("names one project, counts several, and falls back to the unscoped label", () => {
+    expect(formatSidebarProjectScopeLabel([])).toBe("All projects");
+    expect(formatSidebarProjectScopeLabel(["Alpha"])).toBe("Alpha");
+    expect(formatSidebarProjectScopeLabel(["Alpha", "Beta"])).toBe("2 projects");
   });
 });
 

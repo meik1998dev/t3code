@@ -657,7 +657,7 @@ export function searchSidebarThreadsByTitle<T extends { readonly title: string }
 
 export function filterSidebarProjectScopeItems<TItem extends { readonly value: string }>(input: {
   items: readonly TItem[];
-  activeScopeKey: string | null;
+  activeScopeKeys: ReadonlySet<string>;
   query: string;
   matches: (item: TItem, query: string) => boolean;
 }): readonly TItem[] {
@@ -666,7 +666,25 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   if (query.length > 0) {
     return projectItems.filter((item) => input.matches(item, query));
   }
-  return input.activeScopeKey === null ? projectItems : input.items;
+  return input.activeScopeKeys.size === 0 ? projectItems : input.items;
+}
+
+/** Next scope after a multi-select combobox change. Picking the "all" reset
+    row clears every project; otherwise the chosen project keys become the
+    scope. The reset row is never stored as a key. */
+export function resolveSidebarProjectScopeKeys(nextValues: readonly string[]): ReadonlySet<string> {
+  if (nextValues.includes("all")) {
+    return new Set();
+  }
+  return new Set(nextValues);
+}
+
+/** Trigger label for the project scope menu: the single project's name, a
+    count when several are scoped, or the unscoped default. */
+export function formatSidebarProjectScopeLabel(scopedNames: readonly string[]): string {
+  if (scopedNames.length === 0) return "All projects";
+  if (scopedNames.length === 1) return scopedNames[0]!;
+  return `${scopedNames.length} projects`;
 }
 
 export interface SidebarProjectScopeMenuState {
