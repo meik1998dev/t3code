@@ -55,6 +55,15 @@ describe("buildThreadActionMenuItems", () => {
     expect(allIds(baseState)).not.toContain("copy-branch");
   });
 
+  it("offers the transcript under copy for every thread", () => {
+    const copy = buildThreadActionMenuItems(baseState).find((item) => item.id === "copy");
+    expect(copy?.children?.map((child) => child.id)).toEqual([
+      "copy-path",
+      "copy-thread-id",
+      "copy-transcript",
+    ]);
+  });
+
   it("flips lifecycle labels with thread state", () => {
     expect(ids({ ...baseState, isPinned: true, isSettled: true, isSnoozed: true })).toEqual(
       expect.arrayContaining(["unpin", "unsettle", "unsnooze"]),

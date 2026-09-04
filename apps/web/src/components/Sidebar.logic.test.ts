@@ -4,12 +4,15 @@ import {
   animatePinnedLayoutChanges,
   archiveSelectedThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
+  buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
   createThreadJumpHintVisibilityController,
   filterSidebarProjectScopeItems,
+  formatSidebarProjectScopeLabel,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
+  resolveSidebarProjectScopeKeys,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
@@ -28,6 +31,7 @@ import {
   formatWorkingDurationLabel,
   shouldNavigateAfterProjectRemoval,
   shouldClearThreadSelectionOnMouseDown,
+  shouldRecedeSidebarThread,
   sortLogicalProjectsForSidebar,
   sortSettledThreadsForSidebar,
   pinOrderKeyBetween,
@@ -185,6 +189,19 @@ describe("archiveSelectedThreadEntries", () => {
   });
 });
 
+describe("buildBulkUnpinContextMenuItem", () => {
+  it("counts only the pinned rows of a mixed selection", () => {
+    expect(buildBulkUnpinContextMenuItem({ pinnedCount: 2 })).toEqual({
+      id: "unpin",
+      label: "Unpin (2)",
+    });
+  });
+
+  it("omits the action when nothing selected is pinned", () => {
+    expect(buildBulkUnpinContextMenuItem({ pinnedCount: 0 })).toBeNull();
+  });
+});
+
 describe("buildBulkTitleRegenerationContextMenuItem", () => {
   it("counts only threads that can start a new regeneration", () => {
     expect(
@@ -278,6 +295,51 @@ describe("hasUnseenCompletion", () => {
         session: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldRecedeSidebarThread", () => {
+  it.each(["working", "monitoring"] as const)(
+    "recedes an inactive %s thread even when it is unread and woke",
+    (status) => {
+      expect(
+        shouldRecedeSidebarThread({
+          status,
+          isUnread: true,
+          isWoke: true,
+          isActive: false,
+          isSelected: false,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it.each(["ready", "approval", "input"] as const)(
+    "keeps an unread %s thread prominent",
+    (status) => {
+      expect(
+        shouldRecedeSidebarThread({
+          status,
+          isUnread: true,
+          isWoke: false,
+          isActive: false,
+          isSelected: false,
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it("keeps active and selected working threads prominent", () => {
+    const input = {
+      status: "working" as const,
+      isUnread: true,
+      isWoke: true,
+      isActive: false,
+      isSelected: false,
+    };
+
+    expect(shouldRecedeSidebarThread({ ...input, isActive: true })).toBe(false);
+    expect(shouldRecedeSidebarThread({ ...input, isSelected: true })).toBe(false);
   });
 });
 
@@ -752,30 +814,51 @@ describe("filterSidebarProjectScopeItems", () => {
     { value: "alpha", label: "Alpha workspace" },
     { value: "beta", label: "Beta tools" },
   ] as const;
-  const filter = (activeScopeKey: string | null, query: string) =>
+  const filter = (activeScopeKeys: readonly string[], query: string) =>
     filterSidebarProjectScopeItems({
       items,
-      activeScopeKey,
+      activeScopeKeys: new Set(activeScopeKeys),
       query,
       matches: (item, candidate) =>
         item.label.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
     });
 
   it("omits the reset row when the sidebar is already unscoped", () => {
-    expect(filter(null, "")).toEqual(items.slice(1));
+    expect(filter([], "")).toEqual(items.slice(1));
   });
 
   it("shows the reset row first while a project scope is active", () => {
-    expect(filter("alpha", "")).toEqual(items);
+    expect(filter(["alpha"], "")).toEqual(items);
+    expect(filter(["alpha", "beta"], "")).toEqual(items);
   });
 
   it("hides the reset row while filtering an active scope", () => {
-    expect(filter("alpha", "all")).toEqual([]);
+    expect(filter(["alpha"], "all")).toEqual([]);
   });
 
   it("returns matching projects in source order and supports no-match results", () => {
-    expect(filter(null, "WORK")).toEqual([items[1]]);
-    expect(filter(null, "missing")).toEqual([]);
+    expect(filter([], "WORK")).toEqual([items[1]]);
+    expect(filter([], "missing")).toEqual([]);
+  });
+});
+
+describe("resolveSidebarProjectScopeKeys", () => {
+  it("keeps the chosen project keys as the scope", () => {
+    expect(resolveSidebarProjectScopeKeys(["alpha", "beta"])).toEqual(new Set(["alpha", "beta"]));
+    expect(resolveSidebarProjectScopeKeys(["beta"])).toEqual(new Set(["beta"]));
+  });
+
+  it("clears every project when the reset row is picked", () => {
+    expect(resolveSidebarProjectScopeKeys(["alpha", "beta", "all"])).toEqual(new Set());
+    expect(resolveSidebarProjectScopeKeys(["all"])).toEqual(new Set());
+  });
+});
+
+describe("formatSidebarProjectScopeLabel", () => {
+  it("names one project, counts several, and falls back to the unscoped label", () => {
+    expect(formatSidebarProjectScopeLabel([])).toBe("All projects");
+    expect(formatSidebarProjectScopeLabel(["Alpha"])).toBe("Alpha");
+    expect(formatSidebarProjectScopeLabel(["Alpha", "Beta"])).toBe("2 projects");
   });
 });
 

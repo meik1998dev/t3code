@@ -297,6 +297,10 @@ function SidebarUpdateControl() {
     );
   }, [prefersReducedMotion, state?.status]);
 
+  // Idle "check for updates" lives in Settings → About. The sidebar only shows
+  // the pill when there is something to act on: available, downloading, downloaded.
+  if (!showUpdateDetails) return null;
+
   const updateButton = (
     <button
       type="button"

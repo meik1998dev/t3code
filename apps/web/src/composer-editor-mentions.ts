@@ -1,5 +1,6 @@
 import type { AssistantCitation } from "@t3tools/contracts";
 import { collectAssistantCitations } from "@t3tools/shared/assistantCitations";
+import { PASTED_TEXT_END, PASTED_TEXT_START } from "./lib/pastedText";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -31,6 +32,11 @@ export type ComposerPromptSegment =
   | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
+    }
+  | {
+      type: "pasted-text";
+      text: string;
+      source: string;
     };
 
 function rangeIncludesIndex(start: number, end: number, index: number): boolean {
@@ -59,13 +65,40 @@ function forEachPromptSegmentSlice(
       | {
           type: "terminal-context";
           promptOffset: number;
+        }
+      | {
+          type: "pasted-text";
+          text: string;
+          source: string;
+          promptOffset: number;
         },
   ) => boolean | void,
 ): boolean {
   let textCursor = 0;
 
   for (let index = 0; index < prompt.length; index += 1) {
-    if (prompt[index] !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER) {
+    const char = prompt[index];
+    let sliceEnd: number;
+    let slice:
+      | { type: "terminal-context"; promptOffset: number }
+      | { type: "pasted-text"; text: string; source: string; promptOffset: number };
+    if (char === INLINE_TERMINAL_CONTEXT_PLACEHOLDER) {
+      sliceEnd = index + 1;
+      slice = { type: "terminal-context", promptOffset: index };
+    } else if (char === PASTED_TEXT_START) {
+      // An unterminated marker is plain text; the chip is only ever atomic.
+      const endIndex = prompt.indexOf(PASTED_TEXT_END, index + 1);
+      if (endIndex < 0) {
+        continue;
+      }
+      sliceEnd = endIndex + 1;
+      slice = {
+        type: "pasted-text",
+        text: prompt.slice(index + 1, endIndex),
+        source: prompt.slice(index, sliceEnd),
+        promptOffset: index,
+      };
+    } else {
       continue;
     }
 
@@ -79,10 +112,11 @@ function forEachPromptSegmentSlice(
     ) {
       return true;
     }
-    if (visitor({ type: "terminal-context", promptOffset: index }) === true) {
+    if (visitor(slice) === true) {
       return true;
     }
-    textCursor = index + 1;
+    textCursor = sliceEnd;
+    index = sliceEnd - 1;
   }
 
   if (
@@ -232,6 +266,10 @@ export function splitPromptIntoComposerSegments(
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
       segments.push(...splitPromptTextIntoComposerSegments(slice.text));
+      return false;
+    }
+    if (slice.type === "pasted-text") {
+      segments.push({ type: "pasted-text", text: slice.text, source: slice.source });
       return false;
     }
 

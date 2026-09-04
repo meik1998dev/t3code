@@ -10,7 +10,6 @@ import {
   resolveEffectiveEnvMode,
   resolveEnvModeLabel,
   resolveBranchTriggerLabel,
-  resolveBranchToolbarPrBranch,
   resolveBranchToolbarValue,
   resolveLockedWorkspaceLabel,
   resolveLocalCheckoutBranchMismatch,
@@ -18,7 +17,7 @@ import {
   resolvePreviousWorktreeSeed,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
-  shouldShowComposerContextControls,
+  shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
   shouldShowEnvModeControl,
 } from "./BranchToolbar.logic";
@@ -289,35 +288,6 @@ describe("resolveBranchTriggerLabel", () => {
   });
 });
 
-describe("resolveBranchToolbarPrBranch", () => {
-  it("uses the explicit thread branch when it matches the displayed branch", () => {
-    expect(
-      resolveBranchToolbarPrBranch({
-        activeThreadBranch: "feature/current",
-        resolvedActiveBranch: "feature/current",
-      }),
-    ).toBe("feature/current");
-  });
-
-  it("hides PR state while an optimistic branch switch is in flight", () => {
-    expect(
-      resolveBranchToolbarPrBranch({
-        activeThreadBranch: "feature/current",
-        resolvedActiveBranch: "feature/next",
-      }),
-    ).toBeNull();
-  });
-
-  it("does not infer PR state without an explicit thread branch", () => {
-    expect(
-      resolveBranchToolbarPrBranch({
-        activeThreadBranch: null,
-        resolvedActiveBranch: "feature/current",
-      }),
-    ).toBeNull();
-  });
-});
-
 describe("resolveLocalCheckoutBranchMismatch", () => {
   it("detects when a local thread is associated with a different branch than the checkout", () => {
     expect(
@@ -440,33 +410,47 @@ describe("shouldShowEnvironmentIndicator", () => {
   });
 });
 
-describe("shouldShowComposerContextControls", () => {
+describe("shouldShowComposerContextStrip", () => {
   it("keeps the environment indicator visible for a non-Git project", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: true,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(true);
   });
 
-  it("hides the strip when a non-Git project has no environment indicator", () => {
+  it("hides the strip when a non-Git project has nothing to show", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: false,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(false);
   });
 
+  it("keeps the strip for visible resting composer controls in a non-Git thread", () => {
+    expect(
+      shouldShowComposerContextStrip({
+        hasActiveProject: true,
+        isGitRepo: false,
+        showEnvironmentIndicator: false,
+        hostsRestingComposerControls: true,
+      }),
+    ).toBe(true);
+  });
+
   it("shows Git controls without requiring an environment indicator", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: true,
         showEnvironmentIndicator: false,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(true);
   });

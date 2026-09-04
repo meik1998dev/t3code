@@ -17,6 +17,7 @@ import {
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
 } from "./composer-logic";
+import { serializePastedText } from "./lib/pastedText";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 const citation: AssistantCitation = {
@@ -526,5 +527,38 @@ describe("parseStandaloneComposerSlashCommand", () => {
 
   it("ignores slash commands with extra message text", () => {
     expect(parseStandaloneComposerSlashCommand("/plan explain this")).toBeNull();
+  });
+});
+
+describe("pasted text cursor math", () => {
+  const pasted = "line 1\nline 2\nline 3";
+  const source = serializePastedText(pasted);
+  const text = `Fix ${source} now`;
+
+  it("collapses a pasted-text chip to one cursor step", () => {
+    const afterChipExpanded = "Fix ".length + source.length;
+    expect(collapseExpandedComposerCursor(text, afterChipExpanded)).toBe("Fix ".length + 1);
+    expect(collapseExpandedComposerCursor(text, "Fix ".length + 3)).toBe("Fix ".length + 1);
+    expect(collapseExpandedComposerCursor(text, text.length)).toBe(
+      "Fix ".length + 1 + " now".length,
+    );
+  });
+
+  it("expands the collapsed cursor back past the whole chip source", () => {
+    expect(expandCollapsedComposerCursor(text, "Fix ".length + 1)).toBe(
+      "Fix ".length + source.length,
+    );
+    expect(clampCollapsedComposerCursor(text, 999)).toBe("Fix ".length + 1 + " now".length);
+  });
+
+  it("treats pasted-text chips as inline tokens for adjacency checks", () => {
+    const tokenStart = "Fix ".length;
+    expect(isCollapsedCursorAdjacentToInlineToken(text, tokenStart + 1, "left")).toBe(true);
+    expect(isCollapsedCursorAdjacentToInlineToken(text, tokenStart, "right")).toBe(true);
+  });
+
+  it("does not open a path trigger from text ending inside a chip", () => {
+    const prompt = `see ${serializePastedText("ping @AGENTS.md")}`;
+    expect(detectComposerTrigger(prompt, prompt.length)).toBeNull();
   });
 });

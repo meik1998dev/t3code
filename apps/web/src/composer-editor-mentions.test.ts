@@ -6,6 +6,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "./composer-editor-mentions";
+import { PASTED_TEXT_START, serializePastedText } from "./lib/pastedText";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 const citation: AssistantCitation = {
@@ -312,5 +313,44 @@ describe("selectionTouchesMentionBoundary", () => {
         prompt.length,
       ),
     ).toBe(true);
+  });
+});
+
+describe("splitPromptIntoComposerSegments pasted text", () => {
+  it("keeps a marker-wrapped paste as one atomic segment", () => {
+    const pasted = "first line\nsecond line";
+    const source = serializePastedText(pasted);
+    expect(splitPromptIntoComposerSegments(`Review ${source} now`)).toEqual([
+      { type: "text", text: "Review " },
+      { type: "pasted-text", text: pasted, source },
+      { type: "text", text: " now" },
+    ]);
+  });
+
+  it("does not parse mentions or skills inside pasted text", () => {
+    const pasted = "see @AGENTS.md and $review ";
+    const source = serializePastedText(pasted);
+    expect(splitPromptIntoComposerSegments(`${source}@README.md `)).toEqual([
+      { type: "pasted-text", text: pasted, source },
+      { type: "mention", path: "README.md", source: "@README.md" },
+      { type: "text", text: " " },
+    ]);
+  });
+
+  it("keeps pasted text alongside terminal placeholders", () => {
+    const source = serializePastedText("x\ny");
+    expect(
+      splitPromptIntoComposerSegments(`${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}${source}tail`),
+    ).toEqual([
+      { type: "terminal-context", context: null },
+      { type: "pasted-text", text: "x\ny", source },
+      { type: "text", text: "tail" },
+    ]);
+  });
+
+  it("treats an unterminated start marker as plain text", () => {
+    expect(splitPromptIntoComposerSegments(`a${PASTED_TEXT_START}b`)).toEqual([
+      { type: "text", text: `a${PASTED_TEXT_START}b` },
+    ]);
   });
 });
