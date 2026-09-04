@@ -16,7 +16,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon, SearchIcon, XIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
@@ -236,24 +236,16 @@ export function LinearIssuePicker({
               disabled={isPicking}
               aria-label="Start from a Linear issue"
             >
-              <LinearIcon className="size-2.5 shrink-0 opacity-70" />
-              <span
-                data-composer-label
-                className={cn(
-                  "hidden max-w-[160px] truncate sm:inline",
-                  pickedBranch && "font-mono",
-                )}
-              >
-                {isPicking ? "Loading…" : (pickedBranch ?? "Linear")}
-              </span>
-              <ChevronDownIcon className="size-2.5 shrink-0 opacity-50" />
+              <LinearIcon className="size-3 shrink-0 opacity-70" />
             </ComboboxTrigger>
           }
         />
         <TooltipPopup side="top">
-          {pickedBranch
-            ? `First send creates branch ${pickedBranch}`
-            : "Start from one of your Linear issues"}
+          {isPicking
+            ? "Loading issue…"
+            : pickedBranch
+              ? `First send creates branch ${pickedBranch}`
+              : "Start from one of your Linear issues"}
         </TooltipPopup>
       </Tooltip>
       <ComboboxPopup align="end" side="top" className="flex w-96 flex-col">
