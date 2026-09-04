@@ -17,6 +17,7 @@ import type { TimelineEntry } from "../session-logic";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import type { RightPanelSurface } from "../rightPanelStore";
+import { serializePastedText } from "../lib/pastedText";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -1706,5 +1707,17 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         latestTurnStartFailureId: "turn-start-failure-new",
       }),
     ).toBe(true);
+  });
+});
+
+describe("deriveComposerSendState pasted text", () => {
+  it("strips pasted-text chip markers from the trimmed prompt", () => {
+    const state = deriveComposerSendState({
+      prompt: `Review ${serializePastedText("a\nb")} `,
+      imageCount: 0,
+      terminalContexts: [],
+    });
+    expect(state.trimmedPrompt).toBe("Review a\nb");
+    expect(state.hasSendableContent).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
 import type { UserInputQuestion } from "@t3tools/contracts";
 
+import { stripPastedTextMarkers } from "./lib/pastedText";
+
 export interface PendingUserInputDraftAnswer {
   selectedOptionValues?: string[];
   customAnswer?: string;
@@ -24,7 +26,7 @@ function normalizeDraftAnswer(value: string | undefined): string | null {
     return null;
   }
 
-  const trimmed = value.trim();
+  const trimmed = stripPastedTextMarkers(value).trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 

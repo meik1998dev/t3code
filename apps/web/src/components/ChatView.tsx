@@ -256,6 +256,11 @@ import {
   type DraftId,
 } from "../composerDraftStore";
 import {
+  serializePastedText,
+  shouldCompactPastedText,
+  stripPastedTextMarkers,
+} from "../lib/pastedText";
+import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
   type TerminalContextDraft,
@@ -620,7 +625,9 @@ function pasteTextToFocusComposer(event: ClipboardEvent): string | null {
   if (!event.clipboardData || event.clipboardData.files.length > 0) return null;
   if (!shouldRedirectInputToComposer(event)) return null;
   const text = event.clipboardData.getData("text/plain");
-  return text.length > 0 ? text : null;
+  if (text.length === 0) return null;
+  // Same folding the editor's own paste handler applies to large pastes.
+  return shouldCompactPastedText(text) ? serializePastedText(text) : text;
 }
 
 function formatOutgoingPrompt(params: {
@@ -632,7 +639,8 @@ function formatOutgoingPrompt(params: {
 }): string {
   const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
   const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
-  return applyClaudePromptEffortPrefix(params.text, promptEffort);
+  // Pasted-text chip markers are a composer-only concept; providers get plain text.
+  return applyClaudePromptEffortPrefix(stripPastedTextMarkers(params.text), promptEffort);
 }
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
