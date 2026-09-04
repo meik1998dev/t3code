@@ -18,7 +18,9 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
+import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
+import { composerFloatingLayerProps } from "./composerEventScope";
+import { useComposerMenuState } from "./useComposerMenuState";
 
 export const runtimeModeConfig: Record<
   RuntimeMode,
@@ -61,9 +63,18 @@ export const ComposerSettingsMenu = memo(function ComposerSettingsMenu(props: {
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
   traitsTriggerDisplay: { label: string; showFastModeIcon: boolean } | null;
+  size?: ComposerControlSize;
+  /**
+   * The resting strip keeps this pill mounted out of flow while it does not
+   * fit. Its portaled popup would outlive that transition, so an open menu
+   * closes when its trigger hides.
+   */
+  hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const size = props.size ?? "sm";
+  const [open, setOpen] = useComposerMenuState(props.hidden);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const traits = props.traitsTriggerDisplay;
   const tooltip = traits
@@ -71,14 +82,18 @@ export const ComposerSettingsMenu = memo(function ComposerSettingsMenu(props: {
     : `${runtimeModeOption.label} — ${runtimeModeOption.description}`;
 
   return (
-    <Menu>
+    <Menu open={open} onOpenChange={setOpen}>
       <Tooltip>
         <MenuTrigger
           render={
             <TooltipTrigger
               render={
                 <ComposerControl
-                  className="shrink-0 whitespace-nowrap font-medium"
+                  size={size}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap",
+                    size === "xs" ? undefined : "font-medium",
+                  )}
                   aria-label={`Model settings: ${tooltip}`}
                 />
               }
@@ -88,6 +103,7 @@ export const ComposerSettingsMenu = memo(function ComposerSettingsMenu(props: {
           {traits?.showFastModeIcon ? (
             <ComposerControlIcon
               icon={ZapIcon}
+              size={size}
               className={cn(
                 "fill-current opacity-80",
                 props.provider === "claudeAgent" ? "text-[#d97757]" : "text-foreground",
@@ -99,7 +115,7 @@ export const ComposerSettingsMenu = memo(function ComposerSettingsMenu(props: {
         </MenuTrigger>
         <TooltipPopup side="top">{tooltip}</TooltipPopup>
       </Tooltip>
-      <MenuPopup align="start">
+      <MenuPopup align="start" {...composerFloatingLayerProps}>
         {props.traitsMenuContent ? (
           <>
             {props.traitsMenuContent}
