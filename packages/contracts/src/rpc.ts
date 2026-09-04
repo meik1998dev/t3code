@@ -5,6 +5,15 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
+  LinearGetIssueInput,
+  LinearIssueDetail,
+  LinearListMyIssuesResult,
+  LinearNotConfiguredError,
+  LinearRequestError,
+  LinearSetApiKeyInput,
+  LinearStatus,
+} from "./linear.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -320,6 +329,12 @@ export const WS_METHODS = {
   pullRequestsReviewerCandidates: "pullRequests.reviewerCandidates",
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
 
+  // Linear methods
+  linearGetStatus: "linear.getStatus",
+  linearSetApiKey: "linear.setApiKey",
+  linearListMyIssues: "linear.listMyIssues",
+  linearGetIssue: "linear.getIssue",
+
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -628,6 +643,36 @@ export const WsPullRequestsRequestReviewersRpc = Rpc.make(WS_METHODS.pullRequest
   payload: PullRequestReviewerRequestInput,
   success: Schema.Void,
   error: PullRequestRpcError,
+});
+
+const LinearRpcErrorUnion = Schema.Union([
+  LinearNotConfiguredError,
+  LinearRequestError,
+  EnvironmentAuthorizationError,
+]);
+
+export const WsLinearGetStatusRpc = Rpc.make(WS_METHODS.linearGetStatus, {
+  payload: Schema.Struct({}),
+  success: LinearStatus,
+  error: LinearRpcErrorUnion,
+});
+
+export const WsLinearSetApiKeyRpc = Rpc.make(WS_METHODS.linearSetApiKey, {
+  payload: LinearSetApiKeyInput,
+  success: LinearStatus,
+  error: LinearRpcErrorUnion,
+});
+
+export const WsLinearListMyIssuesRpc = Rpc.make(WS_METHODS.linearListMyIssues, {
+  payload: Schema.Struct({}),
+  success: LinearListMyIssuesResult,
+  error: LinearRpcErrorUnion,
+});
+
+export const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
+  payload: LinearGetIssueInput,
+  success: LinearIssueDetail,
+  error: LinearRpcErrorUnion,
 });
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
@@ -1087,6 +1132,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsInvalidateRpc,
   WsPullRequestsReviewerCandidatesRpc,
   WsPullRequestsRequestReviewersRpc,
+  WsLinearGetStatusRpc,
+  WsLinearSetApiKeyRpc,
+  WsLinearListMyIssuesRpc,
+  WsLinearGetIssueRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

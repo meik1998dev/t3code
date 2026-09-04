@@ -126,6 +126,7 @@ import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as LinearService from "./linear/LinearService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -585,6 +586,7 @@ const makeWsRpcLayer = (
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const pullRequests = yield* PullRequestService.PullRequestService;
+      const linear = yield* LinearService.LinearService;
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const sessions = yield* SessionStore.SessionStore;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
@@ -1888,6 +1890,22 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "cloud" },
           ),
+        [WS_METHODS.linearGetStatus]: () =>
+          observeRpcEffect(WS_METHODS.linearGetStatus, linear.getStatus, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearSetApiKey]: (input) =>
+          observeRpcEffect(WS_METHODS.linearSetApiKey, linear.setApiKey(input), {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearListMyIssues]: () =>
+          observeRpcEffect(WS_METHODS.linearListMyIssues, linear.listMyIssues, {
+            "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.linearGetIssue]: (input) =>
+          observeRpcEffect(WS_METHODS.linearGetIssue, linear.getIssue(input), {
+            "rpc.aggregate": "linear",
+          }),
         [WS_METHODS.pullRequestsList]: (input) =>
           observeRpcEffect(WS_METHODS.pullRequestsList, pullRequests.list(input), {
             "rpc.aggregate": "pull-requests",
