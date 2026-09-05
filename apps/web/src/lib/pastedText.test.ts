@@ -5,7 +5,6 @@ import {
   PASTED_TEXT_START,
   countPastedTextLines,
   formatPastedTextLabel,
-  previewPastedText,
   serializePastedText,
   shouldCompactPastedText,
   stripPastedTextMarkers,
@@ -14,16 +13,15 @@ import {
 describe("shouldCompactPastedText", () => {
   it("keeps short pastes inline", () => {
     expect(shouldCompactPastedText("hello world")).toBe(false);
-    expect(shouldCompactPastedText("a\nb\nc\nd\ne\nf\ng")).toBe(false);
+    expect(shouldCompactPastedText("1\n2\n3\n4\n5\n6\n7\n8\n9")).toBe(false);
   });
 
-  it("compacts pastes with many lines", () => {
-    expect(shouldCompactPastedText("1\n2\n3\n4\n5\n6\n7\n8")).toBe(true);
+  it("compacts pastes with ten or more lines", () => {
+    expect(shouldCompactPastedText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10")).toBe(true);
   });
 
-  it("compacts long single-line pastes", () => {
-    expect(shouldCompactPastedText("x".repeat(1000))).toBe(true);
-    expect(shouldCompactPastedText("x".repeat(999))).toBe(false);
+  it("keeps long single-line pastes inline", () => {
+    expect(shouldCompactPastedText("x".repeat(5000))).toBe(false);
   });
 });
 
@@ -58,24 +56,5 @@ describe("formatPastedTextLabel", () => {
 
   it("falls back to a character count for one long line", () => {
     expect(formatPastedTextLabel("x".repeat(1200))).toBe("Pasted text · 1,200 characters");
-  });
-});
-
-describe("previewPastedText", () => {
-  it("returns short text unchanged", () => {
-    expect(previewPastedText("a\nb")).toBe("a\nb");
-  });
-
-  it("truncates to the first lines and marks the cut", () => {
-    const text = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
-    const preview = previewPastedText(text);
-    expect(preview.endsWith("…")).toBe(true);
-    expect(preview.split("\n")).toHaveLength(8);
-  });
-
-  it("truncates one long line by characters", () => {
-    const preview = previewPastedText("x".repeat(1200));
-    expect(preview).toHaveLength(401);
-    expect(preview.endsWith("…")).toBe(true);
   });
 });

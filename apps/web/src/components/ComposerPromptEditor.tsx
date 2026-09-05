@@ -69,7 +69,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
-import { formatPastedTextLabel, previewPastedText, serializePastedText } from "~/lib/pastedText";
+import { formatPastedTextLabel, serializePastedText } from "~/lib/pastedText";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -88,6 +88,7 @@ import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
+import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
 import { registerComposerPastedTextPaste } from "./composerPastedTextPaste";
@@ -452,12 +453,16 @@ function $createComposerTerminalContextNode(
   return $applyNodeReplacement(new ComposerTerminalContextNode(context));
 }
 
+/** Click the chip to read the whole paste in a scrollable popover. */
 function ComposerPastedTextDecorator(props: { text: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <Popover>
+      <PopoverTrigger
         render={
-          <span className={COMPOSER_INLINE_CHIP_CLASS_NAME} data-composer-pasted-text-chip="true">
+          <span
+            className={cn(COMPOSER_INLINE_CHIP_CLASS_NAME, "cursor-pointer")}
+            data-composer-pasted-text-chip="true"
+          >
             <ClipboardIcon className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
             <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>
               {formatPastedTextLabel(props.text)}
@@ -465,13 +470,15 @@ function ComposerPastedTextDecorator(props: { text: string }) {
           </span>
         }
       />
-      <TooltipPopup
+      <PopoverPopup
         side="top"
-        className="max-w-120 font-mono text-[11px] whitespace-pre-wrap leading-tight wrap-anywhere"
+        align="start"
+        className="w-120 max-w-[calc(100vw-2rem)]"
+        viewportClassName="max-h-80 font-mono text-[11px] whitespace-pre-wrap leading-snug wrap-anywhere"
       >
-        {previewPastedText(props.text)}
-      </TooltipPopup>
-    </Tooltip>
+        {props.text}
+      </PopoverPopup>
+    </Popover>
   );
 }
 
