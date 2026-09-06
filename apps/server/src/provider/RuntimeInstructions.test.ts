@@ -36,8 +36,9 @@ describe("buildTaskTrackingInstructions", () => {
       create: "TaskCreate",
       update: "TaskUpdate",
     });
-    expect(instructions).toContain("3 or more steps");
-    expect(instructions).toContain("TaskCreate and TaskUpdate");
+    expect(instructions).toContain("3 or more things");
+    expect(instructions).toContain("TaskCreate and TaskUpdate calls");
+    expect(instructions).toContain("create every step with TaskCreate");
     expect(instructions).toMatch(/^<task_tracking>.*<\/task_tracking>$/u);
   });
 
@@ -46,7 +47,7 @@ describe("buildTaskTrackingInstructions", () => {
       create: "update_plan",
       update: "update_plan",
     });
-    expect(instructions).toContain("task list with update_plan.");
+    expect(instructions).toContain("your update_plan calls");
     expect(instructions).not.toContain("update_plan and update_plan");
   });
 });
