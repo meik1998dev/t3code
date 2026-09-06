@@ -17,6 +17,7 @@
  *
  * @module ThreadThinkingPreviewService
  */
+import type { RuntimeContentStreamKind } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -36,7 +37,18 @@ export const THINKING_PREVIEW_MAX_CHARS = 240;
 /** Minimum gap between two publishes for one thread. */
 export const THINKING_PREVIEW_PUBLISH_INTERVAL_MS = 250;
 
+/**
+ * Codex streams raw reasoning and its summary side by side. Appending both to
+ * one tail interleaves them into nonsense, so a tail follows a single kind
+ * and the summary wins once it shows up.
+ */
+export type ReasoningStreamKind = Extract<
+  RuntimeContentStreamKind,
+  "reasoning_text" | "reasoning_summary_text"
+>;
+
 interface ThreadPreviewState {
+  kind: ReasoningStreamKind;
   text: string;
   lastPublishedAtMs: number;
 }
@@ -47,6 +59,7 @@ export class ThreadThinkingPreviewService extends Context.Service<
     /** Append one reasoning delta. `nowMs` drives the publish throttle. */
     readonly recordReasoningDelta: (
       threadId: string,
+      kind: ReasoningStreamKind,
       delta: string,
       nowMs: number,
     ) => Effect.Effect<void>;
@@ -72,23 +85,28 @@ export const make = Effect.gen(function* () {
   });
 
   return {
-    recordReasoningDelta: (threadId, delta, nowMs) =>
+    recordReasoningDelta: (threadId, kind, delta, nowMs) =>
       Effect.suspend(() => {
         if (delta.length === 0) {
           return Effect.void;
         }
         const existing = stateByThreadId.get(threadId);
-        const joined = (existing?.text ?? "") + delta;
+        if (existing !== undefined && existing.kind !== kind && kind === "reasoning_text") {
+          return Effect.void;
+        }
+        // Same kind extends the tail; a summary arriving over raw text restarts it.
+        const base = existing !== undefined && existing.kind === kind ? existing.text : "";
+        const joined = base + delta;
         const text =
           joined.length > THINKING_PREVIEW_MAX_CHARS
             ? joined.slice(joined.length - THINKING_PREVIEW_MAX_CHARS)
             : joined;
         const lastPublishedAtMs = existing?.lastPublishedAtMs ?? Number.NEGATIVE_INFINITY;
         if (nowMs - lastPublishedAtMs < THINKING_PREVIEW_PUBLISH_INTERVAL_MS) {
-          stateByThreadId.set(threadId, { text, lastPublishedAtMs });
+          stateByThreadId.set(threadId, { kind, text, lastPublishedAtMs });
           return Effect.void;
         }
-        stateByThreadId.set(threadId, { text, lastPublishedAtMs: nowMs });
+        stateByThreadId.set(threadId, { kind, text, lastPublishedAtMs: nowMs });
         return PubSub.publish(pubSub, snapshot(threadId, text, nowMs)).pipe(Effect.asVoid);
       }),
 

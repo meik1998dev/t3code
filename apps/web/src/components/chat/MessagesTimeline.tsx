@@ -236,11 +236,13 @@ interface TimelineRowActivityState {
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
-  thinkingPreview: string | null;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
 const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
+// Own context on purpose: the preview ticks several times a second while the
+// agent thinks. Only the Thinking row reads it, so no other row re-renders.
+const ThinkingPreviewCtx = createContext<string | null>(null);
 
 interface WorkGroupViewState {
   scrollPositions: Map<string, WorkGroupScrollAnchor>;
@@ -749,7 +751,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isCompacting,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
-      thinkingPreview,
     }),
     [
       isCompacting,
@@ -758,7 +759,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       isPreparingWorktree,
       latestTurn?.turnId,
-      thinkingPreview,
     ],
   );
 
@@ -787,80 +787,82 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <div
-          ref={setTimelineViewportElement}
-          className="relative h-full min-h-0"
-          data-assistant-citation-viewport="true"
-        >
-          {onCiteAssistantText && citationThreadRef ? (
-            <AssistantSelectionToolbar
-              viewport={timelineViewportElement}
-              threadRef={citationThreadRef}
-              onCite={onCiteAssistantText}
+        <ThinkingPreviewCtx value={thinkingPreview}>
+          <div
+            ref={setTimelineViewportElement}
+            className="relative h-full min-h-0"
+            data-assistant-citation-viewport="true"
+          >
+            {onCiteAssistantText && citationThreadRef ? (
+              <AssistantSelectionToolbar
+                viewport={timelineViewportElement}
+                threadRef={citationThreadRef}
+                onCite={onCiteAssistantText}
+              />
+            ) : null}
+            <LegendList<MessagesTimelineRow>
+              ref={listRef}
+              data={rows}
+              extraData={rows.length}
+              keyExtractor={keyExtractor}
+              getItemType={getItemType}
+              renderItem={renderItem}
+              estimatedItemSize={90}
+              initialScrollAtEnd={citationRequest === null}
+              // Legend needs a data refresh to mount new pins without a scroll event.
+              {...(readyCitationRequest ? { dataVersion: readyCitationRequest.key } : {})}
+              {...(citationAlwaysRender ? { alwaysRender: citationAlwaysRender } : {})}
+              onLoad={onCitationListLoad}
+              {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+              contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
+              maintainScrollAtEnd={
+                citationPositioning ||
+                anchoredEndSpace ||
+                !liveFollowEnabled ||
+                disclosureToggleSettling
+                  ? false
+                  : TIMELINE_MAINTAIN_SCROLL_AT_END
+              }
+              maintainVisibleContentPosition={
+                citationPositioning ? false : maintainVisibleContentPosition
+              }
+              maintainScrollAtEndThreshold={1}
+              onScroll={handleScroll}
+              className={cn(
+                "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                topFadeEnabled && "topbar-scroll-fade",
+              )}
+              ListHeaderComponent={
+                loadEarlier !== null ? (
+                  <TimelineLoadEarlierHeader
+                    loading={loadEarlier.loading}
+                    onLoadEarlier={loadEarlier.onLoadEarlier}
+                    fade={topFadeEnabled}
+                  />
+                ) : topFadeEnabled ? (
+                  TIMELINE_LIST_FADE_HEADER
+                ) : (
+                  TIMELINE_LIST_HEADER
+                )
+              }
+              ListFooterComponent={timelineListFooter}
             />
-          ) : null}
-          <LegendList<MessagesTimelineRow>
-            ref={listRef}
-            data={rows}
-            extraData={rows.length}
-            keyExtractor={keyExtractor}
-            getItemType={getItemType}
-            renderItem={renderItem}
-            estimatedItemSize={90}
-            initialScrollAtEnd={citationRequest === null}
-            // Legend needs a data refresh to mount new pins without a scroll event.
-            {...(readyCitationRequest ? { dataVersion: readyCitationRequest.key } : {})}
-            {...(citationAlwaysRender ? { alwaysRender: citationAlwaysRender } : {})}
-            onLoad={onCitationListLoad}
-            {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-            contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
-            maintainScrollAtEnd={
-              citationPositioning ||
-              anchoredEndSpace ||
-              !liveFollowEnabled ||
-              disclosureToggleSettling
-                ? false
-                : TIMELINE_MAINTAIN_SCROLL_AT_END
-            }
-            maintainVisibleContentPosition={
-              citationPositioning ? false : maintainVisibleContentPosition
-            }
-            maintainScrollAtEndThreshold={1}
-            onScroll={handleScroll}
-            className={cn(
-              "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-              topFadeEnabled && "topbar-scroll-fade",
-            )}
-            ListHeaderComponent={
-              loadEarlier !== null ? (
-                <TimelineLoadEarlierHeader
-                  loading={loadEarlier.loading}
-                  onLoadEarlier={loadEarlier.onLoadEarlier}
-                  fade={topFadeEnabled}
-                />
-              ) : topFadeEnabled ? (
-                TIMELINE_LIST_FADE_HEADER
-              ) : (
-                TIMELINE_LIST_HEADER
-              )
-            }
-            ListFooterComponent={timelineListFooter}
-          />
-          <TimelineMinimap
-            items={minimapItems}
-            hasPersistentGutter={minimapHasPersistentGutter}
-            hitStripWidth={minimapHitStripWidth}
-            stripMap={minimapStripMap}
-            onSelect={(item) => {
-              onManualNavigation();
-              void listRef.current?.scrollToIndex({
-                index: item.rowIndex,
-                animated: true,
-                viewOffset: 24,
-              });
-            }}
-          />
-        </div>
+            <TimelineMinimap
+              items={minimapItems}
+              hasPersistentGutter={minimapHasPersistentGutter}
+              hitStripWidth={minimapHitStripWidth}
+              stripMap={minimapStripMap}
+              onSelect={(item) => {
+                onManualNavigation();
+                void listRef.current?.scrollToIndex({
+                  index: item.rowIndex,
+                  animated: true,
+                  viewOffset: 24,
+                });
+              }}
+            />
+          </div>
+        </ThinkingPreviewCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
@@ -1780,7 +1782,8 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
 const COLLAPSED_THINKING_PREVIEW_CHARS = 90;
 
 function ThinkingTimelineRow() {
-  const { isCompacting, isPreparingWorktree, thinkingPreview } = use(TimelineRowActivityCtx);
+  const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const thinkingPreview = use(ThinkingPreviewCtx);
   const [expanded, setExpanded] = useState(false);
   // Reserve the activity row during setup so the handoff keeps the same height.
   if (isPreparingWorktree || isCompacting) {
@@ -1790,12 +1793,16 @@ function ThinkingTimelineRow() {
   if (preview.length === 0) {
     return (
       <div className="min-h-7">
-        <LiveActivityRow label="Thinking" iconName="brain" active />
+        <LiveActivityRow label="Thinking" iconName="brain" />
       </div>
     );
   }
   // The preview is a tail, so the collapsed line keeps its end, not its start.
-  const collapsedText = preview.replace(/\s+/g, " ").slice(-COLLAPSED_THINKING_PREVIEW_CHARS);
+  const singleLine = preview.replace(/\s+/g, " ");
+  const collapsedCut = singleLine.length > COLLAPSED_THINKING_PREVIEW_CHARS;
+  const collapsedText = collapsedCut
+    ? `…${singleLine.slice(-COLLAPSED_THINKING_PREVIEW_CHARS)}`
+    : singleLine;
   return (
     <div className="min-h-7">
       <button
@@ -1807,14 +1814,14 @@ function ThinkingTimelineRow() {
         }
         onClick={() => setExpanded((value) => !value)}
       >
-        <LiveActivityRow label="Thinking" iconName="brain" active />
+        <LiveActivityRow label="Thinking" iconName="brain" />
         <span
           className={cn(
             "text-secondary-label/80 min-w-0 pb-1 pl-8 text-xs leading-relaxed",
             expanded ? "whitespace-pre-wrap break-words" : "block w-full truncate",
           )}
         >
-          …{expanded ? preview : collapsedText}
+          {expanded ? preview : collapsedText}
         </span>
       </button>
     </div>

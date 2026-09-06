@@ -1572,11 +1572,22 @@ const make = Effect.gen(function* () {
         ) {
           yield* threadThinkingPreview.recordReasoningDelta(
             event.threadId,
+            event.payload.streamKind,
             event.payload.delta,
             yield* Clock.currentTimeMillis,
           );
         }
         return;
+      }
+
+      // Reasoning deltas above skip the thread lookup, so the preview can hold
+      // a tail for a thread this server no longer knows. Clear it by the raw
+      // thread id before the lookup, or such an entry would never go away.
+      if (event.type === "session.exited") {
+        yield* threadThinkingPreview.clearThreadThinkingPreview(
+          event.threadId,
+          yield* Clock.currentTimeMillis,
+        );
       }
 
       const thread = yield* resolveThreadRuntimeContext(event.threadId);
@@ -2066,13 +2077,10 @@ const make = Effect.gen(function* () {
       // cleared on settle so a finished plan never lingers as stale UI.
       // Events carrying a turn id that conflicts with the active turn are
       // stale (superseded turn) and must neither overwrite nor clear the
-      // active turn's progress; session.exited always clears.
+      // active turn's progress; session.exited always clears (the thinking
+      // preview was already cleared before the thread lookup).
       if (event.type === "session.exited") {
         threadPlanProgress.clearThreadPlanProgress(thread.id);
-        yield* threadThinkingPreview.clearThreadThinkingPreview(
-          thread.id,
-          yield* Clock.currentTimeMillis,
-        );
       } else if (!conflictsWithActiveTurn) {
         if (event.type === "turn.plan.updated") {
           threadPlanProgress.recordPlanProgress(thread.id, event.payload.plan);

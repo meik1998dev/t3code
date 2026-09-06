@@ -168,9 +168,18 @@ function cachedThreadState(value: EnvironmentThreadState): EnvironmentThreadStat
   };
 }
 
+export interface EnvironmentThreadStateOptions {
+  /**
+   * Ask the server for `thinking-preview` items. Off by default so a client
+   * that never renders the tail (mobile today) does not receive the frames.
+   */
+  readonly includeThinkingPreview?: boolean;
+}
+
 export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make")(function* (
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  options?: EnvironmentThreadStateOptions,
 ) {
   const supervisor = yield* EnvironmentSupervisor;
   const cache = yield* EnvironmentCacheStore;
@@ -677,7 +686,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
           ),
         );
         const supportsCompletionMarker = config.threadResumeCompletionMarker === true;
-        const supportsThinkingPreview = config.threadThinkingPreview === true;
+        const supportsThinkingPreview =
+          options?.includeThinkingPreview === true && config.threadThinkingPreview === true;
         // A preview from before the (re)subscription is stale by definition;
         // the server re-sends the current tail if a turn is still thinking.
         yield* SubscriptionRef.update(state, (value) =>
@@ -820,11 +830,14 @@ export function threadStateChanges(
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  options?: EnvironmentThreadStateOptions,
 ) {
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+      makeEnvironmentThreadState(threadId, resumeCache, options).pipe(
+        Effect.map(SubscriptionRef.changes),
+      ),
     ),
   );
 }
@@ -834,6 +847,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
     EnvironmentRegistry | EnvironmentCacheStore | ThreadSnapshotLoader | R,
     E
   >,
+  options?: EnvironmentThreadStateOptions,
 ) {
   // Cache definitions must outlive collectible live-atom definitions. The
   // registry retains these nodes without retaining environment or RPC scopes.
@@ -854,7 +868,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
         (get) => {
           get.mount(resumeAtom);
           const resume = get.once(resumeAtom);
-          const live = threadStateChanges(environmentId, threadId, resume);
+          const live = threadStateChanges(environmentId, threadId, resume, options);
           return resume.snapshot === undefined
             ? live
             : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
