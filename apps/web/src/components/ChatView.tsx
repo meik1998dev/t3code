@@ -4985,8 +4985,8 @@ export default function ChatView(props: ChatViewProps) {
     [activeThreadBranch, activeWorktreePath, envMode, gitStatusQuery.data?.refName, isServerThread],
   );
   const activeComposerTasksProgress = useMemo(
-    () => deriveComposerTasksProgress(activePlan),
-    [activePlan],
+    () => deriveComposerTasksProgress(activePlan, activeLatestTurn?.turnId),
+    [activeLatestTurn?.turnId, activePlan],
   );
   const activeComposerTaskSteps =
     activeComposerTasksProgress && activePlan ? activePlan.steps : null;

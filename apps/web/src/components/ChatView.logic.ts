@@ -1047,16 +1047,23 @@ export function hasServerAcknowledgedLocalDispatch(input: {
 }
 
 /**
- * Summarizes the thread's latest task list for the composer badge. The badge
- * stays visible after the turn settles so the user can still see what got
- * done; a finished list reports its last step with a full count.
+ * Summarizes the latest turn's task list for the composer badge. The badge
+ * stays visible after that turn settles so the user can still see what got
+ * done; a finished list reports its last step with a full count. Lists from
+ * earlier turns are left out so the next turn starts clean and an old
+ * interrupted list never poses as current work.
  */
-export function deriveComposerTasksProgress(plan: ActivePlanState | null): {
+export function deriveComposerTasksProgress(
+  plan: ActivePlanState | null,
+  latestTurnId: TurnId | null | undefined,
+): {
   readonly step: string;
   readonly completedSteps: number;
   readonly totalSteps: number;
 } | null {
-  if (!plan || plan.steps.length === 0) return null;
+  if (!plan || !latestTurnId || plan.turnId !== latestTurnId || plan.steps.length === 0) {
+    return null;
+  }
   const currentStep =
     plan.steps.find((step) => step.status === "inProgress") ??
     plan.steps.find((step) => step.status === "pending") ??
