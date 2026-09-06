@@ -714,7 +714,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             type="monochrome"
           />
         ) : null}
-        <CurrentStatusIcon status={status} animate={animateStatus} />
+        {status === "ready" ? null : <CurrentStatusIcon status={status} animate={animateStatus} />}
       </View>
       <Text
         className={cn(
@@ -923,7 +923,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 : `Settled: ${timeLabel}`
             }
           >
-            <CurrentStatusIcon status={snoozedRow ? "snoozed" : "settled"} />
+            {snoozedRow ? (
+              <CurrentStatusIcon status="snoozed" />
+            ) : (
+              <SymbolView
+                name="checkmark"
+                size={14}
+                tintColorClassName="accent-foreground-muted"
+                type="monochrome"
+              />
+            )}
           </View>
         </View>
       </Pressable>

@@ -1395,24 +1395,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     />
                     <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
                   </Tooltip>
-                ) : (
+                ) : variantAction === "unsettle" ? (
                   <Tooltip>
                     <TooltipTrigger
                       render={
                         <span>
-                          <CurrentStatusIcon
-                            status={variantAction === "unsettle" ? "settled" : "ready"}
-                          />
+                          <CheckIcon aria-label="Settled" className="size-3.5" />
                         </span>
                       }
                     />
-                    <TooltipPopup side="top">
-                      {variantAction === "unsettle"
-                        ? `Settled · ${settledTimeLabel(thread)}`
-                        : threadTimeLabel(thread)}
-                    </TooltipPopup>
+                    <TooltipPopup side="top">Settled · {settledTimeLabel(thread)}</TooltipPopup>
                   </Tooltip>
-                )}
+                ) : null}
               </span>
               {variantAction === "unsnooze" ? (
                 !props.snoozeSupported ? null : (
@@ -1579,18 +1573,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                         <TooltipPopup side="top">{topStatus.label}</TooltipPopup>
                       </Tooltip>
                     )
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span>
-                            <CurrentStatusIcon status="ready" />
-                          </span>
-                        }
-                      />
-                      <TooltipPopup side="top">Ready · {threadTimeLabel(thread)}</TooltipPopup>
-                    </Tooltip>
-                  )}
+                  ) : null}
                 </span>
                 {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
                   <span
