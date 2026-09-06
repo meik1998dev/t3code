@@ -487,7 +487,6 @@ describe("environment entity projections", () => {
         status: "live",
         error: Option.none(),
         page: Option.none(),
-        thinkingPreview: null,
       }),
     );
 
@@ -517,7 +516,6 @@ describe("environment entity projections", () => {
         status: "live",
         error: Option.none(),
         page: Option.none(),
-        thinkingPreview: null,
       }),
     );
 

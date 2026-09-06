@@ -721,12 +721,6 @@ export const OrchestrationSubscribeThreadInput = Schema.Struct({
    * behavior. Live events are unaffected either way.
    */
   turnLimit: Schema.optionalKey(PositiveInt),
-  /**
-   * Opt in to `thinking-preview` stream items: a throttled, in-memory tail of
-   * the provider's reasoning text while a turn runs. Never persisted; absent
-   * means the server sends none, so pre-feature clients never see the kind.
-   */
-  includeThinkingPreview: Schema.optionalKey(Schema.Boolean),
 });
 export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
@@ -1677,16 +1671,6 @@ export const OrchestrationThreadStreamItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("event"),
     event: OrchestrationEvent,
-  }),
-  /**
-   * Live tail of the running turn's reasoning text (see
-   * `OrchestrationSubscribeThreadInput.includeThinkingPreview`). Empty text
-   * means the preview was cleared (turn settled, session exited).
-   */
-  Schema.Struct({
-    kind: Schema.Literal("thinking-preview"),
-    text: Schema.String,
-    updatedAt: IsoDateTime,
   }),
 ]);
 export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
