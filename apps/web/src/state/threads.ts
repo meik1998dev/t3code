@@ -24,11 +24,7 @@ import { environmentSnapshotAtom } from "./shell";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 
 export const threadEnvironment = createThreadEnvironmentAtoms(connectionAtomRuntime);
-// Web renders the live reasoning tail under the Thinking row; mobile does not,
-// so it keeps the default and never receives those frames.
-export const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime, {
-  includeThinkingPreview: true,
-});
+export const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );

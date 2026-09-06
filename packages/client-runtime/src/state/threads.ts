@@ -164,22 +164,12 @@ function cachedThreadState(value: EnvironmentThreadState): EnvironmentThreadStat
     status: value.status === "deleted" ? "deleted" : statusWithoutLiveData(value.data),
     error: Option.none(),
     page: Option.map(value.page, (page) => ({ ...page, loadingOlder: false })),
-    thinkingPreview: null,
   };
-}
-
-export interface EnvironmentThreadStateOptions {
-  /**
-   * Ask the server for `thinking-preview` items. Off by default so a client
-   * that never renders the tail (mobile today) does not receive the frames.
-   */
-  readonly includeThinkingPreview?: boolean;
 }
 
 export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make")(function* (
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
-  options?: EnvironmentThreadStateOptions,
 ) {
   const supervisor = yield* EnvironmentSupervisor;
   const cache = yield* EnvironmentCacheStore;
@@ -214,7 +204,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         // A cached windowed snapshot restores its page cursor so "load earlier"
         // works while rendering from cache; a cached full snapshot has no page.
         page: Option.flatMap(cached, (snapshot) => pageStateFromSnapshot(snapshot.page)),
-        thinkingPreview: null,
       };
   const state = yield* SubscriptionRef.make(initialState);
   // Seed the resume cursor from the cached snapshot so a warm cache can catch up
@@ -368,7 +357,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       status: waiting ? ("synchronizing" as const) : ("live" as const),
       error: Option.none(),
       page: page === "keep" ? current.page : page,
-      thinkingPreview: current.thinkingPreview,
     }));
     // Active threads can update many times per second and retain large tool
     // payloads. The server remains the source of truth while a turn is active;
@@ -404,7 +392,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       status: "deleted",
       error: Option.none(),
       page: Option.none(),
-      thinkingPreview: null,
     });
     yield* remember;
     if (resumeCache !== undefined && resumeCache.owner !== owner) return;
@@ -431,16 +418,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         Option.isSome(current.data) && current.status !== "deleted"
           ? { ...current, status: "live" as const, error: Option.none() }
           : current,
-      );
-      return;
-    }
-
-    if (item.kind === "thinking-preview") {
-      // Not sequenced: it rides beside the event stream and only mirrors the
-      // server's in-memory tail. Empty text is the server clearing it.
-      const text = item.text.length > 0 ? item.text : null;
-      yield* SubscriptionRef.update(state, (current) =>
-        current.thinkingPreview === text ? current : { ...current, thinkingPreview: text },
       );
       return;
     }
@@ -681,18 +658,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               ({}) as {
                 threadResumeCompletionMarker?: boolean;
                 threadSnapshotPagination?: boolean;
-                threadThinkingPreview?: boolean;
               },
           ),
         );
         const supportsCompletionMarker = config.threadResumeCompletionMarker === true;
-        const supportsThinkingPreview =
-          options?.includeThinkingPreview === true && config.threadThinkingPreview === true;
-        // A preview from before the (re)subscription is stale by definition;
-        // the server re-sends the current tail if a turn is still thinking.
-        yield* SubscriptionRef.update(state, (value) =>
-          value.thinkingPreview === null ? value : { ...value, thinkingPreview: null },
-        );
         // Windowed loads are gated on the server capability: pre-pagination
         // servers reject unknown query params, and a windowed WS fallback to
         // such a server would silently hide history.
@@ -767,7 +736,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
           // the gap is too large) should be windowed the same as the HTTP
           // path; without this a resume failure re-downloads the full thread.
           ...(supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : {}),
-          ...(supportsThinkingPreview ? { includeThinkingPreview: true as const } : {}),
         };
       }),
       {
@@ -830,14 +798,11 @@ export function threadStateChanges(
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
-  options?: EnvironmentThreadStateOptions,
 ) {
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache, options).pipe(
-        Effect.map(SubscriptionRef.changes),
-      ),
+      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
     ),
   );
 }
@@ -847,7 +812,6 @@ export function createEnvironmentThreadStateAtoms<R, E>(
     EnvironmentRegistry | EnvironmentCacheStore | ThreadSnapshotLoader | R,
     E
   >,
-  options?: EnvironmentThreadStateOptions,
 ) {
   // Cache definitions must outlive collectible live-atom definitions. The
   // registry retains these nodes without retaining environment or RPC scopes.
@@ -868,7 +832,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
         (get) => {
           get.mount(resumeAtom);
           const resume = get.once(resumeAtom);
-          const live = threadStateChanges(environmentId, threadId, resume, options);
+          const live = threadStateChanges(environmentId, threadId, resume);
           return resume.snapshot === undefined
             ? live
             : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
