@@ -1,5 +1,5 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
-import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
+import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "./RuntimeInstructions.ts";
 
 const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `
 
@@ -190,7 +190,12 @@ export function buildCodexDeveloperInstructions(
     interactionMode === "plan"
       ? codexPlanModeDeveloperInstructions(browserToolsAvailable)
       : codexDefaultModeDeveloperInstructions(browserToolsAvailable);
+  // update_plan errors inside Plan mode, so only Default mode asks for it.
+  const taskTracking =
+    interactionMode === "plan"
+      ? ""
+      : `\n\n${buildTaskTrackingInstructions({ create: "update_plan", update: "update_plan" })}`;
   return `${base}
 
-${buildRuntimeInstructions({ harness: "Codex", ...runtime })}`;
+${buildRuntimeInstructions({ harness: "Codex", ...runtime })}${taskTracking}`;
 }

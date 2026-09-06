@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
+import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
   it.each(["Codex", "Claude Code", "Cursor", "Grok", "OpenCode", "Antigravity"])(
@@ -27,5 +27,17 @@ describe("buildRuntimeInstructions", () => {
     const instructions = buildRuntimeInstructions({ harness: "Cursor", model });
     expect(instructions).toContain("through the Cursor harness.");
     expect(instructions).not.toContain("reasoning effort");
+  });
+});
+
+describe("buildTaskTrackingInstructions", () => {
+  it("names the provider's task tools and the 3-step threshold", () => {
+    const instructions = buildTaskTrackingInstructions({
+      create: "TaskCreate",
+      update: "TaskUpdate",
+    });
+    expect(instructions).toContain("3 or more steps");
+    expect(instructions).toContain("TaskCreate and TaskUpdate");
+    expect(instructions).toMatch(/^<task_tracking>.*<\/task_tracking>$/u);
   });
 });
