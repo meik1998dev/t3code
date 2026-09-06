@@ -15,3 +15,18 @@ export function buildRuntimeInstructions(runtime: {
 function toSingleLine(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim();
 }
+
+/**
+ * Asks the agent to keep a task list for multi-step work. T3 renders the
+ * provider's task tool calls as the thread task list, and newer models only
+ * open one when told to, so this is what keeps the list populated by default.
+ * The tool names differ per provider; callers pass the pair the harness exposes.
+ */
+export function buildTaskTrackingInstructions(tools: {
+  readonly create: string;
+  readonly update: string;
+}): string {
+  const toolNames =
+    tools.create === tools.update ? tools.create : `${tools.create} and ${tools.update}`;
+  return `<task_tracking>For any work with 3 or more steps, keep a task list with ${toolNames}. Create every step before you start, mark a step in_progress when you begin it and completed as soon as it is done. Skip the list only for one- or two-step requests.</task_tracking>`;
+}
