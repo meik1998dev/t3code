@@ -1776,7 +1776,7 @@ function ThinkingTimelineRow() {
   return (
     <div className="min-h-7">
       {isPreparingWorktree || isCompacting ? null : (
-        <LiveActivityRow label="Thinking" iconName="brain" />
+        <LiveActivityRow label="Thinking" iconName="brain" active />
       )}
     </div>
   );
