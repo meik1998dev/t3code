@@ -56,6 +56,7 @@ import {
   shouldOpenProactiveTurnDiff,
   shouldRenderPreviewMiniPlayer,
   shouldShowBranchMismatchBanner,
+  deriveComposerTasksProgress,
   shouldShowPlanFollowUpPrompt,
   shouldWriteThreadErrorToCurrentServerThread,
   toolGroupConsumesUpwardNavigation,
@@ -1719,5 +1720,43 @@ describe("deriveComposerSendState pasted text", () => {
     });
     expect(state.trimmedPrompt).toBe("Review a\nb");
     expect(state.hasSendableContent).toBe(true);
+  });
+});
+
+describe("deriveComposerTasksProgress", () => {
+  const plan = (
+    steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
+  ) => ({
+    createdAt: "2026-09-06T00:00:00.000Z",
+    turnId: TurnId.make("turn-1"),
+    steps,
+  });
+
+  it("reports the in-progress step while work is running", () => {
+    expect(
+      deriveComposerTasksProgress(
+        plan([
+          { step: "Write a.txt", status: "completed" },
+          { step: "Write b.txt", status: "inProgress" },
+          { step: "Write c.txt", status: "pending" },
+        ]),
+      ),
+    ).toEqual({ step: "Write b.txt", completedSteps: 1, totalSteps: 3 });
+  });
+
+  it("keeps a finished list visible with its last step and a full count", () => {
+    expect(
+      deriveComposerTasksProgress(
+        plan([
+          { step: "Write a.txt", status: "completed" },
+          { step: "Write b.txt", status: "completed" },
+        ]),
+      ),
+    ).toEqual({ step: "Write b.txt", completedSteps: 2, totalSteps: 2 });
+  });
+
+  it("returns null without a plan or steps", () => {
+    expect(deriveComposerTasksProgress(null)).toBeNull();
+    expect(deriveComposerTasksProgress(plan([]))).toBeNull();
   });
 });

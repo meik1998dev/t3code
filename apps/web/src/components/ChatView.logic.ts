@@ -48,7 +48,7 @@ import {
 } from "../lib/terminalContext";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import type { ComposerSubmissionIntent } from "../composer-logic";
-import type { TimelineEntry } from "../session-logic";
+import type { ActivePlanState, TimelineEntry } from "../session-logic";
 import type { DesktopPreviewOverlay } from "../previewStateStore";
 import type { RightPanelSurface } from "../rightPanelStore";
 import {
@@ -1044,4 +1044,27 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.localDispatch.sessionStatus !== (session?.status ?? null) ||
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );
+}
+
+/**
+ * Summarizes the thread's latest task list for the composer badge. The badge
+ * stays visible after the turn settles so the user can still see what got
+ * done; a finished list reports its last step with a full count.
+ */
+export function deriveComposerTasksProgress(plan: ActivePlanState | null): {
+  readonly step: string;
+  readonly completedSteps: number;
+  readonly totalSteps: number;
+} | null {
+  if (!plan || plan.steps.length === 0) return null;
+  const currentStep =
+    plan.steps.find((step) => step.status === "inProgress") ??
+    plan.steps.find((step) => step.status === "pending") ??
+    plan.steps.at(-1);
+  if (!currentStep) return null;
+  return {
+    step: currentStep.step,
+    completedSteps: plan.steps.filter((step) => step.status === "completed").length,
+    totalSteps: plan.steps.length,
+  };
 }
