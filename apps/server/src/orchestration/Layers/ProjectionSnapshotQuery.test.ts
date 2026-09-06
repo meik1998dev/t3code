@@ -482,6 +482,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
           planProgress: null,
+          taskProgress: null,
         },
       ]);
 
@@ -2236,6 +2237,62 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
     snapshot.thread.messages.map((message) => message.id).toSorted();
   const activityIds = (snapshot: { thread: { activities: ReadonlyArray<{ id: string }> } }) =>
     snapshot.thread.activities.map((activity) => activity.id).toSorted();
+
+  it.effect("projects durable latest-turn task progress and pins its detail snapshot", () =>
+    Effect.gen(function* () {
+      yield* seedFanOutThread();
+      const sql = yield* SqlClient.SqlClient;
+      const query = yield* ProjectionSnapshotQuery;
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        ) VALUES ('current-plan', 'thread-w', 'turn-5', 'info', 'turn.plan.updated', 'Plan',
+          '{"plan":[{"step":"First","status":"completed"},{"step":"Second","status":"inProgress"},{"step":"Third","status":"pending"}]}' , 1, '2026-03-01T00:04:00.000Z')
+      `;
+      // A newer stale-turn update cannot replace the current turn's list.
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        ) VALUES ('old-plan', 'thread-w', 'turn-4', 'info', 'turn.plan.updated', 'Old plan',
+          '{"plan":[{"step":"Stale","status":"pending"}]}', 2, '2026-03-01T00:04:01.000Z')
+      `;
+      const expected = {
+        turnId: asTurnId("turn-5"),
+        step: "Second",
+        completedSteps: 1,
+        totalSteps: 3,
+        stepStatuses: ["completed", "inProgress", "pending"] as const,
+      };
+      const shell = yield* query.getShellSnapshot();
+      assert.deepEqual(shell.threads[0]?.taskProgress, expected);
+      const single = yield* query.getThreadShellById(threadW);
+      assert.equal(single._tag, "Some");
+      if (single._tag === "Some") assert.deepEqual(single.value.taskProgress, expected);
+      // The plan remains available after it falls outside the 500-activity window.
+      yield* sql`
+        WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 501)
+        INSERT INTO projection_thread_activities (activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at)
+        SELECT 'noise-' || n, 'thread-w', 'turn-5', 'tool', 'tool.completed', 'Tool', '{}', 10 + n, '2026-03-01T00:04:02.000Z' FROM numbers
+      `;
+      const detail = yield* query.getThreadDetailById(threadW);
+      assert.equal(detail._tag, "Some");
+      if (detail._tag === "Some")
+        assert.isTrue(detail.value.activities.some((activity) => activity.id === "current-plan"));
+      yield* sql`UPDATE projection_thread_activities SET payload_json = '{"plan":[{"step":"First","status":"completed"},{"step":"Second","status":"completed"},{"step":"Third","status":"completed"}]}'  WHERE activity_id = 'current-plan'`;
+      const completed = yield* query.getShellSnapshot();
+      assert.equal(completed.threads[0]?.taskProgress?.completedSteps, 3);
+      yield* sql`UPDATE projection_threads SET archived_at = '2026-03-01T00:05:00.000Z' WHERE thread_id = 'thread-w'`;
+      const archived = yield* query.getArchivedShellSnapshot();
+      assert.equal(archived.threads[0]?.taskProgress?.completedSteps, 3);
+      yield* sql`UPDATE projection_threads SET archived_at = NULL, latest_turn_id = 'new-turn' WHERE thread_id = 'thread-w'`;
+      const next = yield* query.getShellSnapshot();
+      assert.isNull(next.threads[0]?.taskProgress);
+      yield* sql`UPDATE projection_threads SET latest_turn_id = 'turn-5' WHERE thread_id = 'thread-w'`;
+      yield* sql`UPDATE projection_thread_activities SET payload_json = '{"plan":[]}' WHERE activity_id = 'current-plan'`;
+      const cleared = yield* query.getShellSnapshot();
+      assert.isNull(cleared.threads[0]?.taskProgress);
+    }),
+  );
 
   it.effect("returns the full thread with no page metadata when no window is requested", () =>
     Effect.gen(function* () {

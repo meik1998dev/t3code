@@ -560,6 +560,24 @@ export const OrchestrationProjectShell = Schema.Struct({
 });
 export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 
+export const ThreadTaskStepStatus = Schema.Literals(["pending", "inProgress", "completed"]);
+export const ThreadTaskStep = Schema.Struct({
+  step: TrimmedNonEmptyString,
+  status: ThreadTaskStepStatus,
+});
+export type ThreadTaskStep = typeof ThreadTaskStep.Type;
+
+export const ThreadTaskProgress = Schema.Struct({
+  turnId: TurnId,
+  step: TrimmedNonEmptyString,
+  completedSteps: NonNegativeInt,
+  totalSteps: NonNegativeInt,
+  // Only a bounded strip of states travels with every sidebar row. Task
+  // titles remain in thread detail, subscribed to when the list is opened.
+  stepStatuses: Schema.Array(ThreadTaskStepStatus),
+});
+export type ThreadTaskProgress = typeof ThreadTaskProgress.Type;
+
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -592,6 +610,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,
+  // Latest-turn tasks survive completion and reconnect, unlike planProgress
+  // below, which annotates live work only. Absent on older servers.
+  taskProgress: Schema.optional(Schema.NullOr(ThreadTaskProgress)),
   /**
    * Native background work alive after the turn settles: "working" while
    * subagents/workflows run, "monitoring" when watch loops are the only

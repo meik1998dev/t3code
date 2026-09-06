@@ -1179,6 +1179,7 @@ function ThreadNavigationSidebarPane(
           <SwipeableScrollGateProvider enabled={swipeEnabled}>
             <GestureDetector gesture={sidebarScrollGesture}>
               <LegendList
+                viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
                 data={listItems}
                 drawDistance={500}
                 estimatedItemSize={64}
@@ -1224,6 +1225,7 @@ function ThreadNavigationSidebarPane(
         <SwipeableScrollGateProvider enabled={swipeEnabled}>
           <GestureDetector gesture={sidebarScrollGesture}>
             <LegendList
+              viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
               data={listItems}
               drawDistance={500}
               estimatedItemSize={64}
@@ -1318,3 +1320,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
 });
+
+const SIDEBAR_STATUS_VIEWABILITY = { itemVisiblePercentThreshold: 1 };

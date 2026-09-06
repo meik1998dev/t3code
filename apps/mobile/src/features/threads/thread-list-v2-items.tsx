@@ -1,3 +1,7 @@
+import { useViewability } from "@legendapp/list/react-native";
+import { useIsFocused } from "@react-navigation/native";
+import { CurrentStatusIcon } from "../../components/CurrentStatusIcon";
+import { SidebarTasks } from "./SidebarTasks";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -31,14 +35,13 @@ import {
   resolveThreadListV2SnoozeGateExpiryMs,
   resolveThreadListV2Status,
   resolveThreadListV2SwipeActions,
-  type ThreadListV2Status,
 } from "./threadListV2";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
 /**
  * Thread List v2 renders one flat native list: rich edge-to-edge rows for
  * active work and a receded settled tail, all with native swipe and
- * long-press actions. State reads through colored status labels and text
+ * long-press actions. State reads through Current status icons and text
  * hierarchy rather than card fills.
  */
 
@@ -47,18 +50,6 @@ const MONO_FONT = Platform.select({
   android: "monospace",
   default: "monospace",
 });
-
-// Status hues follow the system-wide convention set by sidebar v1 and the
-// Live Activity/widgets (amber approval, indigo input, sky working) so a
-// thread reads the same color everywhere it surfaces.
-const STATUS_LABEL_BY_STATUS: Partial<
-  Record<ThreadListV2Status, { label: string; className: string }>
-> = {
-  approval: { label: "Approval", className: "text-adaptive-amber-700-300" },
-  input: { label: "Input", className: "text-adaptive-indigo-600-300" },
-  working: { label: "Working", className: "text-adaptive-sky-600-400" },
-  failed: { label: "Failed", className: "text-adaptive-red-700-300" },
-};
 
 function threadTimeLabel(thread: EnvironmentThreadShell): string {
   return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
@@ -420,7 +411,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const selected = props.selected === true;
 
   const status = resolveThreadListV2Status(thread);
-  const statusLabel = STATUS_LABEL_BY_STATUS[status];
+  const [isViewable, setIsViewable] = useState(false);
+  useViewability((token) => setIsViewable(token.isViewable));
+  const focused = useIsFocused();
+  const animateStatus = isViewable && focused;
   // Settled rows label by the same stamp they sort by, so order and label
   // can't disagree. updatedAt is always present, so the resolver never
   // returns null here.
@@ -720,16 +714,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             type="monochrome"
           />
         ) : null}
-        <Text
-          className={cn(
-            "text-xs tabular-nums",
-            selected
-              ? "text-user-bubble-foreground"
-              : (statusLabel?.className ?? "text-foreground-tertiary"),
-          )}
-        >
-          {statusLabel?.label ?? timeLabel}
-        </Text>
+        <CurrentStatusIcon status={status} animate={animateStatus} />
       </View>
       <Text
         className={cn(
@@ -826,6 +811,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </View>
         ) : null}
       </View>
+      <SidebarTasks thread={thread} visible={isViewable && focused} />
     </>
   );
 
@@ -930,21 +916,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
-          <Text
-            className={cn(
-              "text-sm tabular-nums",
-              selected
-                ? "text-user-bubble-foreground-muted"
-                : snoozedRow
-                  ? "text-adaptive-blue-600-400"
-                  : "text-foreground-tertiary",
-            )}
-            style={{ fontFamily: MONO_FONT }}
+          <View
+            accessibilityLabel={
+              snoozedRow
+                ? `Snoozed: ${props.snoozeWakeLabelText ?? timeLabel}`
+                : `Settled: ${timeLabel}`
+            }
           >
-            {snoozedRow && props.snoozeWakeLabelText !== undefined
-              ? props.snoozeWakeLabelText
-              : timeLabel}
-          </Text>
+            <CurrentStatusIcon status={snoozedRow ? "snoozed" : "settled"} />
+          </View>
         </View>
       </Pressable>
     );

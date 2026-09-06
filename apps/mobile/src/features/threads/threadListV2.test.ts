@@ -132,6 +132,33 @@ describe("resolveThreadListV2Enabled", () => {
 });
 
 describe("resolveThreadListV2Status", () => {
+  it("shows background work and monitoring without overriding requests or errors", () => {
+    const thread = makeThread({
+      id: ThreadId.make("background"),
+      title: "Background",
+      backgroundLiveness: "monitoring",
+    });
+    expect(resolveThreadListV2Status(thread)).toBe("monitoring");
+    expect(resolveThreadListV2Status({ ...thread, backgroundLiveness: "working" })).toBe("working");
+    expect(resolveThreadListV2Status({ ...thread, hasPendingUserInput: true })).toBe("input");
+    expect(resolveThreadListV2Status({ ...thread, hasPendingApprovals: true })).toBe("approval");
+    expect(
+      resolveThreadListV2Status({
+        ...thread,
+        session: {
+          threadId: thread.id,
+          status: "error",
+          providerName: "Codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: "Failed",
+          updatedAt: NOW,
+        },
+      }),
+    ).toBe("failed");
+  });
+
   it("prioritizes approval over a running session", () => {
     const thread = makeThread({
       id: ThreadId.make("t"),

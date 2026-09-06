@@ -1,3 +1,4 @@
+import { summarizeTaskProgress, taskStepsFromPayload } from "@t3tools/shared/taskProgress";
 import {
   ApprovalRequestId,
   ChatAttachment,
@@ -1118,6 +1119,53 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       `,
   });
 
+  const listLatestTaskPlans = SqlSchema.findAll({
+    Request: Schema.Array(ThreadId),
+    Result: Schema.Struct({
+      threadId: ThreadId,
+      turnId: TurnId,
+      payload: Schema.fromJsonString(Schema.Unknown),
+    }),
+    execute: (threadIds) => sql`
+      SELECT activity.thread_id AS "threadId", activity.turn_id AS "turnId",
+             activity.payload_json AS "payload"
+      FROM (
+        SELECT thread_id, latest_turn_id FROM projection_threads
+        WHERE ${sql.in("thread_id", threadIds)}
+      ) AS thread
+      JOIN projection_thread_activities AS activity ON activity.activity_id = (
+        SELECT activity_id FROM projection_thread_activities
+        WHERE thread_id = thread.thread_id AND turn_id = thread.latest_turn_id
+          AND kind = 'turn.plan.updated'
+        ORDER BY sequence DESC, created_at DESC, activity_id DESC
+        LIMIT 1
+      )
+    `,
+  });
+
+  const taskProgressForThreads = Effect.fn("ProjectionSnapshotQuery.taskProgressForThreads")(
+    function* (threadIds: readonly ThreadId[]) {
+      const result = new Map<ThreadId, ReturnType<typeof summarizeTaskProgress>>();
+      for (let offset = 0; offset < threadIds.length; offset += 500) {
+        const rows = yield* listLatestTaskPlans(threadIds.slice(offset, offset + 500)).pipe(
+          Effect.mapError(
+            toPersistenceSqlOrDecodeError(
+              "ProjectionSnapshotQuery.taskProgress:query",
+              "ProjectionSnapshotQuery.taskProgress:decode",
+            ),
+          ),
+        );
+        for (const row of rows) {
+          result.set(
+            row.threadId,
+            summarizeTaskProgress(row.turnId, taskStepsFromPayload(row.payload)),
+          );
+        }
+      }
+      return result;
+    },
+  );
+
   const listThreadActivityRowsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityDbRowSchema,
@@ -1536,6 +1584,14 @@ pending_approval_requests AS (
             )
             AND json_extract(activity.payload_json, '$.requestId') IS NOT NULL
         ),
+        latest_task_plan AS (
+          SELECT activity_id FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND turn_id = (SELECT latest_turn_id FROM projection_threads WHERE thread_id = ${threadId})
+            AND kind = 'turn.plan.updated'
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT 1
+        ),
         pinned_activity_ids AS (
           SELECT activity_id
           FROM pending_approval_activities
@@ -1545,12 +1601,13 @@ pending_approval_requests AS (
           FROM user_input_lifecycle
           WHERE request_order = 1
             AND kind = 'user-input.requested'
+          UNION ALL
+          SELECT activity_id FROM latest_task_plan
         )
   `;
 
-  // Blocking request payloads must remain available even if they predate the
-  // recent activity window. Each CTE returns at most one unresolved row per
-  // request, so the merge below stays bounded by actionable work.
+  // Blocking requests and the current task list must survive the recent
+  // activity window. Pin at most one unresolved row per request and one plan.
   const listPinnedThreadActivityRowsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityDbRowSchema,
@@ -2310,6 +2367,9 @@ pending_approval_requests AS (
             const latestTurnByThread = new Map(
               latestTurnRows.map((row) => [row.threadId, mapLatestTurn(row)] as const),
             );
+            const taskProgressByThread = yield* taskProgressForThreads(
+              threadRows.map((row) => row.threadId),
+            );
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
@@ -2358,6 +2418,7 @@ pending_approval_requests AS (
                         row.threadId,
                       ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                      taskProgress: taskProgressByThread.get(row.threadId) ?? null,
                     } satisfies OrchestrationThreadShell)
                   : Result.failVoid,
               ),
@@ -2460,6 +2521,9 @@ pending_approval_requests AS (
             const latestTurnByThread = new Map(
               latestTurnRows.map((row) => [row.threadId, mapLatestTurn(row)] as const),
             );
+            const taskProgressByThread = yield* taskProgressForThreads(
+              threadRows.map((row) => row.threadId),
+            );
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
@@ -2506,6 +2570,7 @@ pending_approval_requests AS (
                   row.threadId,
                 ),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
+                taskProgress: taskProgressByThread.get(row.threadId) ?? null,
               })),
               updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
             };
@@ -2767,6 +2832,7 @@ pending_approval_requests AS (
         return Option.none<OrchestrationThreadShell>();
       }
 
+      const taskProgressByThread = yield* taskProgressForThreads([threadId]);
       return Option.some({
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
@@ -2800,6 +2866,7 @@ pending_approval_requests AS (
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
+        taskProgress: taskProgressByThread.get(threadId) ?? null,
       } satisfies OrchestrationThreadShell);
     });
 

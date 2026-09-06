@@ -1,5 +1,51 @@
 @import "tailwindcss";
 
+/* Current: the thread is static; only a tiny compositor layer travels. */
+.current-status-bead {
+  position: absolute;
+  left: 4.167%;
+  top: 41.667%;
+  width: 16.667%;
+  height: 16.667%;
+  border-radius: 50%;
+  background: currentColor;
+  animation: current-status-travel 3s ease-in-out infinite;
+}
+.current-status-bead[data-animate="false"] {
+  animation-play-state: paused;
+}
+@keyframes current-status-travel {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  25% {
+    transform: translate(125%, -125%);
+  }
+  50% {
+    transform: translate(250%, 0);
+  }
+  75% {
+    transform: translate(375%, 125%);
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(500%, 0);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .current-status-bead {
+    animation: none;
+  }
+}
+
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */

@@ -66,6 +66,12 @@ for custom configuration.
 
 ## Inspect agent work
 
+Sidebar status icons show when an agent is working, needs a reply or approval,
+or has finished. On web and desktop, hover a status for its meaning. When an agent reports a task
+list, its current task and completion count appear below the branch. Expand
+the task row to inspect the steps; a completed checklist does not necessarily
+mean the agent's turn has ended.
+
 On web and desktop, use **Agents** to follow work delegated to subagents.
 
 Expand a tool call in the conversation to see its full command and output.

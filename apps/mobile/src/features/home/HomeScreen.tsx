@@ -1179,6 +1179,7 @@ export function HomeScreen(props: HomeScreenProps) {
           `stickyHeaderIndices` if this gets revisited. */}
       <SwipeableScrollGateProvider enabled={swipeEnabled}>
         <LegendList
+          viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
           ref={listRef}
           data={listLayout.items}
           renderItem={renderItem}
@@ -1222,3 +1223,5 @@ export function HomeScreen(props: HomeScreenProps) {
     </View>
   );
 }
+
+const SIDEBAR_STATUS_VIEWABILITY = { itemVisiblePercentThreshold: 1 };

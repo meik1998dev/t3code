@@ -1,3 +1,4 @@
+import { SidebarTasks } from "./sidebar/SidebarTasks";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
@@ -922,6 +923,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
           </div>
         </div>
       </SidebarMenuSubButton>
+      <div className="px-2">
+        <SidebarTasks thread={thread} threadRef={threadRef} leaseLiveStatus={leaseLiveStatus} />
+      </div>
     </SidebarMenuSubItem>
   );
 });
