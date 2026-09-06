@@ -18,7 +18,13 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
   config: Pick<ClaudeSettings, "homePath">,
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
-  const resolvedBaseEnv = baseEnv ?? process.env;
+  const resolvedBaseEnv = {
+    ...(baseEnv ?? process.env),
+    // Claude Code drops the TaskCreate/TaskUpdate tools on Opus 4.8, Sonnet 5
+    // and newer models unless the host opts in. T3 renders those tool calls as
+    // the thread task list, so keep them on like Claude Code on the web does.
+    CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
+  };
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);
