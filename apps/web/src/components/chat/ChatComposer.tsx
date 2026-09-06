@@ -5181,6 +5181,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       "max-h-8 min-h-8 overflow-hidden whitespace-nowrap! leading-8",
                   )}
                   placeholderClassName={cn(
+                    "truncate",
                     isComposerResting &&
                       "flex items-center overflow-hidden whitespace-nowrap leading-8",
                   )}

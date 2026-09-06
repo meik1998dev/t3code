@@ -124,11 +124,11 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
       {icon}
       <span
         data-composer-label
-        className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
+        className="min-w-0 max-w-[240px] @max-[520px]/composer-surface:max-w-0"
       >
         <span
           data-composer-label-motion
-          className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+          className="block w-full min-w-0 max-w-[240px] origin-left truncate transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] @max-[520px]/composer-surface:[transform:translateX(-0.25rem)_scaleX(0.95)] @max-[520px]/composer-surface:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
         >
           {showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
         </span>
@@ -331,7 +331,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   return (
     <div
       data-composer-context-controls
-      className="group/composer-context flex min-w-0 shrink-0 items-center gap-1"
+      className="group/composer-context flex min-w-0 shrink items-center gap-1"
     >
       {isMobile && showGitControls ? (
         <MobileRunContextSelector
