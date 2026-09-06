@@ -26,5 +26,7 @@ export function buildTaskTrackingInstructions(tools: {
   readonly create: string;
   readonly update: string;
 }): string {
-  return `<task_tracking>For any work with 3 or more steps, keep a task list with ${tools.create} and ${tools.update}. Create every step before you start, mark a step in_progress when you begin it and completed as soon as it is done. Skip the list only for one- or two-step requests.</task_tracking>`;
+  const toolNames =
+    tools.create === tools.update ? tools.create : `${tools.create} and ${tools.update}`;
+  return `<task_tracking>For any work with 3 or more steps, keep a task list with ${toolNames}. Create every step before you start, mark a step in_progress when you begin it and completed as soon as it is done. Skip the list only for one- or two-step requests.</task_tracking>`;
 }

@@ -40,4 +40,13 @@ describe("buildTaskTrackingInstructions", () => {
     expect(instructions).toContain("TaskCreate and TaskUpdate");
     expect(instructions).toMatch(/^<task_tracking>.*<\/task_tracking>$/u);
   });
+
+  it("names a shared tool once", () => {
+    const instructions = buildTaskTrackingInstructions({
+      create: "update_plan",
+      update: "update_plan",
+    });
+    expect(instructions).toContain("task list with update_plan.");
+    expect(instructions).not.toContain("update_plan and update_plan");
+  });
 });
