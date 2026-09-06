@@ -706,8 +706,23 @@ describe("codexSessionAppServerArgs", () => {
     NodeAssert.deepStrictEqual(codexSessionAppServerArgs(["-c", "model=gpt-5"], undefined), [
       "app-server",
       "-c",
+      "tools.update_plan.enabled=true",
+      "-c",
       "model=gpt-5",
     ]);
+  });
+
+  it("lets launch args override the update_plan opt-in", () => {
+    NodeAssert.deepStrictEqual(
+      codexSessionAppServerArgs(undefined, "-c tools.update_plan.enabled=false"),
+      [
+        "app-server",
+        "-c",
+        "tools.update_plan.enabled=true",
+        "-c",
+        "tools.update_plan.enabled=false",
+      ],
+    );
   });
 
   it("keeps launch args when explicit app-server args are provided", () => {
@@ -718,6 +733,8 @@ describe("codexSessionAppServerArgs", () => {
       ),
       [
         "app-server",
+        "-c",
+        "tools.update_plan.enabled=true",
         "--strict-config",
         "--enable",
         "foo",

@@ -10,8 +10,14 @@ export const resolveCodexLaunchArgs = (
 export const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> =>
   tokenizeCliArgs(launchArgs);
 
+// Codex 0.152.0 made the update_plan checklist tool opt-in. T3 renders its
+// updates as the thread task list, so turn it back on. User launch args come
+// after and can still override it.
+export const CODEX_UPDATE_PLAN_ARGS = ["-c", "tools.update_plan.enabled=true"] as const;
+
 export const codexAppServerArgs = (launchArgs?: string) => [
   "app-server",
+  ...CODEX_UPDATE_PLAN_ARGS,
   ...codexLaunchArgv(launchArgs),
 ];
 
