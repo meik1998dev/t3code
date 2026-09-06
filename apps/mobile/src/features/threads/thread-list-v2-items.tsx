@@ -20,7 +20,6 @@ import { AppText as Text } from "../../components/AppText";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
-import { ProviderIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
@@ -804,11 +803,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           >
             #{pr.label}
           </Text>
-        ) : null}
-        {props.providerDriver ? (
-          <View className="opacity-60">
-            <ProviderIcon provider={props.providerDriver} size={14} />
-          </View>
         ) : null}
       </View>
       <SidebarTasks thread={thread} visible={isViewable && focused} />
