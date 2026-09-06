@@ -56,6 +56,7 @@ import {
   shouldOpenProactiveTurnDiff,
   shouldRenderPreviewMiniPlayer,
   shouldShowBranchMismatchBanner,
+  deriveComposerTasksProgress,
   shouldShowPlanFollowUpPrompt,
   shouldWriteThreadErrorToCurrentServerThread,
   toolGroupConsumesUpwardNavigation,
@@ -1719,5 +1720,57 @@ describe("deriveComposerSendState pasted text", () => {
     });
     expect(state.trimmedPrompt).toBe("Review a\nb");
     expect(state.hasSendableContent).toBe(true);
+  });
+});
+
+describe("deriveComposerTasksProgress", () => {
+  const latestTurnId = TurnId.make("turn-1");
+  const plan = (
+    steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
+    turnId: TurnId | null = latestTurnId,
+  ) => ({
+    createdAt: "2026-09-06T00:00:00.000Z",
+    turnId,
+    steps,
+  });
+
+  it("reports the in-progress step while work is running", () => {
+    expect(
+      deriveComposerTasksProgress(
+        plan([
+          { step: "Write a.txt", status: "completed" },
+          { step: "Write b.txt", status: "inProgress" },
+          { step: "Write c.txt", status: "pending" },
+        ]),
+        latestTurnId,
+      ),
+    ).toEqual({ step: "Write b.txt", completedSteps: 1, totalSteps: 3 });
+  });
+
+  it("keeps a finished list visible with its last step and a full count", () => {
+    expect(
+      deriveComposerTasksProgress(
+        plan([
+          { step: "Write a.txt", status: "completed" },
+          { step: "Write b.txt", status: "completed" },
+        ]),
+        latestTurnId,
+      ),
+    ).toEqual({ step: "Write b.txt", completedSteps: 2, totalSteps: 2 });
+  });
+
+  it("hides lists from earlier turns once a newer turn exists", () => {
+    const steps = [
+      { step: "Write a.txt", status: "completed" as const },
+      { step: "Write b.txt", status: "pending" as const },
+    ];
+    expect(deriveComposerTasksProgress(plan(steps), TurnId.make("turn-2"))).toBeNull();
+    expect(deriveComposerTasksProgress(plan(steps, null), latestTurnId)).toBeNull();
+  });
+
+  it("returns null without a plan, a turn, or steps", () => {
+    expect(deriveComposerTasksProgress(null, latestTurnId)).toBeNull();
+    expect(deriveComposerTasksProgress(plan([]), latestTurnId)).toBeNull();
+    expect(deriveComposerTasksProgress(plan([{ step: "a", status: "pending" }]), null)).toBeNull();
   });
 });
