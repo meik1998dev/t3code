@@ -577,6 +577,11 @@ export const ServerConfig = Schema.Struct({
    */
   threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
   /**
+   * Whether thread subscriptions honor `includeThinkingPreview` and emit
+   * `thinking-preview` items. Clients must not send the flag otherwise.
+   */
+  threadThinkingPreview: Schema.optionalKey(Schema.Boolean),
+  /**
    * Palettes published by this environment's machine. Never sent in a config
    * snapshot: the theme stream emits the current set before any change, so a
    * snapshot carrying it too would hand every subscriber the same array twice

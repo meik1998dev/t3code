@@ -236,6 +236,7 @@ interface TimelineRowActivityState {
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
+  thinkingPreview: string | null;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -320,6 +321,8 @@ interface MessagesTimelineProps {
   isPreparingWorktree?: boolean;
   isCompacting?: boolean;
   activeTurnStartedAt: string | null;
+  /** Live tail of the running turn's reasoning, shown under "Thinking". */
+  thinkingPreview?: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   latestTurn: TimelineLatestTurn | null;
@@ -378,6 +381,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isPreparingWorktree = false,
   isCompacting = false,
   activeTurnStartedAt,
+  thinkingPreview = null,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
   listRef,
@@ -745,6 +749,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isCompacting,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
+      thinkingPreview,
     }),
     [
       isCompacting,
@@ -753,6 +758,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       isPreparingWorktree,
       latestTurn?.turnId,
+      thinkingPreview,
     ],
   );
 
@@ -1770,14 +1776,47 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   );
 }
 
+/** Characters of the reasoning tail shown while the preview is collapsed. */
+const COLLAPSED_THINKING_PREVIEW_CHARS = 90;
+
 function ThinkingTimelineRow() {
-  const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const { isCompacting, isPreparingWorktree, thinkingPreview } = use(TimelineRowActivityCtx);
+  const [expanded, setExpanded] = useState(false);
   // Reserve the activity row during setup so the handoff keeps the same height.
+  if (isPreparingWorktree || isCompacting) {
+    return <div className="min-h-7" />;
+  }
+  const preview = thinkingPreview?.trim() ?? "";
+  if (preview.length === 0) {
+    return (
+      <div className="min-h-7">
+        <LiveActivityRow label="Thinking" iconName="brain" active />
+      </div>
+    );
+  }
+  // The preview is a tail, so the collapsed line keeps its end, not its start.
+  const collapsedText = preview.replace(/\s+/g, " ").slice(-COLLAPSED_THINKING_PREVIEW_CHARS);
   return (
     <div className="min-h-7">
-      {isPreparingWorktree || isCompacting ? null : (
-        <LiveActivityRow label="Thinking" iconName="brain" />
-      )}
+      <button
+        type="button"
+        className="flex w-full max-w-full cursor-pointer flex-col items-start rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        aria-expanded={expanded}
+        aria-label={
+          expanded ? "Hide what the agent is thinking" : "Show what the agent is thinking"
+        }
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <LiveActivityRow label="Thinking" iconName="brain" active />
+        <span
+          className={cn(
+            "text-secondary-label/80 min-w-0 pb-1 pl-8 text-xs leading-relaxed",
+            expanded ? "whitespace-pre-wrap break-words" : "block w-full truncate",
+          )}
+        >
+          …{expanded ? preview : collapsedText}
+        </span>
+      </button>
     </div>
   );
 }

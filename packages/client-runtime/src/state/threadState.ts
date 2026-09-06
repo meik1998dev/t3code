@@ -22,6 +22,11 @@ export interface EnvironmentThreadState {
   readonly status: EnvironmentThreadStatus;
   readonly error: Option.Option<string>;
   readonly page: Option.Option<EnvironmentThreadPageState>;
+  /**
+   * Live tail of the running turn's reasoning text, for the "Thinking" row.
+   * Server memory only: never cached, null outside a live subscription.
+   */
+  readonly thinkingPreview: string | null;
 }
 
 export const EMPTY_ENVIRONMENT_THREAD_STATE: EnvironmentThreadState = {
@@ -29,6 +34,7 @@ export const EMPTY_ENVIRONMENT_THREAD_STATE: EnvironmentThreadState = {
   status: "empty",
   error: Option.none(),
   page: Option.none(),
+  thinkingPreview: null,
 };
 
 /** Whether the thread has older turns that can be loaded with more pages. */
