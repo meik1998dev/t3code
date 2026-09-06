@@ -20,7 +20,21 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         const resolved = path.resolve(NodeOS.homedir());
 
         expect(yield* resolveClaudeHomePath({ homePath: "" })).toBe(resolved);
-        expect(yield* makeClaudeEnvironment({ homePath: "" })).toBe(process.env);
+        const env = yield* makeClaudeEnvironment({ homePath: "" });
+        expect(env.CLAUDE_CONFIG_DIR).toBe(process.env.CLAUDE_CONFIG_DIR);
+        expect(env.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
+      }),
+    );
+
+    it.effect("keeps the task tools on for every Claude home", () =>
+      Effect.gen(function* () {
+        const base = { PATH: "/usr/bin" } as NodeJS.ProcessEnv;
+        expect(
+          (yield* makeClaudeEnvironment({ homePath: "" }, base)).CLAUDE_CODE_ENABLE_TODO_TOOLS,
+        ).toBe("1");
+        const scoped = yield* makeClaudeEnvironment({ homePath: "~/.claude-work" }, base);
+        expect(scoped.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
+        expect(scoped.PATH).toBe("/usr/bin");
       }),
     );
 
