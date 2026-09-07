@@ -65,9 +65,9 @@ export function CurrentStatusIcon({
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {CURRENT_STATUS_PATHS[status].map((path) => (
+        {CURRENT_STATUS_PATHS[status].map((path, index) => (
           <path
-            key={path.d}
+            key={`${status}-${index}`}
             d={path.d}
             opacity={path.opacity}
             fill={path.filled ? "currentColor" : "none"}
