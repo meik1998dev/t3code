@@ -12,6 +12,8 @@ import type {
   OrchestrationThreadActivity,
   TurnId,
 } from "@t3tools/contracts";
+import { isImportedAgentSessionMessageId } from "@t3tools/contracts";
+import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 
 export type ThreadDetailReducerResult =
   | { readonly kind: "updated"; readonly thread: OrchestrationThread }
@@ -95,6 +97,7 @@ export function applyThreadDetailEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
+          branchPullRequest: null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -102,6 +105,7 @@ export function applyThreadDetailEvent(
           settledOverride: null,
           settledAt: null,
           unsettledAt: null,
+          activeOrderKey: null,
           snoozedUntil: null,
           snoozedAt: null,
           deletedAt: null,
@@ -141,6 +145,7 @@ export function applyThreadDetailEvent(
           settledOverride: "settled",
           settledAt: event.payload.settledAt,
           unsettledAt: null,
+          activeOrderKey: null,
           updatedAt: event.payload.updatedAt,
         },
       };
@@ -237,6 +242,12 @@ export function applyThreadDetailEvent(
             : {}),
           ...(event.payload.linkedPullRequest !== undefined
             ? { linkedPullRequest: event.payload.linkedPullRequest }
+            : {}),
+          ...(event.payload.branchPullRequest !== undefined
+            ? { branchPullRequest: event.payload.branchPullRequest }
+            : {}),
+          ...(event.payload.activeOrderKey !== undefined
+            ? { activeOrderKey: event.payload.activeOrderKey }
             : {}),
           updatedAt: event.payload.updatedAt,
         },
@@ -521,7 +532,10 @@ export function applyThreadDetailEvent(
         (thread.latestTurn === null || thread.latestTurn.turnId === event.payload.turnId)
           ? {
               turnId: event.payload.turnId,
-              state: checkpointStatusToTurnState(event.payload.status),
+              state:
+                thread.latestTurn?.state === "interrupted"
+                  ? "interrupted"
+                  : checkpointStatusToTurnState(event.payload.status),
               requestedAt: thread.latestTurn?.requestedAt ?? event.payload.completedAt,
               startedAt: thread.latestTurn?.startedAt ?? event.payload.completedAt,
               completedAt: event.payload.completedAt,
@@ -751,33 +765,40 @@ function retainMessagesAfterRevert(
   // a retained turn. User messages are appended before their turn exists and
   // carry no turn binding, so the earliest unbound ones fill the retained
   // turn count; anything beyond that belongs to a reverted turn and goes.
-  const retainedIds = new Set<string>();
+  const retainedMessageIds = new Set<string>();
   for (const message of messages) {
-    if (message.role === "system") {
-      retainedIds.add(message.id);
+    if (message.role === "system" || isImportedAgentSessionMessageId(message.id)) {
+      retainedMessageIds.add(message.id);
     } else if (message.turnId !== null && retainedTurnIds.has(message.turnId)) {
-      retainedIds.add(message.id);
+      retainedMessageIds.add(message.id);
     }
   }
+
   for (const role of ["user", "assistant"] as const) {
     const retainedCount = messages.filter(
-      (message) => message.role === role && retainedIds.has(message.id),
+      (message) =>
+        message.role === role &&
+        !isImportedAgentSessionMessageId(message.id) &&
+        retainedMessageIds.has(message.id),
     ).length;
     const missingCount = Math.max(0, turnCount - retainedCount);
-    if (missingCount === 0) continue;
-    const unbound = messages
+    const fallbackMessages = messages
       .filter(
         (message) =>
-          message.role === role && !retainedIds.has(message.id) && message.turnId === null,
+          message.role === role &&
+          !retainedMessageIds.has(message.id) &&
+          (message.turnId === null || retainedTurnIds.has(message.turnId)),
       )
       .toSorted(
         (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+          compareDateTimeStrings(left.createdAt, right.createdAt) ||
+          left.id.localeCompare(right.id),
       )
       .slice(0, missingCount);
-    for (const message of unbound) {
-      retainedIds.add(message.id);
+    for (const message of fallbackMessages) {
+      retainedMessageIds.add(message.id);
     }
   }
-  return Arr.filter(messages, (message) => retainedIds.has(message.id));
+
+  return Arr.filter(messages, (message) => retainedMessageIds.has(message.id));
 }

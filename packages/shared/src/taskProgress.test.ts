@@ -5,7 +5,7 @@ import {
   latestTaskSteps,
   summarizeTaskProgress,
   taskStepsFromPayload,
-} from "./taskProgress";
+} from "./taskProgress.ts";
 
 const turnId = TurnId.make("turn-1");
 const steps = [
