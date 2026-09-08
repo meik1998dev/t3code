@@ -30,6 +30,7 @@ import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import {
   buildForkTranscript,
   resolveForkPointCheckpointRef,
+  resolveLatestCompactionAt,
 } from "@t3tools/client-runtime/fork-transcript";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import { type CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
@@ -3021,6 +3022,15 @@ export default function ChatView(props: ChatViewProps) {
         activeThread.checkpoints,
       );
       if (checkpointRef) refs.set(message.id, checkpointRef);
+    }
+    return refs;
+  }, [activeThread, timelineMessages]);
+  const forkCompactionAtByMessageId = useMemo(() => {
+    const refs = new Map<MessageId, string>();
+    if (!activeThread) return refs;
+    for (const message of timelineMessages) {
+      const compactionAt = resolveLatestCompactionAt(activeThread.activities, message.createdAt);
+      if (compactionAt) refs.set(message.id, compactionAt);
     }
     return refs;
   }, [activeThread, timelineMessages]);
@@ -7513,7 +7523,12 @@ export default function ChatView(props: ChatViewProps) {
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
   const onForkMessage = useCallback(
-    async (messageId: MessageId, destination: "chat" | "workspace", startRef?: CheckpointRef) => {
+    async (
+      messageId: MessageId,
+      destination: "chat" | "workspace",
+      startRef?: CheckpointRef,
+      afterCompactionAt?: string | null,
+    ) => {
       if (!activeThread || !activeProjectRef || isWorking || isForkingMessage) return;
       if (destination === "workspace" && !startRef) return;
 
@@ -7524,6 +7539,7 @@ export default function ChatView(props: ChatViewProps) {
           sourceThread.title,
           sourceThread.messages.map((message) => ({ kind: "message", message })),
           messageId,
+          { afterCompactionAt: afterCompactionAt ?? null },
         );
         if (transcript === null) {
           toastManager.add({
@@ -7898,6 +7914,7 @@ export default function ChatView(props: ChatViewProps) {
                 revertTurnCountByAssistantMessageId={revertTurnCountByAssistantMessageId}
                 onRevertUserMessage={onRevertUserMessage}
                 forkCheckpointRefByMessageId={forkCheckpointRefByMessageId}
+                forkCompactionAtByMessageId={forkCompactionAtByMessageId}
                 onForkMessage={onForkMessage}
                 onUseArtifactTemplate={useArtifactTemplate}
                 isRevertingCheckpoint={isRevertingCheckpoint}
