@@ -38,7 +38,7 @@ describe("buildForkTranscript", () => {
     expect(buildForkTranscript("Source chat", [], "missing")).toBeNull();
   });
 
-  it("drops messages created at or before the compaction when forking after it", () => {
+  it("drops messages created before the compaction cut-off when forking after it", () => {
     const entries: ForkTranscriptEntry[] = [
       {
         kind: "message",
@@ -70,7 +70,7 @@ describe("buildForkTranscript", () => {
 
     expect(
       buildForkTranscript("Source chat", entries, "assistant-2", {
-        afterCompactionAt: "2026-01-01T00:02:00Z",
+        afterCompactionAt: "2026-01-01T00:03:00Z",
       }),
     ).toBe(
       [
@@ -88,19 +88,37 @@ describe("resolveLatestCompactionAt", () => {
     { kind: "tool", createdAt: "2026-01-01T00:03:00Z" },
     { kind: "context-compaction", createdAt: "2026-01-01T00:05:00Z" },
   ];
+  const messages = [
+    { role: "user" as const, createdAt: "2026-01-01T00:01:00Z" },
+    { role: "assistant" as const, createdAt: "2026-01-01T00:01:30Z" },
+    { role: "user" as const, createdAt: "2026-01-01T00:04:00Z" },
+    { role: "assistant" as const, createdAt: "2026-01-01T00:06:00Z" },
+  ];
 
-  it("picks the latest compaction at or before the fork point", () => {
-    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:04:00Z")).toBe(
-      "2026-01-01T00:02:00Z",
+  it("cuts at the user message that opened the turn reporting the compaction", () => {
+    expect(resolveLatestCompactionAt(activities, messages, "2026-01-01T00:06:00Z")).toBe(
+      "2026-01-01T00:04:00Z",
     );
-    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:06:00Z")).toBe(
+    expect(resolveLatestCompactionAt(activities, messages, "2026-01-01T00:03:00Z")).toBe(
+      "2026-01-01T00:01:00Z",
+    );
+  });
+
+  it("offers the compaction on the user message that opened its turn", () => {
+    expect(resolveLatestCompactionAt(activities, messages, "2026-01-01T00:04:00Z")).toBe(
+      "2026-01-01T00:04:00Z",
+    );
+  });
+
+  it("falls back to the marker time when no user message precedes it", () => {
+    expect(resolveLatestCompactionAt(activities, [], "2026-01-01T00:06:00Z")).toBe(
       "2026-01-01T00:05:00Z",
     );
   });
 
   it("returns null when nothing was compacted before the fork point", () => {
-    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:01:00Z")).toBeNull();
-    expect(resolveLatestCompactionAt([], "2026-01-01T00:09:00Z")).toBeNull();
+    expect(resolveLatestCompactionAt(activities, messages, "2026-01-01T00:00:30Z")).toBeNull();
+    expect(resolveLatestCompactionAt([], messages, "2026-01-01T00:09:00Z")).toBeNull();
   });
 });
 
