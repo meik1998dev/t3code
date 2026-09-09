@@ -1693,11 +1693,17 @@ pending_approval_requests AS (
             AND kind = 'user-input.requested'
           UNION ALL
           SELECT activity_id FROM latest_task_plan
+          UNION ALL
+          SELECT activity_id
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND kind = 'context-compaction'
         )
   `;
 
-  // Blocking requests and the current task list must survive the recent
-  // activity window. Pin at most one unresolved row per request and one plan.
+  // Blocking requests, compaction markers, and the current task list must
+  // survive the recent activity window. Pin at most one unresolved row per
+  // request and one plan; compaction markers are lightweight fork metadata.
   const listPinnedThreadActivityRowsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityDbRowSchema,

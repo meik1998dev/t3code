@@ -2542,6 +2542,30 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
     }),
   );
 
+  it.effect("keeps old context compaction markers in a paginated detail window", () =>
+    Effect.gen(function* () {
+      yield* seedFanOutThread();
+      const sql = yield* SqlClient.SqlClient;
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, created_at
+        ) VALUES (
+          'old-compaction', 'thread-w', NULL, 'info', 'context-compaction',
+          'Context compacted', '{"state":"compacted"}', '2026-02-28T00:00:00.000Z'
+        )
+      `;
+
+      const snapshot = yield* snapshotQuery.getThreadDetailSnapshot(threadW, { turnLimit: 2 });
+      assert.equal(snapshot._tag, "Some");
+      if (snapshot._tag === "Some") {
+        assert.isTrue(
+          snapshot.value.thread.activities.some((activity) => activity.id === "old-compaction"),
+        );
+      }
+    }),
+  );
+
   it.effect("subagent turns between user turns ride along inside the window", () =>
     Effect.gen(function* () {
       yield* seedFanOutThread();

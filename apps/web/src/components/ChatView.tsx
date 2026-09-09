@@ -7718,11 +7718,22 @@ export default function ChatView(props: ChatViewProps) {
       setIsForkingMessage(true);
       try {
         const sourceThread = await loadFullThreadHistory(routeThreadRef);
+        const fullForkPoint = sourceThread.messages.find((message) => message.id === messageId);
+        const resolvedAfterCompactionAt =
+          afterCompactionAt === undefined ||
+          afterCompactionAt === null ||
+          fullForkPoint === undefined
+            ? (afterCompactionAt ?? null)
+            : resolveLatestCompactionAt(
+                sourceThread.activities,
+                sourceThread.messages,
+                fullForkPoint.createdAt,
+              );
         const transcript = buildForkTranscript(
           sourceThread.title,
           sourceThread.messages.map((message) => ({ kind: "message", message })),
           messageId,
-          { afterCompactionAt: afterCompactionAt ?? null },
+          { afterCompactionAt: resolvedAfterCompactionAt },
         );
         if (transcript === null) {
           toastManager.add({

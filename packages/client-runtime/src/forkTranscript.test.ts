@@ -120,6 +120,28 @@ describe("resolveLatestCompactionAt", () => {
     expect(resolveLatestCompactionAt(activities, messages, "2026-01-01T00:00:30Z")).toBeNull();
     expect(resolveLatestCompactionAt([], messages, "2026-01-01T00:09:00Z")).toBeNull();
   });
+
+  it("does not apply a future compaction to a message before its turn starts", () => {
+    expect(
+      resolveLatestCompactionAt(
+        [{ kind: "context-compaction", createdAt: "2026-01-01T00:03:30Z" }],
+        [
+          { role: "user", createdAt: "2026-01-01T00:01:00Z" },
+          { role: "assistant", createdAt: "2026-01-01T00:02:00Z" },
+          { role: "user", createdAt: "2026-01-01T00:03:00Z" },
+        ],
+        "2026-01-01T00:02:00Z",
+      ),
+    ).toBeNull();
+  });
+
+  it("falls back to the marker only after the marker is reached", () => {
+    const activity = [{ kind: "context-compaction", createdAt: "2026-01-01T00:05:00Z" }];
+    expect(resolveLatestCompactionAt(activity, [], "2026-01-01T00:04:00Z")).toBeNull();
+    expect(resolveLatestCompactionAt(activity, [], "2026-01-01T00:05:00Z")).toBe(
+      "2026-01-01T00:05:00Z",
+    );
+  });
 });
 
 describe("resolveForkPointCheckpointRef", () => {

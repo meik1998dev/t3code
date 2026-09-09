@@ -129,12 +129,18 @@ export function resolveLatestCompactionAt(
   let latest: string | null = null;
   for (const activity of activities) {
     if (activity.kind !== "context-compaction") continue;
-    let cutoff = activity.createdAt;
+    // Resolve the turn opener before comparing it with the fork point. If we
+    // first filter users by forkPointCreatedAt, a marker from a future turn
+    // can incorrectly reuse the previous turn's user message as its cutoff.
+    let turnStart: string | null = null;
     for (const message of messages) {
       if (message.role !== "user" || message.createdAt > activity.createdAt) continue;
-      if (message.createdAt > forkPointCreatedAt) continue;
-      cutoff = message.createdAt;
+      if (turnStart === null || message.createdAt > turnStart) turnStart = message.createdAt;
     }
+    // When the opener is outside a paginated message window, the marker is
+    // the safest provisional boundary. The fork handler resolves it again
+    // from the full thread before building the draft.
+    const cutoff = turnStart ?? activity.createdAt;
     if (cutoff > forkPointCreatedAt) continue;
     if (latest === null || cutoff > latest) latest = cutoff;
   }
