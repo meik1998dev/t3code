@@ -3158,7 +3158,11 @@ export default function ChatView(props: ChatViewProps) {
     const refs = new Map<MessageId, string>();
     if (!activeThread) return refs;
     for (const message of timelineMessages) {
-      const compactionAt = resolveLatestCompactionAt(activeThread.activities, message.createdAt);
+      const compactionAt = resolveLatestCompactionAt(
+        activeThread.activities,
+        timelineMessages,
+        message.createdAt,
+      );
       if (compactionAt) refs.set(message.id, compactionAt);
     }
     return refs;

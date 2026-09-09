@@ -14,9 +14,9 @@ export interface ForkTranscriptEntry {
 
 export interface ForkTranscriptOptions {
   /**
-   * ISO timestamp of a context compaction. Messages created at or before it
-   * are left out, so the new draft only carries the part of the chat the
-   * agent still had in context after compacting.
+   * ISO timestamp where the compacted part of the chat starts. Messages
+   * created before it are left out, so the new draft only carries the part
+   * of the chat the agent still had in context after compacting.
    */
   readonly afterCompactionAt?: string | null;
 }
@@ -43,7 +43,7 @@ export function buildForkTranscript(
     const isBeforeCompaction =
       afterCompactionAt !== null &&
       message.createdAt !== undefined &&
-      message.createdAt <= afterCompactionAt;
+      message.createdAt < afterCompactionAt;
     if (!isBeforeCompaction && (message.role === "user" || message.role === "assistant")) {
       const role = message.role === "user" ? "User" : "Assistant";
       blocks.push(`**${role}:**\n${message.text}`);
@@ -109,19 +109,34 @@ export interface ForkCompactionActivity {
   readonly createdAt: string;
 }
 
+export interface ForkCompactionMessage {
+  readonly role: "user" | "assistant" | "system";
+  readonly createdAt: string;
+}
+
 /**
- * Finds the latest context compaction that happened at or before the fork
- * point message. Returns null when the chat was never compacted before it.
+ * Finds where the compacted part of the chat starts for a fork at the given
+ * message. Providers report a compaction inside the turn that follows it, so
+ * the marker lands after the user message that opened that turn. The cut-off
+ * is that user message, which is what the agent still saw after compacting.
+ * Returns null when no compaction happened before the fork point.
  */
 export function resolveLatestCompactionAt(
   activities: ReadonlyArray<ForkCompactionActivity>,
+  messages: ReadonlyArray<ForkCompactionMessage>,
   forkPointCreatedAt: string,
 ): string | null {
   let latest: string | null = null;
   for (const activity of activities) {
     if (activity.kind !== "context-compaction") continue;
-    if (activity.createdAt > forkPointCreatedAt) continue;
-    if (latest === null || activity.createdAt > latest) latest = activity.createdAt;
+    let cutoff = activity.createdAt;
+    for (const message of messages) {
+      if (message.role !== "user" || message.createdAt > activity.createdAt) continue;
+      if (message.createdAt > forkPointCreatedAt) continue;
+      cutoff = message.createdAt;
+    }
+    if (cutoff > forkPointCreatedAt) continue;
+    if (latest === null || cutoff > latest) latest = cutoff;
   }
   return latest;
 }
