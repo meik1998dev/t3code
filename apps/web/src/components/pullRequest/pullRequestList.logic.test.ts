@@ -27,7 +27,9 @@ import {
   retainVisiblePullRequestStatsBatches,
   withDiffStat,
   resolveProjectScope,
+  resolveProjectScopeId,
   resolveQueryEnvironmentIds,
+  resolveScopedProjectIdsByEnvironment,
   resolveSelectedEnvironmentId,
   type EnvironmentPullRequestEntry,
 } from "./pullRequestList.logic";
@@ -386,7 +388,7 @@ describe("carrying rows already read into filters nothing has answered yet", () 
     entry({ number: 4, host: "github.acme.dev" }),
     entry({ number: 5, projectId: "project-2" as PullRequestListEntry["projectId"] }),
   ];
-  const everything = { state: "all", projectId: undefined, host: undefined } as const;
+  const everything = { state: "all", projectIds: [], host: undefined } as const;
 
   it("never lets a merged pull request sit under Open", () => {
     expect(
@@ -412,10 +414,19 @@ describe("carrying rows already read into filters nothing has answered yet", () 
 
   it("narrows to one project", () => {
     expect(
-      narrowPullRequestsToFilters(rows, { ...everything, projectId: "project-2" }).map(
+      narrowPullRequestsToFilters(rows, { ...everything, projectIds: ["project-2"] }).map(
         (row) => row.number,
       ),
     ).toEqual([5]);
+  });
+
+  it("keeps every project the scope names, not only the first", () => {
+    expect(
+      narrowPullRequestsToFilters(rows, {
+        ...everything,
+        projectIds: ["project-1", "project-2"],
+      }).map((row) => row.number),
+    ).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("holds on to everything when nothing narrows it", () => {
@@ -592,22 +603,36 @@ describe("reading qualifiers out of a typed query", () => {
 describe("resolveProjectScope", () => {
   const projects = [{ id: "p1" }, { id: "p2" }];
 
-  it("keeps an id the environment has", () => {
-    expect(resolveProjectScope("p2", projects, true)).toBe("p2");
+  it("keeps the ids the environment has", () => {
+    expect(resolveProjectScope(["p2"], projects, true)).toEqual(["p2"]);
+    expect(resolveProjectScope(["p1", "p2"], projects, true)).toEqual(["p1", "p2"]);
   });
 
-  it("drops an id from another environment", () => {
-    expect(resolveProjectScope("p9", projects, false)).toBe("p9");
-    expect(resolveProjectScope("p9", projects, true)).toBeUndefined();
+  it("drops only the ids from another environment, keeping the rest of the scope", () => {
+    expect(resolveProjectScope(["p9"], projects, false)).toEqual(["p9"]);
+    expect(resolveProjectScope(["p1", "p9"], projects, true)).toEqual(["p1"]);
   });
 
-  it("drops an id once the environment is known to have no projects", () => {
-    expect(resolveProjectScope("p9", [], true)).toBeUndefined();
+  it("widens back to every project once nothing in the scope is held", () => {
+    expect(resolveProjectScope(["p9"], projects, true)).toEqual([]);
+    expect(resolveProjectScope(["p9"], [], true)).toEqual([]);
+    expect(resolveProjectScope([], projects, true)).toEqual([]);
+    expect(resolveProjectScope(undefined, projects, true)).toEqual([]);
   });
 
-  it("keeps an id while the projects are still unknown", () => {
+  it("keeps the ids while the projects are still unknown", () => {
     // Dropping here would list every project for a moment before narrowing back down.
-    expect(resolveProjectScope("p9", [], false)).toBe("p9");
+    expect(resolveProjectScope(["p9"], [], false)).toEqual(["p9"]);
+  });
+
+  it("folds a repeated id so the scope reads the same however the URL spelled it", () => {
+    expect(resolveProjectScope(["p1", "p1"], projects, true)).toEqual(["p1"]);
+  });
+
+  it("resolves a single id the same way for a selected row", () => {
+    expect(resolveProjectScopeId("p1", projects, true)).toBe("p1");
+    expect(resolveProjectScopeId("p9", projects, true)).toBeUndefined();
+    expect(resolveProjectScopeId(undefined, projects, true)).toBeUndefined();
   });
 });
 
@@ -1030,7 +1055,7 @@ describe("remembered pull request list controls", () => {
       involvement: "reviewing",
       state: "merged",
       environmentId: "env-1" as EnvironmentId,
-      projectId: "project-1" as ProjectId,
+      projectIds: ["project-1" as ProjectId, "project-2" as ProjectId],
       host: "github.com",
       q: "workflow",
       draft: "hide",
@@ -1043,6 +1068,19 @@ describe("remembered pull request list controls", () => {
 
     writePullRequestListPreferences(preferences, storage);
     expect(readPullRequestListPreferences(storage)).toEqual(preferences);
+  });
+
+  it("reads a single-project scope saved before several could be picked", () => {
+    const storage = makeStorage();
+    storage.setItem(
+      "t3.pullRequests.preferences",
+      JSON.stringify({ involvement: "all", state: "open", projectId: "project-1" }),
+    );
+    expect(readPullRequestListPreferences(storage)).toEqual({
+      involvement: "all",
+      state: "open",
+      projectIds: ["project-1"],
+    });
   });
 
   it("omits the default sort from storage", () => {
@@ -1293,21 +1331,23 @@ describe("which environments a listing should ask", () => {
 
   it("asks only the owning server once the project is unambiguous", () => {
     const projects = [{ id: "project-1", environmentId: ENV_2 }];
+    expect(resolveQueryEnvironmentIds(environmentIds, projects, ["project-1"], true)).toEqual([
+      ENV_2,
+    ]);
+  });
+
+  it("asks every server the scope reaches across", () => {
+    const projects = [
+      { id: "project-1", environmentId: ENV_1 },
+      { id: "project-2", environmentId: ENV_3 },
+    ];
     expect(
-      resolveQueryEnvironmentIds(
-        environmentIds,
-        projects,
-        { environmentId: ENV_2 },
-        "project-1",
-        true,
-      ),
-    ).toEqual([ENV_2]);
+      resolveQueryEnvironmentIds(environmentIds, projects, ["project-1", "project-2"], true),
+    ).toEqual([ENV_1, ENV_3]);
   });
 
   it("asks every environment when there is no project narrowing at all", () => {
-    expect(resolveQueryEnvironmentIds(environmentIds, [], undefined, undefined, true)).toEqual(
-      environmentIds,
-    );
+    expect(resolveQueryEnvironmentIds(environmentIds, [], [], true)).toEqual(environmentIds);
   });
 
   it("asks only the environments that actually hold an ambiguous bare id, never a third that doesn't", () => {
@@ -1317,31 +1357,66 @@ describe("which environments a listing should ask", () => {
     ];
     // Two servers can genuinely hold the same project id string; the third holds no such project
     // and asking it would return an unrelated project's rows rather than an honest empty answer.
-    expect(
-      resolveQueryEnvironmentIds(environmentIds, projects, undefined, "project-1", true),
-    ).toEqual([ENV_1, ENV_2]);
+    expect(resolveQueryEnvironmentIds(environmentIds, projects, ["project-1"], true)).toEqual([
+      ENV_1,
+      ENV_2,
+    ]);
   });
 
   it("asks nothing for a bare id no environment holds", () => {
     const projects = [{ id: "project-1", environmentId: ENV_1 }];
-    expect(
-      resolveQueryEnvironmentIds(environmentIds, projects, undefined, "project-9", true),
-    ).toEqual([]);
+    expect(resolveQueryEnvironmentIds(environmentIds, projects, ["project-9"], true)).toEqual([]);
   });
 
   it("asks every environment while the servers have not said what they hold yet", () => {
     // Nothing matches the id because nothing has been read yet, which is not the same answer as
     // no server holding it: reading none of them would show an empty page for a project that is
     // there.
-    expect(resolveQueryEnvironmentIds(environmentIds, [], undefined, "project-1", false)).toEqual(
+    expect(resolveQueryEnvironmentIds(environmentIds, [], ["project-1"], false)).toEqual(
       environmentIds,
     );
   });
 
   it("keeps the single-environment case unchanged", () => {
     const projects = [{ id: "project-1", environmentId: ENV_1 }];
-    expect(resolveQueryEnvironmentIds([ENV_1], projects, undefined, "project-1", true)).toEqual([
-      ENV_1,
+    expect(resolveQueryEnvironmentIds([ENV_1], projects, ["project-1"], true)).toEqual([ENV_1]);
+  });
+});
+
+describe("which of the scoped projects each server is asked about", () => {
+  const ENV_3 = "env-3" as EnvironmentId;
+  const environmentIds = [ENV_1, ENV_2, ENV_3];
+  const projects = [
+    { id: "project-1", environmentId: ENV_1 },
+    { id: "project-2", environmentId: ENV_1 },
+    { id: "project-3", environmentId: ENV_2 },
+  ];
+
+  it("hands each server only the scoped projects it holds", () => {
+    expect(
+      resolveScopedProjectIdsByEnvironment(
+        environmentIds,
+        projects,
+        ["project-1", "project-3"],
+        true,
+      ),
+    ).toEqual([
+      { environmentId: ENV_1, projectIds: ["project-1"] },
+      { environmentId: ENV_2, projectIds: ["project-3"] },
+    ]);
+  });
+
+  it("leaves out a server holding none of them rather than asking it an empty question", () => {
+    expect(
+      resolveScopedProjectIdsByEnvironment(environmentIds, projects, ["project-3"], true),
+    ).toEqual([{ environmentId: ENV_2, projectIds: ["project-3"] }]);
+  });
+
+  it("asks every server about the whole scope while the projects are still arriving", () => {
+    expect(resolveScopedProjectIdsByEnvironment(environmentIds, [], ["project-1"], false)).toEqual([
+      { environmentId: ENV_1, projectIds: ["project-1"] },
+      { environmentId: ENV_2, projectIds: ["project-1"] },
+      { environmentId: ENV_3, projectIds: ["project-1"] },
     ]);
   });
 });
