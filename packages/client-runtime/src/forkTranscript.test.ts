@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildForkTranscript, type ForkTranscriptEntry } from "./forkTranscript.js";
+import {
+  buildForkTranscript,
+  resolveLatestCompactionAt,
+  type ForkTranscriptEntry,
+} from "./forkTranscript.js";
 import { CheckpointRef, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { checkpointRefForThreadTurn } from "@t3tools/shared/git";
 import { resolveForkPointCheckpointRef } from "./forkTranscript.js";
@@ -32,6 +36,71 @@ describe("buildForkTranscript", () => {
 
   it("returns null when the fork point is not in the loaded entries", () => {
     expect(buildForkTranscript("Source chat", [], "missing")).toBeNull();
+  });
+
+  it("drops messages created at or before the compaction when forking after it", () => {
+    const entries: ForkTranscriptEntry[] = [
+      {
+        kind: "message",
+        message: { id: "user-1", role: "user", text: "Old", createdAt: "2026-01-01T00:00:00Z" },
+      },
+      {
+        kind: "message",
+        message: {
+          id: "assistant-1",
+          role: "assistant",
+          text: "Old answer",
+          createdAt: "2026-01-01T00:01:00Z",
+        },
+      },
+      {
+        kind: "message",
+        message: { id: "user-2", role: "user", text: "New", createdAt: "2026-01-01T00:03:00Z" },
+      },
+      {
+        kind: "message",
+        message: {
+          id: "assistant-2",
+          role: "assistant",
+          text: "New answer",
+          createdAt: "2026-01-01T00:04:00Z",
+        },
+      },
+    ];
+
+    expect(
+      buildForkTranscript("Source chat", entries, "assistant-2", {
+        afterCompactionAt: "2026-01-01T00:02:00Z",
+      }),
+    ).toBe(
+      [
+        "Forked from Source chat after a context compaction. Earlier messages are not included.",
+        "**User:**\nNew",
+        "**Assistant:**\nNew answer",
+      ].join("\n\n"),
+    );
+  });
+});
+
+describe("resolveLatestCompactionAt", () => {
+  const activities = [
+    { kind: "context-compaction", createdAt: "2026-01-01T00:02:00Z" },
+    { kind: "tool", createdAt: "2026-01-01T00:03:00Z" },
+    { kind: "context-compaction", createdAt: "2026-01-01T00:05:00Z" },
+  ];
+
+  it("picks the latest compaction at or before the fork point", () => {
+    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:04:00Z")).toBe(
+      "2026-01-01T00:02:00Z",
+    );
+    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:06:00Z")).toBe(
+      "2026-01-01T00:05:00Z",
+    );
+  });
+
+  it("returns null when nothing was compacted before the fork point", () => {
+    expect(resolveLatestCompactionAt(activities, "2026-01-01T00:01:00Z")).toBeNull();
+    expect(resolveLatestCompactionAt([], "2026-01-01T00:09:00Z")).toBeNull();
   });
 });
 

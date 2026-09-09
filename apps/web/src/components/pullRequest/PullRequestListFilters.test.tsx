@@ -3,7 +3,12 @@ import { CircleIcon } from "lucide-react";
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { PullRequestFiltersMenu, pullRequestProjectKey } from "./PullRequestListFilters";
+import {
+  PullRequestFiltersMenu,
+  PullRequestProjectFilter,
+  pullRequestProjectKey,
+  type PullRequestProjectOption,
+} from "./PullRequestListFilters";
 
 function findValueChange(
   node: ReactNode,
@@ -63,10 +68,9 @@ function menu(overrides: Partial<Parameters<typeof PullRequestFiltersMenu>[0]>) 
     serverOptions: [],
     onServer: () => undefined,
     projects: [],
-    projectId: undefined,
-    projectEnvironmentId: undefined,
+    projectIds: [],
     unavailable: new Map(),
-    onProject: () => undefined,
+    onProjects: () => undefined,
     ...overrides,
   });
 }
@@ -110,62 +114,6 @@ describe("pull request filters menu", () => {
     expect(onFilters).toHaveBeenCalledWith({ checks: "failing" });
   });
 
-  it("does not emit a change when the selected project is chosen again", () => {
-    const projectId = "project-1" as ProjectId;
-    const environmentId = "env-1" as EnvironmentId;
-    const onProject = vi.fn();
-    const view = menu({
-      projects: [
-        {
-          id: projectId,
-          environmentId,
-          title: "T3 Code",
-          workspaceRoot: "/work/t3code",
-        },
-      ],
-      projectId,
-      projectEnvironmentId: environmentId,
-      onProject,
-    });
-    const radioGroup = findValueChange(findLabeledGroup(view, "Project"));
-    expect(radioGroup).toBeDefined();
-
-    radioGroup?.props.onValueChange(pullRequestProjectKey({ id: projectId, environmentId }));
-    expect(onProject).not.toHaveBeenCalled();
-
-    radioGroup?.props.onValueChange("all");
-    expect(onProject).toHaveBeenCalledWith(undefined, undefined);
-  });
-
-  it("passes the environment along so a duplicate project id on another server is told apart", () => {
-    const projectId = "project-1" as ProjectId;
-    const onProject = vi.fn();
-    const view = menu({
-      projects: [
-        {
-          id: projectId,
-          environmentId: "env-1" as EnvironmentId,
-          title: "T3 Code · one",
-          workspaceRoot: "/work/t3code-1",
-        },
-        {
-          id: projectId,
-          environmentId: "env-2" as EnvironmentId,
-          title: "T3 Code · two",
-          workspaceRoot: "/work/t3code-2",
-        },
-      ],
-      onProject,
-    });
-    const radioGroup = findValueChange(findLabeledGroup(view, "Project"));
-    expect(radioGroup).toBeDefined();
-
-    radioGroup?.props.onValueChange(
-      pullRequestProjectKey({ id: projectId, environmentId: "env-2" as EnvironmentId }),
-    );
-    expect(onProject).toHaveBeenCalledWith(projectId, "env-2");
-  });
-
   it("does not collide when environment and project ids contain spaces", () => {
     expect(
       pullRequestProjectKey({
@@ -178,5 +126,177 @@ describe("pull request filters menu", () => {
         id: "b c" as ProjectId,
       }),
     );
+  });
+});
+
+/** Every checkbox row in a rendered subtree, keyed by the title it shows. */
+function findCheckboxes(node: ReactNode): Map<
+  string,
+  {
+    readonly checked: boolean;
+    readonly disabled: boolean;
+    readonly toggle: (next: boolean) => void;
+  }
+> {
+  const found = new Map<
+    string,
+    {
+      readonly checked: boolean;
+      readonly disabled: boolean;
+      readonly toggle: (next: boolean) => void;
+    }
+  >();
+  const walk = (current: ReactNode, label: string | undefined) => {
+    for (const child of Children.toArray(current)) {
+      if (!isValidElement(child)) continue;
+      const props = child.props as {
+        readonly children?: ReactNode;
+        readonly checked?: boolean;
+        readonly disabled?: boolean;
+        readonly onCheckedChange?: (next: boolean) => void;
+        /** A row that carries a tooltip hands its own element over as this. */
+        readonly render?: ReactNode;
+      };
+      const title = typeof child.key === "string" ? child.key : label;
+      if (props.onCheckedChange) {
+        found.set(textOf(props.children), {
+          checked: props.checked === true,
+          disabled: props.disabled === true,
+          toggle: props.onCheckedChange,
+        });
+        continue;
+      }
+      walk(props.children, title);
+      if (props.render !== undefined) walk(props.render, title);
+    }
+  };
+  walk(node, undefined);
+  return found;
+}
+
+/** The visible words of a subtree, joined, so a row can be found by what it reads as. */
+function textOf(node: ReactNode): string {
+  const parts: Array<string> = [];
+  const walk = (current: ReactNode) => {
+    for (const child of Children.toArray(current)) {
+      if (typeof child === "string") {
+        parts.push(child);
+        continue;
+      }
+      if (!isValidElement(child)) continue;
+      walk((child.props as { readonly children?: ReactNode }).children);
+    }
+  };
+  walk(node);
+  return parts.join(" ").trim();
+}
+
+/** The one row that clears the whole scope, invoked the way a press would. */
+function findResetRow(node: ReactNode): (() => void) | undefined {
+  for (const child of Children.toArray(node)) {
+    if (!isValidElement(child)) continue;
+    const props = child.props as {
+      readonly children?: ReactNode;
+      readonly onClick?: (event: { preventDefault: () => void }) => void;
+    };
+    if (props.onClick && textOf(props.children).includes("All projects")) {
+      const onClick = props.onClick;
+      return () => onClick({ preventDefault: () => undefined });
+    }
+    const nested = findResetRow(props.children);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+const project = (id: string, environmentId: string, title: string): PullRequestProjectOption => ({
+  id: id as ProjectId,
+  environmentId: environmentId as EnvironmentId,
+  title,
+  workspaceRoot: `/work/${id}`,
+});
+
+function projectFilter(overrides: Partial<Parameters<typeof PullRequestProjectFilter>[0]>) {
+  return PullRequestProjectFilter({
+    projects: [],
+    selected: new Set(),
+    unavailable: new Map(),
+    onChange: () => undefined,
+    ...overrides,
+  });
+}
+
+describe("pull request project filter", () => {
+  const web = project("project-1", "env-1", "Web");
+  const server = project("project-2", "env-1", "Server");
+
+  it("adds a project to the ones already picked rather than replacing them", () => {
+    const onChange = vi.fn();
+    const rows = findCheckboxes(
+      projectFilter({
+        projects: [web, server],
+        selected: new Set([pullRequestProjectKey(web)]),
+        onChange,
+      }),
+    );
+
+    expect(rows.get("Web")?.checked).toBe(true);
+    expect(rows.get("Server")?.checked).toBe(false);
+
+    rows.get("Server")?.toggle(true);
+    expect(onChange).toHaveBeenCalledWith([web, server]);
+  });
+
+  it("removes only the project that was unchecked", () => {
+    const onChange = vi.fn();
+    const rows = findCheckboxes(
+      projectFilter({
+        projects: [web, server],
+        selected: new Set([pullRequestProjectKey(web), pullRequestProjectKey(server)]),
+        onChange,
+      }),
+    );
+
+    rows.get("Web")?.toggle(false);
+    expect(onChange).toHaveBeenCalledWith([server]);
+  });
+
+  it("clears the whole scope from its own row, and stays quiet when nothing is picked", () => {
+    const onChange = vi.fn();
+    findResetRow(projectFilter({ projects: [web, server], onChange }))?.();
+    expect(onChange).not.toHaveBeenCalled();
+
+    findResetRow(
+      projectFilter({
+        projects: [web, server],
+        selected: new Set([pullRequestProjectKey(web)]),
+        onChange,
+      }),
+    )?.();
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it("refuses a project whose repository could not be read", () => {
+    const rows = findCheckboxes(
+      projectFilter({
+        projects: [web, server],
+        unavailable: new Map([[pullRequestProjectKey(server), "The remote could not be read."]]),
+      }),
+    );
+
+    expect(rows.get("Server Unavailable")?.disabled).toBe(true);
+    expect(rows.get("Web")?.disabled).toBe(false);
+  });
+
+  it("keeps one project id held by two servers as two rows", () => {
+    const shared = project("project-1", "env-2", "Web \u00b7 two");
+    const onChange = vi.fn();
+    const rows = findCheckboxes(
+      projectFilter({ projects: [web, shared], selected: new Set(), onChange }),
+    );
+
+    expect(rows.size).toBe(2);
+    rows.get("Web \u00b7 two")?.toggle(true);
+    expect(onChange).toHaveBeenCalledWith([shared]);
   });
 });

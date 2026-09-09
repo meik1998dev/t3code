@@ -133,11 +133,6 @@ export function PullRequestSearchInput({
   );
 }
 
-/**
- * List narrowings live behind one filter control, separate from sorting. The trigger carries a
- * count whenever any filter is off its default, so a narrowed list is never a mystery.
- */
-const ALL_PROJECTS_VALUE = "all";
 /** MenuRadioGroup wants a string, so "every host" wears the one value no host can be. */
 const ALL_HOSTS_VALUE = "";
 /** The same trick for the servers, which are named by an id no empty string can collide with. */
@@ -145,8 +140,8 @@ const ALL_SERVERS_VALUE = "";
 /** The unset value of each narrowing group, which no filter of theirs is named after. */
 const UNFILTERED_VALUE = "all";
 /**
- * A project's own radio value, carrying the server along with the id: the id alone is only
- * unique within its own server, so two rows sharing one would otherwise both read as checked.
+ * A project's own row key, carrying the server along with the id: the id alone is only unique
+ * within its own server, so two rows sharing one would otherwise be the same row here.
  */
 export const pullRequestProjectKey = (project: {
   readonly id: ProjectId;
@@ -401,6 +396,140 @@ function PullRequestLabelFilter({
   );
 }
 
+/** What a project row is: enough to render it, and enough to hand back when it is picked. */
+export interface PullRequestProjectOption {
+  readonly id: ProjectId;
+  readonly environmentId: EnvironmentId;
+  readonly title: string;
+  readonly workspaceRoot: string;
+  readonly faviconPath?: string | null;
+  readonly projectIcon?: ProjectIconOverride | null;
+}
+
+/**
+ * Several projects at once, since a reader watching two repositories wants both lists and not
+ * two visits. "All projects" is the way back out, and is also what an empty selection means:
+ * narrowing to nothing would be an empty page with a filter that reads as if it were on.
+ *
+ * Projects that could not be read are sunk to the bottom and cannot be picked, so a selection
+ * never contains a row that can only answer with its own failure.
+ */
+export function PullRequestProjectFilter({
+  projects,
+  selected,
+  unavailable,
+  onChange,
+}: {
+  projects: ReadonlyArray<PullRequestProjectOption>;
+  /** The picked projects, by `pullRequestProjectKey`. Empty is every project. */
+  selected: ReadonlySet<string>;
+  unavailable: ReadonlyMap<string, string>;
+  onChange: (projects: ReadonlyArray<PullRequestProjectOption>) => void;
+}) {
+  const ordered = projects.toSorted(
+    (left, right) =>
+      Number(unavailable.has(pullRequestProjectKey(left))) -
+      Number(unavailable.has(pullRequestProjectKey(right))),
+  );
+  const picked = ordered.filter((project) => selected.has(pullRequestProjectKey(project)));
+  const summary =
+    picked.length === 0
+      ? "All"
+      : picked.length === 1
+        ? (picked[0]?.title ?? "All")
+        : `${picked.length} selected`;
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        {picked.length === 1 && picked[0] ? (
+          <PullRequestFilterOptionIcon
+            option={{
+              value: pullRequestProjectKey(picked[0]),
+              label: picked[0].title,
+              Icon: FolderGit2Icon,
+              favicon: {
+                environmentId: picked[0].environmentId,
+                cwd: picked[0].workspaceRoot,
+                faviconPath: picked[0].faviconPath ?? null,
+                projectIcon: picked[0].projectIcon ?? null,
+              },
+            }}
+          />
+        ) : (
+          <LayersIcon aria-hidden className="size-3.5" />
+        )}
+        <span className="flex-1">Project</span>
+        <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">{summary}</span>
+      </MenuSubTrigger>
+      <MenuSubPopup className="w-72">
+        <MenuItem
+          onClick={(event) => {
+            // Clearing is one press, and the menu stays open so the next pick follows it.
+            event.preventDefault();
+            if (picked.length > 0) onChange([]);
+          }}
+        >
+          <LayersIcon aria-hidden className="size-3.5" />
+          <span className="flex-1">All projects</span>
+        </MenuItem>
+        <MenuSeparator />
+        {ordered.length === 0 ? (
+          <MenuItem disabled>No projects in this view</MenuItem>
+        ) : (
+          ordered.map((project) => {
+            const key = pullRequestProjectKey(project);
+            const reason = unavailable.get(key);
+            const checked = selected.has(key);
+            const item = (
+              <MenuCheckboxItem
+                key={key}
+                className={`grid-cols-[1rem_minmax(0,1fr)] ${reason ? "data-disabled:pointer-events-auto" : ""}`}
+                checked={checked}
+                disabled={reason !== undefined}
+                onCheckedChange={(next) =>
+                  onChange(
+                    next
+                      ? [...picked, project]
+                      : picked.filter((candidate) => pullRequestProjectKey(candidate) !== key),
+                  )
+                }
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ProjectFavicon
+                    environmentId={project.environmentId}
+                    cwd={project.workspaceRoot}
+                    projectName={project.title}
+                    faviconPath={project.faviconPath ?? null}
+                    projectIcon={project.projectIcon ?? null}
+                    className="size-3.5"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{project.title}</span>
+                  {reason ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>
+                  ) : null}
+                </span>
+              </MenuCheckboxItem>
+            );
+            if (reason === undefined) return item;
+            return (
+              <Tooltip key={key}>
+                <TooltipTrigger render={item} />
+                <TooltipPopup side="top" className="max-w-80">
+                  {reason}
+                </TooltipPopup>
+              </Tooltip>
+            );
+          })
+        )}
+      </MenuSubPopup>
+    </MenuSub>
+  );
+}
+
+/**
+ * List narrowings live behind one filter control, separate from sorting. The trigger carries a
+ * count whenever any filter is off its default, so a narrowed list is never a mystery.
+ */
 export function PullRequestFiltersMenu({
   onOpenChange,
   state,
@@ -420,10 +549,9 @@ export function PullRequestFiltersMenu({
   serverOptions,
   onServer,
   projects,
-  projectId,
-  projectEnvironmentId,
+  projectIds,
   unavailable,
-  onProject,
+  onProjects,
 }: {
   onOpenChange?: (open: boolean) => void;
   state: PullRequestListState;
@@ -452,28 +580,21 @@ export function PullRequestFiltersMenu({
   serverOptions: ReadonlyArray<PullRequestFilterOption<string>>;
   onServer: (server: EnvironmentId | undefined) => void;
   /** The projects of every connected environment, each carrying the one its favicon is read from. */
-  projects: ReadonlyArray<{
-    readonly id: ProjectId;
-    readonly environmentId: EnvironmentId;
-    readonly title: string;
-    readonly workspaceRoot: string;
-    readonly faviconPath?: string | null | undefined;
-    readonly projectIcon?: ProjectIconOverride | null | undefined;
-  }>;
-  projectId: ProjectId | undefined;
+  projects: ReadonlyArray<PullRequestProjectOption>;
   /**
-   * The server the selected project belongs to. A project id is only unique within its own
-   * server, so without this two rows sharing an id would both read as checked here.
+   * The projects the list is scoped to, by id. Empty is every project. An id names a project
+   * only within its own server, so where two servers hold one id both rows read as picked —
+   * the server filter above is what tells those apart, and picking on one server sets it.
    */
-  projectEnvironmentId: EnvironmentId | undefined;
+  projectIds: ReadonlyArray<ProjectId>;
   /**
    * Projects whose repository could not be read this time round. They are named here, where
    * the reader is already choosing between projects, rather than as a count above the list
    * that says something is missing without saying which.
    */
   unavailable: ReadonlyMap<string, string>;
-  /** The environment comes with the project id, since picking a row picks a specific server's copy of it. */
-  onProject: (projectId: ProjectId | undefined, environmentId: EnvironmentId | undefined) => void;
+  /** The whole new selection, each project carrying the server whose copy of it was picked. */
+  onProjects: (projects: ReadonlyArray<PullRequestProjectOption>) => void;
 }) {
   const selectedLabels = (filters.labels ?? []).flatMap((group) => group);
   const filterCount = [
@@ -481,7 +602,7 @@ export function PullRequestFiltersMenu({
     involvement !== "all",
     host,
     server,
-    projectId,
+    projectIds.length > 0,
     filters.draft,
     filters.review,
     filters.checks,
@@ -498,33 +619,14 @@ export function PullRequestFiltersMenu({
     updateFilters({
       [key]: value === UNFILTERED_VALUE ? undefined : value,
     } as Partial<PullRequestListFilters>);
-  const projectValue =
-    projectId === undefined || projectEnvironmentId === undefined
-      ? ALL_PROJECTS_VALUE
-      : pullRequestProjectKey({ id: projectId, environmentId: projectEnvironmentId });
-  const projectOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: ALL_PROJECTS_VALUE, label: "All projects", Icon: LayersIcon },
-    ...projects
-      .toSorted(
-        (left, right) =>
-          Number(unavailable.has(pullRequestProjectKey(left))) -
-          Number(unavailable.has(pullRequestProjectKey(right))),
-      )
-      .map((project) => ({
-        value: pullRequestProjectKey(project),
-        label: project.title,
-        Icon: FolderGit2Icon,
-        favicon: {
-          environmentId: project.environmentId,
-          cwd: project.workspaceRoot,
-          faviconPath: project.faviconPath ?? null,
-          projectIcon: project.projectIcon ?? null,
-        },
-        ...(unavailable.has(pullRequestProjectKey(project))
-          ? { unavailable: unavailable.get(pullRequestProjectKey(project)) }
-          : {}),
-      })),
-  ];
+  // Which rows read as picked. Keyed by server as well as id so the set matches the rows, and
+  // built from the ids alone because that is all the scope carries.
+  const scopedProjects = new Set(projectIds);
+  const selectedProjectKeys = new Set(
+    projects
+      .filter((project) => scopedProjects.has(project.id))
+      .map((project) => pullRequestProjectKey(project)),
+  );
   return (
     <Menu onOpenChange={onOpenChange}>
       <MenuTrigger
@@ -614,15 +716,11 @@ export function PullRequestFiltersMenu({
           </>
         ) : null}
         <MenuSeparator />
-        <PullRequestFilterRadioSubmenu
-          label="Project"
-          value={projectValue}
-          options={projectOptions}
-          onChange={(next) => {
-            const project = projects.find((candidate) => pullRequestProjectKey(candidate) === next);
-            if (project) onProject(project.id, project.environmentId);
-            else if (projectId !== undefined) onProject(undefined, undefined);
-          }}
+        <PullRequestProjectFilter
+          projects={projects}
+          selected={selectedProjectKeys}
+          unavailable={unavailable}
+          onChange={onProjects}
         />
       </MenuPopup>
     </Menu>

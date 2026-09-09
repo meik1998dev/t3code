@@ -354,14 +354,16 @@ export function narrowPullRequestsToFilters<Entry extends PullRequestListEntry>(
   entries: ReadonlyArray<Entry>,
   filters: {
     readonly state: PullRequestListState;
-    readonly projectId: string | undefined;
+    /** The projects the list is scoped to; empty is every project rather than none. */
+    readonly projectIds: ReadonlyArray<string>;
     readonly host: string | undefined;
   },
 ): ReadonlyArray<Entry> {
+  const scope = new Set(filters.projectIds);
   return entries.filter(
     (entry) =>
       (filters.state === "all" || entry.state === filters.state) &&
-      (filters.projectId === undefined || entry.projectId === filters.projectId) &&
+      (scope.size === 0 || scope.has(entry.projectId)) &&
       (filters.host === undefined || entry.host === filters.host),
   );
 }
@@ -873,22 +875,44 @@ export function writePullRequestListSnapshot(
 }
 
 /**
- * The project scope to actually ask for. A `projectId` in the URL outlives the environment it
- * came from, and one from elsewhere narrows the listing to nothing — an empty page with no
- * visible filter explaining it, since the switcher has no such project to show as selected. So
- * an id the environment does not have is dropped.
+ * The project scope to actually ask for. A project id in the URL outlives the environment it came
+ * from, and one from elsewhere narrows the listing to nothing — an empty page with no visible
+ * filter explaining it, since the switcher has no such project to show as selected. So an id the
+ * environment does not have is dropped, and a scope left with nothing is every project again.
  *
- * Until `projectsKnown`, the id is kept rather than dropped: an environment that has not
+ * Until `projectsKnown`, the ids are kept rather than dropped: an environment that has not
  * reported yet is not the same as one without the project, and dropping first would show every
  * project's pull requests for a moment before narrowing back down.
+ *
+ * Duplicates are folded so the scope reads the same however the URL spelled it.
  */
 export function resolveProjectScope<Id extends string>(
+  projectIds: ReadonlyArray<Id> | undefined,
+  projects: ReadonlyArray<{ readonly id: string }>,
+  projectsKnown: boolean,
+): ReadonlyArray<Id> {
+  if (projectIds === undefined || projectIds.length === 0) return EMPTY_PROJECT_SCOPE;
+  const unique = [...new Set(projectIds)];
+  if (!projectsKnown) return unique;
+  const held = new Set(projects.map((project) => project.id));
+  const scoped = unique.filter((projectId) => held.has(projectId));
+  return scoped.length === 0 ? EMPTY_PROJECT_SCOPE : scoped;
+}
+
+/** One frozen empty scope, so an unscoped page keeps the same identity between renders. */
+const EMPTY_PROJECT_SCOPE: ReadonlyArray<never> = [];
+
+/** The same rule for a single id, which is what a selected row is named by. */
+export function resolveProjectScopeId<Id extends string>(
   projectId: Id | undefined,
   projects: ReadonlyArray<{ readonly id: string }>,
   projectsKnown: boolean,
 ): Id | undefined {
-  if (projectId === undefined || !projectsKnown) return projectId;
-  return projects.some((project) => project.id === projectId) ? projectId : undefined;
+  return resolveProjectScope(
+    projectId === undefined ? undefined : [projectId],
+    projects,
+    projectsKnown,
+  )[0];
 }
 
 /**
@@ -923,22 +947,39 @@ export function findScopedProject<
 export function resolveQueryEnvironmentIds<Id extends string>(
   environmentIds: ReadonlyArray<Id>,
   projects: ReadonlyArray<{ readonly id: string; readonly environmentId: Id }>,
-  scopedProject: { readonly environmentId: Id } | undefined,
-  scopedProjectId: string | undefined,
+  scopedProjectIds: ReadonlyArray<string>,
   projectsKnown: boolean,
 ): ReadonlyArray<Id> {
-  if (scopedProject !== undefined) {
-    return environmentIds.filter((environmentId) => environmentId === scopedProject.environmentId);
-  }
   // Before the servers have said what they hold, an id nothing matches is an id nothing has been
   // asked about yet — reading none of them would show an empty page for a project that is there.
-  if (scopedProjectId === undefined || !projectsKnown) return environmentIds;
+  if (scopedProjectIds.length === 0 || !projectsKnown) return environmentIds;
+  const scope = new Set(scopedProjectIds);
   const holders = new Set(
-    projects
-      .filter((project) => project.id === scopedProjectId)
-      .map((project) => project.environmentId),
+    projects.filter((project) => scope.has(project.id)).map((project) => project.environmentId),
   );
   return environmentIds.filter((environmentId) => holders.has(environmentId));
+}
+
+/**
+ * Which of the scoped projects each server is asked about: the ids it actually holds. A server
+ * holding none of them is left out entirely rather than asked a question only it can answer with
+ * nothing, and a server that has not reported yet is asked about the whole scope, since an id it
+ * has not mentioned is not yet an id it lacks.
+ */
+export function resolveScopedProjectIdsByEnvironment<Id extends string, Project extends string>(
+  environmentIds: ReadonlyArray<Id>,
+  projects: ReadonlyArray<{ readonly id: Project; readonly environmentId: Id }>,
+  scopedProjectIds: ReadonlyArray<Project>,
+  projectsKnown: boolean,
+): ReadonlyArray<{ readonly environmentId: Id; readonly projectIds: ReadonlyArray<Project> }> {
+  const scope = new Set<string>(scopedProjectIds);
+  return environmentIds.flatMap((environmentId) => {
+    if (!projectsKnown) return [{ environmentId, projectIds: scopedProjectIds }];
+    const projectIds = projects
+      .filter((project) => project.environmentId === environmentId && scope.has(project.id))
+      .map((project) => project.id);
+    return projectIds.length === 0 ? [] : [{ environmentId, projectIds }];
+  });
 }
 
 /**

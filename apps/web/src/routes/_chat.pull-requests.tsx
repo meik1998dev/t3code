@@ -62,6 +62,8 @@ import {
   pullRequestEnvironmentSetKey,
   readPullRequestListSnapshot,
   resolveProjectScope,
+  resolveProjectScopeId,
+  resolveScopedProjectIdsByEnvironment,
   resolveQueryEnvironmentIds,
   resolveSelectedEnvironmentId,
   withDiffStat,
@@ -150,8 +152,11 @@ export interface PullRequestsSearch extends PullRequestListPreferences {
    * page has now — so a link written before servers could be chosen still opens the whole list.
    */
   readonly environmentId?: EnvironmentId;
-  /** Scopes the list. Separate from the selection so one cannot silently change the other. */
-  readonly projectId?: ProjectId;
+  /**
+   * Scopes the list to these projects. Separate from the selection so one cannot silently change
+   * the other. Absent is every project, which is also what an empty list means.
+   */
+  readonly projectIds?: ReadonlyArray<ProjectId>;
   /**
    * Narrows the list to one host, named as the host itself: two GitHub installs are two
    * accounts, and their shared provider kind cannot tell them apart. Absent means every host.
@@ -221,6 +226,11 @@ const EMPTY_PREVIEW_DESKTOP_STATE = {};
 const EMPTY_TERMINAL_LABELS = new Map<string, string>();
 const EMPTY_PENDING_SURFACES = new Set<string>();
 const MAX_SEARCH_LABEL_CANDIDATES = 100;
+const MAX_SEARCH_PROJECT_CANDIDATES = 200;
+/** What the listing contract accepts per read, so a longer URL cannot make an unanswerable one. */
+const MAX_SCOPED_PROJECTS = 100;
+/** Stable empty scope, so an unscoped page keeps one identity across renders. */
+const NO_SCOPED_PROJECTS: ReadonlyArray<ProjectId> = [];
 
 const pullRequestListEntryId = (target: Parameters<typeof pullRequestSurfaceId>[0]) =>
   pullRequestSurfaceId({ ...target, repository: target.repository.toLowerCase() });
@@ -244,6 +254,31 @@ function pullRequestSearchLabels(raw: unknown): Partial<Pick<PullRequestsSearch,
   return labels.length === 0 ? {} : { labels };
 }
 
+/**
+ * The project scope out of the URL. Read from `projectIds`, falling back to the single
+ * `projectId` links and saved preferences carried before several projects could be picked.
+ */
+function pullRequestSearchProjectIds(
+  raw: Record<string, unknown>,
+): Partial<Pick<PullRequestsSearch, "projectIds">> {
+  const values = Array.isArray(raw.projectIds)
+    ? raw.projectIds
+    : typeof raw.projectIds === "string"
+      ? [raw.projectIds]
+      : typeof raw.projectId === "string"
+        ? [raw.projectId]
+        : [];
+  const projectIds: Array<ProjectId> = [];
+  const seen = new Set<string>();
+  for (const value of values.slice(0, MAX_SEARCH_PROJECT_CANDIDATES)) {
+    if (typeof value !== "string" || value.length === 0 || seen.has(value)) continue;
+    seen.add(value);
+    projectIds.push(value.slice(0, 200) as ProjectId);
+    if (projectIds.length === MAX_SCOPED_PROJECTS) break;
+  }
+  return projectIds.length === 0 ? {} : { projectIds };
+}
+
 export const Route = createFileRoute("/_chat/pull-requests")({
   validateSearch: (raw: Record<string, unknown>): PullRequestsSearch => ({
     involvement:
@@ -259,9 +294,7 @@ export const Route = createFileRoute("/_chat/pull-requests")({
     ...(typeof raw.number === "number" && Number.isInteger(raw.number) && raw.number > 0
       ? { number: raw.number }
       : {}),
-    ...(typeof raw.projectId === "string" && raw.projectId
-      ? { projectId: raw.projectId as ProjectId }
-      : {}),
+    ...pullRequestSearchProjectIds(raw),
     ...(typeof raw.environmentId === "string" && raw.environmentId
       ? { environmentId: raw.environmentId as EnvironmentId }
       : {}),
@@ -357,19 +390,38 @@ function PullRequestsRouteView() {
       ),
     [environments],
   );
+  const scopedProjects = useMemo(() => {
+    // Two machines can hold the same repository, so a title the workspace carries twice is told
+    // apart by the environment it lives on rather than left as two identical rows.
+    const titleCounts = new Map<string, number>();
+    for (const project of projects) {
+      titleCounts.set(project.title, (titleCounts.get(project.title) ?? 0) + 1);
+    }
+    return projects
+      .map((project) => ({
+        id: project.id,
+        environmentId: project.environmentId,
+        title:
+          (titleCounts.get(project.title) ?? 0) > 1
+            ? `${project.title} · ${environmentLabels.get(project.environmentId) ?? project.environmentId}`
+            : project.title,
+        workspaceRoot: project.workspaceRoot,
+        faviconPath: project.faviconPath ?? null,
+        projectIcon: project.projectIcon ?? null,
+      }))
+      .toSorted((left, right) => left.title.localeCompare(right.title));
+  }, [environmentLabels, projects]);
   // The scope the URL asks for, once the environments have had their say about whether it exists.
-  const scopedProjectId = useMemo(
-    () => resolveProjectScope(search.projectId, projects, projectsKnown),
-    [projects, projectsKnown, search.projectId],
+  const scopedProjectIds = useMemo(
+    () => resolveProjectScope(search.projectIds, projects, projectsKnown),
+    [projects, projectsKnown, search.projectIds],
   );
-  const scopedProject = useMemo(
-    () => findScopedProject(projects, scopedEnvironmentId, scopedProjectId),
-    [projects, scopedEnvironmentId, scopedProjectId],
-  );
-  const scopedProjects = useMemo(
-    () => pullRequestFilterProjects(projects, environmentLabels, scopedProject),
-    [environmentLabels, projects, scopedProject],
-  );
+  /**
+   * The one project a scope of exactly one names, on the server holding it. Only a single-project
+   * scope has one to name, and it is what the selected row falls back to when a link carries no
+   * row of its own.
+   */
+  const scopedProjectId = scopedProjectIds.length === 1 ? scopedProjectIds[0] : undefined;
 
   // A link from a thread or the sidebar only knows the repository, so the owning project is
   // resolved here; an explicit `projectId` in the URL still wins.
@@ -396,7 +448,7 @@ function PullRequestsRouteView() {
   // The selection is resolved the same way the scope is: an id no connected environment has can
   // never be read here, and one that arrived before the projects did is not yet wrong.
   const linkedProjectId = useMemo(
-    () => resolveProjectScope(search.selectedProjectId, projects, projectsKnown),
+    () => resolveProjectScopeId(search.selectedProjectId, projects, projectsKnown),
     [projects, projectsKnown, search.selectedProjectId],
   );
   // The scope filter stands in as a last resort: a link can carry `projectId` with a repository
@@ -480,7 +532,9 @@ function PullRequestsRouteView() {
             ...(next.sort && next.sort !== "ready" ? { sort: next.sort } : {}),
             ...(next.repository ? { repository: next.repository } : {}),
             ...(next.number ? { number: next.number } : {}),
-            ...(next.projectId ? { projectId: next.projectId } : {}),
+            ...(next.projectIds && next.projectIds.length > 0
+              ? { projectIds: next.projectIds }
+              : {}),
             ...(next.environmentId ? { environmentId: next.environmentId } : {}),
             ...(next.host ? { host: next.host } : {}),
             ...(next.selectedProjectId ? { selectedProjectId: next.selectedProjectId } : {}),
@@ -565,15 +619,8 @@ function PullRequestsRouteView() {
   // asked: a server without it may still hold an unrelated project of its own under the same
   // string, and asking it would return that project's rows rather than an honest empty answer.
   const queryEnvironmentIds = useMemo(
-    () =>
-      resolveQueryEnvironmentIds(
-        environmentIds,
-        projects,
-        scopedProject,
-        scopedProjectId,
-        projectsKnown,
-      ),
-    [environmentIds, projects, projectsKnown, scopedProject, scopedProjectId],
+    () => resolveQueryEnvironmentIds(environmentIds, projects, scopedProjectIds, projectsKnown),
+    [environmentIds, projects, projectsKnown, scopedProjectIds],
   );
   /**
    * Which projects each server is asked about. Two servers holding the same repository would both
@@ -581,15 +628,24 @@ function PullRequestsRouteView() {
    * where the page's actions land — and the others are asked only for what is theirs alone. A
    * server left with nothing of its own is not read at all.
    *
-   * Left alone while the projects are still arriving, and while the scope is a single project:
-   * that path deliberately asks both servers holding an ambiguous id.
+   * A scope of chosen projects skips the split entirely: each server is asked for the scoped
+   * projects it holds, and where two of them hold the same repository the reader picked both
+   * rows on purpose. Left alone while the projects are still arriving.
    */
   const environmentQueries = useMemo((): ReadonlyArray<{
     readonly environmentId: EnvironmentId;
     readonly projectIds?: ReadonlyArray<ProjectId>;
   }> => {
+    if (scopedProjectIds.length > 0) {
+      return resolveScopedProjectIdsByEnvironment(
+        queryEnvironmentIds,
+        projects,
+        scopedProjectIds,
+        projectsKnown,
+      );
+    }
     const plain = queryEnvironmentIds.map((environmentId) => ({ environmentId }));
-    if (!projectsKnown || scopedProjectId !== undefined) return plain;
+    if (!projectsKnown) return plain;
     const assignment = assignProjectsToEnvironments(
       projects,
       queryEnvironmentIds,
@@ -607,7 +663,7 @@ function PullRequestsRouteView() {
       if (projectIds.length === (totals.get(environmentId) ?? 0)) return [{ environmentId }];
       return [{ environmentId, projectIds }];
     });
-  }, [projects, projectsKnown, queryEnvironmentIds, scopedProjectId]);
+  }, [projects, projectsKnown, queryEnvironmentIds, scopedProjectIds]);
   // Part of the scope, since a different split is a different question and its answers must not
   // be filed under the same page state.
   const assignmentKey = useMemo(
@@ -624,7 +680,7 @@ function PullRequestsRouteView() {
     .map(([environmentId, revision]) => `${environmentId}:${revision}`)
     .join("|");
   // Page size is view state, not a URL concern: a shared link should open the first page.
-  const scopeKey = `${environmentKey}:${assignmentKey}:${search.state}:${search.involvement}:${scopedProjectId ?? ""}:${search.host ?? ""}:${search.draft ?? ""}:${search.review ?? ""}:${search.checks ?? ""}:${search.author ?? ""}:${search.labels?.join("\u0000") ?? ""}`;
+  const scopeKey = `${environmentKey}:${assignmentKey}:${search.state}:${search.involvement}:${scopedProjectIds.join("+")}:${search.host ?? ""}:${search.draft ?? ""}:${search.review ?? ""}:${search.checks ?? ""}:${search.author ?? ""}:${search.labels?.join("\u0000") ?? ""}`;
   const filterKey = `${scopeKey}:${sentQuery}`;
   const statsScopeRef = useRef<PullRequestStatsScope>({ key: filterKey, policy: statsPolicy });
   statsScopeRef.current = { key: filterKey, policy: statsPolicy };
@@ -677,7 +733,6 @@ function PullRequestsRouteView() {
               // and a page of everything with the answer somewhere further down it.
               involvement: search.involvement,
               limit: pageSize,
-              ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
               ...(projectIds ? { projectIds } : {}),
               ...(search.host ? { host: search.host } : {}),
               ...(hasFilters ? { filters } : {}),
@@ -692,7 +747,6 @@ function PullRequestsRouteView() {
       hasFilters,
       pageSize,
       environmentQueries,
-      scopedProjectId,
       search.host,
       search.involvement,
       search.state,
@@ -721,21 +775,12 @@ function PullRequestsRouteView() {
           state: search.state,
           involvement: search.involvement,
           limit: PAGE_SIZE,
-          ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
           ...(projectIds ? { projectIds } : {}),
           ...(search.host ? { host: search.host } : {}),
           ...(menuFiltered ? { filters: menuFilters } : {}),
         } satisfies PullRequestListInput,
       })),
-    [
-      menuFiltered,
-      menuFilters,
-      environmentQueries,
-      scopedProjectId,
-      search.host,
-      search.involvement,
-      search.state,
-    ],
+    [menuFiltered, menuFilters, environmentQueries, search.host, search.involvement, search.state],
   );
   const baselineQuery = usePullRequestList(baselineTargets);
   const facetTargets = useMemo(() => {
@@ -746,12 +791,11 @@ function PullRequestsRouteView() {
         state: "all",
         involvement: search.involvement,
         limit: PAGE_SIZE,
-        ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
         ...(projectIds ? { projectIds } : {}),
         ...(search.host ? { host: search.host } : {}),
       } satisfies PullRequestListInput,
     }));
-  }, [environmentQueries, filtersOpen, scopedProjectId, search.host, search.involvement]);
+  }, [environmentQueries, filtersOpen, search.host, search.involvement]);
   const facetQuery = usePullRequestList(facetTargets);
   // The priority groups' own reads. The feed below is paginated by recency, so an older authored
   // or review-requested row can be missing from its first page; partitioned from these
@@ -780,7 +824,6 @@ function PullRequestsRouteView() {
           state: search.state,
           involvement,
           limit: PAGE_SIZE,
-          ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
           ...(projectIds ? { projectIds } : {}),
           ...(search.host ? { host: search.host } : {}),
           ...(menuFiltered ? { filters: menuFilters } : {}),
@@ -793,7 +836,6 @@ function PullRequestsRouteView() {
     partitionsWanted,
     baselineQuery.data,
     environmentQueries,
-    scopedProjectId,
     search.host,
     search.state,
   ]);
@@ -964,11 +1006,11 @@ function PullRequestsRouteView() {
     }
     const entries = narrowPullRequestsToFilters(loaded.data.entries, {
       state: search.state,
-      projectId: scopedProjectId,
+      projectIds: scopedProjectIds,
       host: search.host,
     });
     return entries.length === 0 ? null : { ...loaded.data, entries };
-  }, [environmentKey, loaded, scopeKey, scopedProjectId, search.host, search.state]);
+  }, [environmentKey, loaded, scopeKey, scopedProjectIds, search.host, search.state]);
   // With nothing typed and nothing to carry on from, the answer is taken from the read that is
   // keyed to exactly that question. Otherwise a search's answer lingers for a render after the
   // text has gone — the data cannot say which question it belongs to, but the read it came from
@@ -1598,7 +1640,7 @@ function PullRequestsRouteView() {
             menuFiltered ||
             search.state !== "open" ||
             search.involvement !== "all" ||
-            scopedProjectId !== undefined ||
+            scopedProjectIds.length > 0 ||
             search.host !== undefined
           }
           searching={typedQuery.length > 0 && (!querySettled || showingCarried)}
@@ -1750,17 +1792,26 @@ function PullRequestsRouteView() {
       serverOptions={serverMenuOptions}
       // Narrowing to one server drops a project scope belonging to another, which would
       // otherwise narrow the list to nothing with no visible filter to explain it.
-      onServer={(server) => updateListScope({ environmentId: server, projectId: undefined })}
+      onServer={(server) => updateListScope({ environmentId: server, projectIds: undefined })}
       projects={scopedProjects}
-      projectId={scopedProjectId}
-      projectEnvironmentId={scopedProject?.environmentId}
+      projectIds={search.projectIds ?? NO_SCOPED_PROJECTS}
       unavailable={unavailableProjects}
-      // The environment comes along with the project it belongs to, so a duplicate id on
-      // another server never gets narrowed to by mistake; picking "All projects" leaves the
-      // server scope as it was rather than clearing it.
-      onProject={(projectId, environmentId) =>
-        updateListScope(environmentId === undefined ? { projectId } : { projectId, environmentId })
-      }
+      // Picking projects that all live on one server scopes to that server too, so a duplicate
+      // id on another one is never narrowed to by mistake — the same tie the single-project
+      // filter had. A pick spanning servers has no single one to name and clears it instead,
+      // leaving the projects themselves to narrow the list. Clearing to "All projects" leaves
+      // the server scope as it was rather than widening the page behind the reader.
+      onProjects={(picked) => {
+        if (picked.length === 0) {
+          updateListScope({ projectIds: undefined });
+          return;
+        }
+        const environmentIdsPicked = new Set(picked.map((project) => project.environmentId));
+        updateListScope({
+          projectIds: picked.map((project) => project.id),
+          environmentId: environmentIdsPicked.size === 1 ? [...environmentIdsPicked][0] : undefined,
+        });
+      }}
     />
   );
   const columnProps = {

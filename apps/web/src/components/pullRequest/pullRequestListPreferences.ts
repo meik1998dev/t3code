@@ -22,7 +22,8 @@ export interface PullRequestListPreferences {
   readonly involvement: PullRequestInvolvement;
   readonly state: PullRequestListState;
   readonly environmentId?: EnvironmentId;
-  readonly projectId?: ProjectId;
+  /** The projects the list is scoped to. Absent or empty is every project. */
+  readonly projectIds?: ReadonlyArray<ProjectId>;
   readonly host?: string;
   readonly q?: string;
   readonly draft?: "only" | "hide";
@@ -47,6 +48,8 @@ const PullRequestListPreferencesSchema = Schema.Struct({
   involvement: PullRequestInvolvement,
   state: PullRequestListState,
   environmentId: Schema.optional(EnvironmentId),
+  projectIds: Schema.optional(Schema.Array(ProjectId).check(Schema.isMaxLength(100))),
+  /** What a single-project scope was saved as before several could be picked. Folded in below. */
   projectId: Schema.optional(ProjectId),
   host: Schema.optional(BoundedPreference),
   q: Schema.optional(BoundedPreference),
@@ -72,13 +75,25 @@ function resolvePreferenceStorage(
 
 /** Only list controls are remembered. The selected row remains a URL and right-panel concern. */
 export function pullRequestListPreferences(
-  search: PullRequestListPreferences | Schema.Schema.Type<typeof PullRequestListPreferencesSchema>,
+  search: (
+    | PullRequestListPreferences
+    | Schema.Schema.Type<typeof PullRequestListPreferencesSchema>
+  ) & {
+    /** Accepted so a saved single-project scope, or a link carrying one, still narrows. */
+    readonly projectId?: ProjectId | undefined;
+  },
 ): PullRequestListPreferences {
+  const projectIds =
+    search.projectIds && search.projectIds.length > 0
+      ? search.projectIds
+      : search.projectId
+        ? [search.projectId]
+        : undefined;
   return {
     involvement: search.involvement,
     state: search.state,
     ...(search.environmentId ? { environmentId: search.environmentId } : {}),
-    ...(search.projectId ? { projectId: search.projectId } : {}),
+    ...(projectIds ? { projectIds } : {}),
     ...(search.host ? { host: search.host } : {}),
     ...(search.q ? { q: search.q } : {}),
     ...(search.draft ? { draft: search.draft } : {}),

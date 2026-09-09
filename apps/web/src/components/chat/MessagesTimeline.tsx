@@ -33,6 +33,7 @@ const NOOP_FORK_MESSAGE = (
   _startRef?: CheckpointRef,
 ) => {};
 const EMPTY_FORK_CHECKPOINT_REFS = new Map<MessageId, CheckpointRef>();
+const EMPTY_FORK_COMPACTION_ATS = new Map<MessageId, string>();
 const EMPTY_ASSISTANT_REVERT_TURN_COUNTS = new Map<MessageId, number>();
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
@@ -216,10 +217,12 @@ interface TimelineRowSharedState {
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
   forkCheckpointRefByMessageId: ReadonlyMap<MessageId, CheckpointRef>;
+  forkCompactionAtByMessageId: ReadonlyMap<MessageId, string>;
   onForkMessage: (
     messageId: MessageId,
     destination: "chat" | "workspace",
     startRef?: CheckpointRef,
+    afterCompactionAt?: string | null,
   ) => void;
   onUseArtifactTemplate: (template: CodexArtifactTemplate) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -335,10 +338,12 @@ interface MessagesTimelineProps {
   revertTurnCountByAssistantMessageId?: ReadonlyMap<MessageId, number>;
   onRevertUserMessage?: (messageId: MessageId) => void;
   forkCheckpointRefByMessageId?: ReadonlyMap<MessageId, CheckpointRef>;
+  forkCompactionAtByMessageId?: ReadonlyMap<MessageId, string>;
   onForkMessage?: (
     messageId: MessageId,
     destination: "chat" | "workspace",
     startRef?: CheckpointRef,
+    afterCompactionAt?: string | null,
   ) => void;
   supportsConversationRollback: boolean;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
@@ -401,6 +406,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   revertTurnCountByAssistantMessageId = EMPTY_ASSISTANT_REVERT_TURN_COUNTS,
   onRevertUserMessage = NOOP_REVERT_USER_MESSAGE,
   forkCheckpointRefByMessageId = EMPTY_FORK_CHECKPOINT_REFS,
+  forkCompactionAtByMessageId = EMPTY_FORK_COMPACTION_ATS,
   onForkMessage = NOOP_FORK_MESSAGE,
   supportsConversationRollback,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
@@ -763,6 +769,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeThreadEnvironmentId,
       onRevertUserMessage,
       forkCheckpointRefByMessageId,
+      forkCompactionAtByMessageId,
       onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
@@ -789,6 +796,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeThreadEnvironmentId,
       onRevertUserMessage,
       forkCheckpointRefByMessageId,
+      forkCompactionAtByMessageId,
       onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
@@ -1558,6 +1566,8 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
   const checkpointRef = ctx.forkCheckpointRefByMessageId.get(messageId);
+  const compactionAt = ctx.forkCompactionAtByMessageId.get(messageId);
+  const forkDisabled = activity.isWorking || activity.isForkingMessage;
 
   return (
     <Menu>
@@ -1567,14 +1577,11 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
         <EllipsisIcon aria-hidden="true" className="size-3" />
       </MenuTrigger>
       <MenuPopup align="end">
-        <MenuItem
-          disabled={activity.isWorking || activity.isForkingMessage}
-          onClick={() => ctx.onForkMessage(messageId, "chat")}
-        >
+        <MenuItem disabled={forkDisabled} onClick={() => ctx.onForkMessage(messageId, "chat")}>
           Fork to new chat
         </MenuItem>
         <MenuItem
-          disabled={activity.isWorking || activity.isForkingMessage || checkpointRef === undefined}
+          disabled={forkDisabled || checkpointRef === undefined}
           onClick={() => {
             if (checkpointRef) ctx.onForkMessage(messageId, "workspace", checkpointRef);
           }}
@@ -1584,6 +1591,29 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
             <span className="ms-auto text-muted-foreground text-xs">No checkpoint</span>
           )}
         </MenuItem>
+        {compactionAt !== undefined && (
+          <>
+            <MenuItem
+              disabled={forkDisabled}
+              onClick={() => ctx.onForkMessage(messageId, "chat", undefined, compactionAt)}
+            >
+              Fork after compaction to new chat
+            </MenuItem>
+            <MenuItem
+              disabled={forkDisabled || checkpointRef === undefined}
+              onClick={() => {
+                if (checkpointRef) {
+                  ctx.onForkMessage(messageId, "workspace", checkpointRef, compactionAt);
+                }
+              }}
+            >
+              Fork after compaction to new workspace
+              {checkpointRef === undefined && (
+                <span className="ms-auto text-muted-foreground text-xs">No checkpoint</span>
+              )}
+            </MenuItem>
+          </>
+        )}
       </MenuPopup>
     </Menu>
   );
