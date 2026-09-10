@@ -8,7 +8,7 @@ export function readPreviewAnnotationTheme(): DesktopPreviewAnnotationTheme {
   const styles = getComputedStyle(root);
   return {
     colorScheme: root.classList.contains("dark") ? "dark" : "light",
-    radius: readVariable(styles, "--radius", "0.625rem"),
+    radius: readVariable(styles, "--radius", "0.1875rem"),
     background: readVariable(styles, "--background", "white"),
     foreground: readVariable(styles, "--contrast-foreground", "oklch(0.269 0 0)"),
     popover: readVariable(styles, "--popover", "white"),
