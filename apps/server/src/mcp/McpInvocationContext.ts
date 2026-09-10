@@ -7,7 +7,12 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-export type McpCapability = "preview";
+/**
+ * `preview` drives the collaborative browser. `orchestration` lets the agent
+ * start other threads; it is only granted to threads a person started, so an
+ * agent-started thread cannot start more.
+ */
+export type McpCapability = "preview" | "orchestration";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
@@ -24,7 +29,7 @@ export class McpInvocationContext extends Context.Service<
 >()("t3/mcp/McpInvocationContext") {}
 
 export const requireMcpCapability = Effect.fn("mcp.requireCapability")(function* (
-  capability: McpCapability,
+  capability: "preview",
 ) {
   const invocation = yield* McpInvocationContext;
   if (!invocation.capabilities.has(capability)) {

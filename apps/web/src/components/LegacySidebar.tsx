@@ -7,6 +7,7 @@ import {
   FolderPlusIcon,
   Globe2Icon,
   SearchIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -759,6 +760,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               </TooltipPopup>
             </Tooltip>
           )}
+          {thread.parentThreadId ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    role="img"
+                    aria-label="Started by an agent"
+                    className="inline-flex items-center justify-center text-muted-foreground/70"
+                  />
+                }
+              >
+                <SparklesIcon className="size-3" />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Started by an agent</TooltipPopup>
+            </Tooltip>
+          ) : null}
           <ThreadWorktreeIndicator thread={thread} />
           {terminalStatus && (
             <Tooltip>

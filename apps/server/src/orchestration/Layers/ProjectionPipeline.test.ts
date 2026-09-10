@@ -4268,4 +4268,61 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
       assert.deepEqual(cleanupFailureReceipts, [{ status: "accepted" }]);
     }),
   );
+
+  it.effect("keeps a child thread's parent through later thread updates", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const projectId = ProjectId.make("project-parent");
+      const parentThreadId = ThreadId.make("thread-parent");
+      const childThreadId = ThreadId.make("thread-child");
+      const threadFields = {
+        type: "thread.create" as const,
+        projectId,
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+        runtimeMode: "full-access" as const,
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      };
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-parent-project-create"),
+        projectId,
+        title: "Parent Project",
+        workspaceRoot: "/tmp/project-parent",
+        createdAt,
+      });
+      yield* engine.dispatch({
+        ...threadFields,
+        commandId: CommandId.make("cmd-parent-thread-create"),
+        threadId: parentThreadId,
+        title: "Parent",
+      });
+      yield* engine.dispatch({
+        ...threadFields,
+        commandId: CommandId.make("cmd-child-thread-create"),
+        threadId: childThreadId,
+        title: "Child",
+        parentThreadId,
+      });
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-child-thread-rename"),
+        threadId: childThreadId,
+        title: "Renamed child",
+      });
+
+      const snapshot = yield* snapshotQuery.getSnapshot();
+      const parents = Object.fromEntries(
+        snapshot.threads
+          .filter((thread) => thread.projectId === projectId)
+          .map((thread) => [thread.id, thread.parentThreadId]),
+      );
+      assert.deepEqual(parents, { [parentThreadId]: null, [childThreadId]: parentThreadId });
+    }),
+  );
 });

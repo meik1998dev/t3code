@@ -34,6 +34,7 @@ import {
   resolveThreadListV2Status,
   resolveThreadListV2SwipeActions,
 } from "./threadListV2";
+import { AgentStartedIcon } from "./agent-started-icon";
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
@@ -722,6 +723,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
+        {thread.parentThreadId ? <AgentStartedIcon selected={selected} /> : null}
         {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {pinnedRow ? (
           <SymbolView

@@ -501,6 +501,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -541,6 +542,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -583,6 +585,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -1074,6 +1077,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -2134,6 +2138,7 @@ pending_approval_requests AS (
                 interactionMode: row.interactionMode,
                 branch: row.branch,
                 worktreePath: row.worktreePath,
+                parentThreadId: row.parentThreadId ?? null,
                 branchPullRequest: row.branchPullRequest,
                 ...(row.linkedPullRequest === null
                   ? {}
@@ -2349,6 +2354,7 @@ pending_approval_requests AS (
                   interactionMode: row.interactionMode,
                   branch: row.branch,
                   worktreePath: row.worktreePath,
+                  parentThreadId: row.parentThreadId ?? null,
                   branchPullRequest: row.branchPullRequest,
                   ...(row.linkedPullRequest === null
                     ? {}
@@ -2494,6 +2500,7 @@ pending_approval_requests AS (
                       interactionMode: row.interactionMode,
                       branch: row.branch,
                       worktreePath: row.worktreePath,
+                      parentThreadId: row.parentThreadId ?? null,
                       branchPullRequest: row.branchPullRequest,
                       ...(row.linkedPullRequest === null
                         ? {}
@@ -2648,6 +2655,7 @@ pending_approval_requests AS (
                 interactionMode: row.interactionMode,
                 branch: row.branch,
                 worktreePath: row.worktreePath,
+                parentThreadId: row.parentThreadId ?? null,
                 branchPullRequest: row.branchPullRequest,
                 ...(row.linkedPullRequest === null
                   ? {}
@@ -2973,6 +2981,7 @@ pending_approval_requests AS (
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        parentThreadId: threadRow.value.parentThreadId ?? null,
         branchPullRequest: threadRow.value.branchPullRequest,
         ...(threadRow.value.linkedPullRequest === null
           ? {}
@@ -3257,6 +3266,7 @@ pending_approval_requests AS (
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        parentThreadId: threadRow.value.parentThreadId ?? null,
         branchPullRequest: threadRow.value.branchPullRequest,
         ...(threadRow.value.linkedPullRequest === null
           ? {}
