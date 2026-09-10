@@ -20,6 +20,35 @@ on Windows and Linux to start a new thread and immediately open another draft. T
 next draft keeps the workspace mode and base branch you selected. With **New
 worktree**, each background submission creates its own worktree.
 
+### Let an agent start threads
+
+An agent can start threads for you. Ask it to split a task list into one thread per task,
+or to hand off work that needs its own branch, a different model, or another project. The
+agent picks the project, model, and workspace. With **New worktree**, each thread gets its
+own branch and runs the project setup script.
+
+The agent also picks a model and effort for each task. To steer that choice, write your
+preferences in **Settings → General → Thread routing notes**, for example
+`Fable: architecture, hard bugs. Soul: default. Flash: renames, docs.` Changes apply to the
+next thread an agent starts. With the box empty, new threads reuse the agent's own model
+unless you name one.
+
+Any agent thread can read another thread's details and changed files, so you can ask for a
+review of a thread's work. The review thread reads the files in the reviewed thread's
+workspace, so it also sees changes that were not committed yet.
+
+An agent can also send a follow-up message to a thread it started, once that thread has
+finished its turn. These messages start with "Message from thread", so you can tell them
+apart from your own. An agent cannot message threads you started.
+
+These threads appear in the sidebar with a sparkles or bot icon. Open one to follow its
+work, reply, or approve requests like any other thread. A thread that an agent started
+cannot start threads of its own, and one thread can have at most five active threads it
+started. Settle or archive finished ones to start more.
+
+Agents use the same T3 Code tools as the collaborative browser, so this is available
+when agent browser access is on for the project in **Settings → Projects**.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

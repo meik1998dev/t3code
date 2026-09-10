@@ -4434,12 +4434,14 @@ const decodeBrowserAccessThreadShell = Schema.decodeUnknownEffect(OrchestrationT
 
 describe("agent browser access", () => {
   const revokedThreads: Array<ThreadId> = [];
+  const issuedCapabilities: Array<ReadonlyArray<string> | undefined> = [];
   const projectId = ProjectId.make("project-browser-access");
 
   const startSessionWith = (
     enableAgentBrowserAccess: boolean,
     threadId: ThreadId,
     projectOverride?: boolean,
+    parentThreadId: ThreadId | null = null,
   ) =>
     Effect.gen(function* () {
       const issued: Array<ThreadId> = [];
@@ -4483,6 +4485,7 @@ describe("agent browser access", () => {
                 runtimeMode: "full-access",
                 branch: null,
                 worktreePath: null,
+                parentThreadId,
                 latestTurn: null,
                 createdAt: "2026-01-01T00:00:00.000Z",
                 updatedAt: "2026-01-01T00:00:00.000Z",
@@ -4502,6 +4505,7 @@ describe("agent browser access", () => {
         issueMcpCredential: (request) =>
           Effect.sync(() => {
             issued.push(request.threadId);
+            issuedCapabilities.push(request.capabilities);
             return undefined;
           }),
         revokeMcpCredential: (revoked) => Effect.sync(() => void revokedThreads.push(revoked)),
@@ -4581,6 +4585,21 @@ describe("agent browser access", () => {
       const issued = yield* startSessionWith(true, threadId, false);
       assert.deepEqual(issued, []);
       assert.deepEqual(revokedThreads, [threadId]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("grants thread orchestration only to threads a person started", () =>
+    Effect.gen(function* () {
+      issuedCapabilities.length = 0;
+      yield* startSessionWith(true, asThreadId("thread-top-level"));
+      yield* startSessionWith(
+        true,
+        asThreadId("thread-agent-started"),
+        undefined,
+        asThreadId("thread-top-level"),
+      );
+
+      assert.deepEqual(issuedCapabilities, [["preview", "orchestration"], ["preview"]]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

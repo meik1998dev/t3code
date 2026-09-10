@@ -845,6 +845,8 @@ export const BackgroundActivitySettings = Schema.Struct({
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 
+export const THREAD_ROUTING_NOTES_MAX_LENGTH = 4000;
+
 export const ServerSettings = Schema.Struct({
   // Legacy token-by-token assistant output. Deliberately a fresh key (was
   // `enableAssistantStreaming`): decoding drops the old key, so everyone,
@@ -872,6 +874,14 @@ export const ServerSettings = Schema.Struct({
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /**
+   * Free-text guidance on which model and effort suit which kind of work. An
+   * agent that starts threads reads it through `list_models` on every call,
+   * so edits apply without restarting sessions. Empty means the agent reuses
+   * its own model. The length cap lives on the patch only, so a hand-edited
+   * settings file never fails to decode.
+   */
+  threadRoutingNotes: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   defaultAutoPull: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   defaultProjectScripts: Schema.Array(ProjectScript).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1147,6 +1157,9 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
+  ),
+  threadRoutingNotes: Schema.optionalKey(
+    TrimmedString.check(Schema.isMaxLength(THREAD_ROUTING_NOTES_MAX_LENGTH)),
   ),
   defaultAutoPull: Schema.optionalKey(Schema.Boolean),
   defaultProjectScripts: Schema.optionalKey(Schema.Array(ProjectScript)),

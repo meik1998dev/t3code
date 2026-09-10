@@ -3,6 +3,7 @@ import { Spinner } from "~/components/ui/spinner";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  BotIcon,
   ChevronRightIcon,
   FolderPlusIcon,
   Globe2Icon,
@@ -759,6 +760,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               </TooltipPopup>
             </Tooltip>
           )}
+          {thread.parentThreadId ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    role="img"
+                    aria-label="Started by an agent"
+                    className="inline-flex items-center justify-center text-muted-foreground/70"
+                  />
+                }
+              >
+                <BotIcon className="size-3" />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Started by an agent</TooltipPopup>
+            </Tooltip>
+          ) : null}
           <ThreadWorktreeIndicator thread={thread} />
           {terminalStatus && (
             <Tooltip>

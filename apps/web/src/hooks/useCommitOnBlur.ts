@@ -20,7 +20,7 @@ export function useCommitOnBlur(value: string, onCommit: (next: string) => void)
 
   return {
     value: draft ?? value,
-    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setDraft(event.target.value);
     },
     onFocus: () => {

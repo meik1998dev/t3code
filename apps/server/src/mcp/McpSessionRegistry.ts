@@ -14,6 +14,8 @@ import * as McpProviderSession from "./McpProviderSession.ts";
 export interface McpCredentialRequest {
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
+  /** Defaults to `preview` only. */
+  readonly capabilities?: ReadonlyArray<McpInvocationContext.McpCapability>;
 }
 
 export interface McpIssuedCredential {
@@ -128,7 +130,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         threadId: ThreadId.make(request.threadId),
         providerSessionId,
         providerInstanceId: ProviderInstanceId.make(request.providerInstanceId),
-        capabilities: new Set(["preview"]),
+        capabilities: new Set(request.capabilities ?? ["preview"]),
         issuedAt,
       };
       yield* SynchronizedRef.update(state, ({ records }) => {
@@ -142,6 +144,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           threadId: scope.threadId,
           providerSessionId,
           providerInstanceId: scope.providerInstanceId,
+          capabilities: [...scope.capabilities],
           endpoint,
           authorizationHeader: `Bearer ${rawToken}`,
         },
