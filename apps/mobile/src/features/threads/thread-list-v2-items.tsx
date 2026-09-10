@@ -723,8 +723,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
-        {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {thread.parentThreadId ? <AgentStartedIcon selected={selected} /> : null}
+        {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {pinnedRow ? (
           <SymbolView
             name="pin"

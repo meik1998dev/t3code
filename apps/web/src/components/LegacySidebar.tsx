@@ -3,11 +3,11 @@ import { Spinner } from "~/components/ui/spinner";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
-  BotIcon,
   ChevronRightIcon,
   FolderPlusIcon,
   Globe2Icon,
   SearchIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -771,7 +771,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   />
                 }
               >
-                <BotIcon className="size-3" />
+                <SparklesIcon className="size-3" />
               </TooltipTrigger>
               <TooltipPopup side="top">Started by an agent</TooltipPopup>
             </Tooltip>

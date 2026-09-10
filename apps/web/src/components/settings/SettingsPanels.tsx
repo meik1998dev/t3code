@@ -2019,10 +2019,10 @@ export function GeneralSettingsPanel() {
   const updateSettings = useUpdatePrimarySettings();
   const navigate = useNavigate();
   const environmentId = usePrimaryEnvironmentId();
-  // Enter adds a line here, so drop the hook's Enter-to-commit handler.
-  const { onKeyDown: _commitOnEnter, ...threadRoutingNotesDraft } = useCommitOnBlur(
+  const threadRoutingNotesDraft = useCommitOnBlur(
     settings.threadRoutingNotes,
-    (next) => updateSettings({ threadRoutingNotes: next.trim() }),
+    (next) => updateSettings({ threadRoutingNotes: next }),
+    { multiline: true },
   );
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
@@ -2606,7 +2606,7 @@ export function GeneralSettingsPanel() {
         <SettingsRow
           serverScoped
           {...searchableSetting("thread-routing-notes")}
-          description="Tell agents which model and effort to use when they start threads. Leave empty to reuse the agent's own model."
+          description="Tell agents which model and effort to use when they start threads. When empty, new threads use the project's default model, or the agent's own."
           resetAction={
             settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes ? (
               <SettingResetButton

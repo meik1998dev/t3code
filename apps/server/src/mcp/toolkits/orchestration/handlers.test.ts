@@ -155,6 +155,7 @@ const makeHarness = (options: {
   readonly providers?: ReadonlyArray<ServerProvider>;
   readonly isRepo?: boolean;
   readonly routingNotes?: string;
+  readonly startFromOrigin?: boolean;
   readonly checkpoints?: Readonly<Record<string, ReadonlyArray<OrchestrationCheckpointSummary>>>;
 }) => {
   const dispatched: Array<ThreadBootstrap.ThreadTurnStartCommand> = [];
@@ -214,7 +215,12 @@ const makeHarness = (options: {
           }),
       }),
     ),
-    Layer.provide(ServerSettings.layerTest({ threadRoutingNotes: options.routingNotes ?? "" })),
+    Layer.provide(
+      ServerSettings.layerTest({
+        threadRoutingNotes: options.routingNotes ?? "",
+        newWorktreesStartFromOrigin: options.startFromOrigin ?? true,
+      }),
+    ),
     Layer.provide(NodeServices.layer),
   );
   const callTool = (
@@ -555,11 +561,21 @@ describe("orchestration MCP tools", () => {
       expect(command?.bootstrap?.prepareWorktree).toMatchObject({
         projectCwd: "/repo",
         baseBranch: "main",
+        // "New worktrees start from origin" is on by default.
+        startFromOrigin: true,
       });
       // Unnamed branches get the same temporary name the composer uses, which
       // the server renames from the task after the first turn.
       expect(command?.bootstrap?.prepareWorktree?.branch).toMatch(/^[0-9a-f]{8}$/);
       expect(command?.bootstrap?.runSetupScript).toBe(true);
+    }),
+  );
+
+  it.effect("starts a worktree from the local branch when start from origin is off", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness({ startFromOrigin: false });
+      yield* harness.call("start_thread", { projectId: project.id, title: "T", prompt: "Do it" });
+      expect(harness.dispatched[0]?.bootstrap?.prepareWorktree?.startFromOrigin).toBeUndefined();
     }),
   );
 

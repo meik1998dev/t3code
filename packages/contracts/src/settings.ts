@@ -877,8 +877,9 @@ export const ServerSettings = Schema.Struct({
   /**
    * Free-text guidance on which model and effort suit which kind of work. An
    * agent that starts threads reads it through `list_models` on every call,
-   * so edits apply without restarting sessions. Empty means the agent reuses
-   * its own model. The length cap lives on the patch only, so a hand-edited
+   * so edits apply without restarting sessions. When empty and the agent names
+   * no model, a new thread uses the project's default model, else the agent's
+   * own. The length cap lives on the patch only, so a hand-edited
    * settings file never fails to decode.
    */
   threadRoutingNotes: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),

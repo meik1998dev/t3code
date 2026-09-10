@@ -38,7 +38,6 @@ import {
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockOffIcon,
-  BotIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
@@ -52,6 +51,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -1504,7 +1504,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           />
         }
       >
-        <BotIcon aria-hidden className="size-3" />
+        <SparklesIcon aria-hidden className="size-3" />
       </TooltipTrigger>
       <TooltipPopup side="top">Started by an agent</TooltipPopup>
     </Tooltip>

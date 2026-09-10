@@ -325,6 +325,11 @@ const start_thread = (input: Tool.Parameters<typeof StartThreadTool>) =>
       );
     }
 
+    const settings = yield* ServerSettings.ServerSettingsService;
+    const { newWorktreesStartFromOrigin } = yield* settings.getSettings.pipe(
+      orFailWith("Could not read T3 Code settings. Try again."),
+    );
+
     const crypto = yield* Crypto.Crypto;
     const uuid = crypto.randomUUIDv4.pipe(orFailWith("Could not generate an id. Try again."));
     const threadId = ThreadId.make(yield* uuid);
@@ -374,6 +379,9 @@ const start_thread = (input: Tool.Parameters<typeof StartThreadTool>) =>
                     buildTemporaryWorktreeBranchName(() =>
                       Buffer.from(branchToken).toString("hex"),
                     ),
+                  // Same default the composer applies; a base branch missing on origin
+                  // falls back to the local branch.
+                  ...(newWorktreesStartFromOrigin ? { startFromOrigin: true } : {}),
                 },
                 runSetupScript: true,
               }
@@ -432,6 +440,8 @@ const makeSendMessage =
           "You can only message threads this thread started. Call list_threads with startedByThisThread.",
         );
       }
+      // Read from the snapshot, so a person sending at the same moment can still
+      // slip in first; the turn start then queues behind theirs. Rare, and harmless.
       const phase = resolveThreadAwarenessPhase(target) ?? "idle";
       if (BUSY_PHASES.has(phase)) {
         return yield* fail(
