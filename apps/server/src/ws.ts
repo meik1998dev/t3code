@@ -37,6 +37,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
+  type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
@@ -94,6 +95,7 @@ import {
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
+import { ThreadThinkingPreviewService } from "./orchestration/ThreadThinkingPreview.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -479,6 +481,7 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
+      const threadThinkingPreview = yield* ThreadThinkingPreviewService;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
       // client's origin, including server-generated bootstrap sub-commands:
@@ -1290,6 +1293,7 @@ const makeWsRpcLayer = (
                 }),
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
+            threadThinkingPreview: true,
           };
         });
 
@@ -1619,6 +1623,34 @@ const makeWsRpcLayer = (
                 })),
               );
 
+              // Opt-in live reasoning tail. It carries no sequence, so it
+              // merges beside the buffered live tail instead of going through
+              // the coalescer. The current tail goes first so a thread opened
+              // mid-turn shows it before the next delta arrives.
+              const currentThinkingPreview = threadThinkingPreview.getThreadThinkingPreview(
+                input.threadId,
+              );
+              const thinkingPreviewItems = Stream.concat(
+                Stream.fromIterable(
+                  currentThinkingPreview === null ? [] : [currentThinkingPreview],
+                ),
+                threadThinkingPreview.changes.pipe(
+                  Stream.filter((preview) => preview.threadId === input.threadId),
+                ),
+              ).pipe(
+                Stream.map((preview) => ({
+                  kind: "thinking-preview" as const,
+                  text: preview.text,
+                  updatedAt: preview.updatedAt,
+                })),
+              );
+              const withThinkingPreview = <E, R>(
+                stream: Stream.Stream<OrchestrationThreadStreamItem, E, R>,
+              ): Stream.Stream<OrchestrationThreadStreamItem, E, R> =>
+                input.includeThinkingPreview === true
+                  ? Stream.merge(stream, thinkingPreviewItems)
+                  : stream;
+
               // Attach live delivery before reading either replay or snapshot state.
               // Otherwise an event published while the snapshot is loading is lost.
               const liveBuffer = yield* makeThreadLiveEventCoalescer();
@@ -1703,7 +1735,7 @@ const makeWsRpcLayer = (
                             .pipe(Effect.as(bufferedLiveStream)),
                         )
                       : bufferedLiveStream;
-                  const replay = Stream.concat(catchUpStream, afterCatchUp);
+                  const replay = withThinkingPreview(Stream.concat(catchUpStream, afterCatchUp));
                   if (!replayStats.hasCreateEvent) {
                     return replay;
                   }
@@ -1753,12 +1785,14 @@ const makeWsRpcLayer = (
                         .pipe(Effect.as(bufferedLiveStream)),
                     )
                   : bufferedLiveStream;
-              return Stream.concat(
-                Stream.make({
-                  kind: "snapshot" as const,
-                  snapshot: projectThreadDetailSnapshot(snapshot.value),
-                }),
-                afterSnapshot,
+              return withThinkingPreview(
+                Stream.concat(
+                  Stream.make({
+                    kind: "snapshot" as const,
+                    snapshot: projectThreadDetailSnapshot(snapshot.value),
+                  }),
+                  afterSnapshot,
+                ),
               );
             }),
             { "rpc.aggregate": "orchestration" },
