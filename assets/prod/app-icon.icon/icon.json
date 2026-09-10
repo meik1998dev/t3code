@@ -1,22 +1,23 @@
 {
   "fill": {
-    "solid": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "solid": "srgb:0.08235,0.08235,0.08235,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
-          "image-name": "text.svg",
-          "name": "Text",
+          "image-name": "mark.svg",
+          "name": "Spindle",
+          "glass": true,
           "position": {
-            "scale": 8.5,
+            "scale": 1,
             "translation-in-points": [0, 0]
           }
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.5
+        "opacity": 0.35
       },
       "translucency": {
         "enabled": true,

@@ -226,7 +226,7 @@ export const OrchestrationToolkitRegistrationLive = McpServer.toolkit(Orchestrat
 );
 
 const McpTransportLive = McpServer.layerHttp({
-  name: "T3 Code",
+  name: "Spindle",
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],

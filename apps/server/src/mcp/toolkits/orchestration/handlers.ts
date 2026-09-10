@@ -62,7 +62,7 @@ const requireOrchestration = Effect.gen(function* () {
   const scope = yield* McpInvocationContext.McpInvocationContext;
   if (!scope.capabilities.has("orchestration")) {
     return yield* fail(
-      "This thread cannot start other threads. Threads started by another thread, and sessions without T3 Code orchestration access, do not get this tool.",
+      "This thread cannot start other threads. Threads started by another thread, and sessions without Spindle orchestration access, do not get this tool.",
     );
   }
   return scope;
@@ -101,7 +101,7 @@ const readEffort = (
 const readShellSnapshot = Effect.gen(function* () {
   const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   return yield* query.getShellSnapshot();
-}).pipe(orFailWith("Could not read T3 Code threads. Try again."));
+}).pipe(orFailWith("Could not read Spindle threads. Try again."));
 
 const list_projects = () =>
   Effect.gen(function* () {
@@ -128,7 +128,7 @@ const list_models = () =>
     // Read on every call so edits in Settings apply to running sessions.
     const settings = yield* ServerSettings.ServerSettingsService;
     const { threadRoutingNotes } = yield* settings.getSettings.pipe(
-      orFailWith("Could not read T3 Code settings. Try again."),
+      orFailWith("Could not read Spindle settings. Try again."),
     );
     return {
       routingNotes: threadRoutingNotes,
@@ -327,7 +327,7 @@ const start_thread = (input: Tool.Parameters<typeof StartThreadTool>) =>
 
     const settings = yield* ServerSettings.ServerSettingsService;
     const { newWorktreesStartFromOrigin } = yield* settings.getSettings.pipe(
-      orFailWith("Could not read T3 Code settings. Try again."),
+      orFailWith("Could not read Spindle settings. Try again."),
     );
 
     const crypto = yield* Crypto.Crypto;

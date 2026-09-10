@@ -11,7 +11,7 @@ import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-ro
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
-import { T3Wordmark } from "../T3Wordmark";
+import { SpindleMark } from "../SpindleMark";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -91,15 +91,15 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <span className="inline-flex min-w-0 items-baseline gap-1">
-        <T3Wordmark aria-label="T3" className="h-2.5 w-auto shrink-0" />
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <SpindleMark aria-hidden className="size-5 shrink-0" />
         <span
           className={cn(
             "truncate text-sm font-medium tracking-tight",
             onBackdrop ? "text-white/70" : "text-muted-foreground",
           )}
         >
-          Code
+          Spindle
         </span>
       </span>
     </Link>

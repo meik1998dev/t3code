@@ -1,4 +1,7 @@
 {
+  "name": "Spindle",
+  "short_name": "Spindle",
+  "description": "A focused workspace for your coding agents.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

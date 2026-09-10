@@ -16,7 +16,7 @@ const imageProps = {
 } satisfies Partial<ComponentProps<typeof Image>>;
 ---
 
-<Layout title="Download — T3 Code" description="Download T3 Code for macOS, Windows, or Linux.">
+<Layout title="Download — Spindle" description="Download Spindle for macOS, Windows, or Linux.">
   <div class="download-page" id="download-page" data-channel="stable">
     <!-- The sky lives behind the header and fades to the page. It only shows on the nightly channel. -->
     <header class="download-head">
@@ -26,7 +26,7 @@ const imageProps = {
           <Image class="head-icon--stable" src={iconStable} width={64} height={64} loading="eager" {...imageProps} />
           <Image class="head-icon--nightly" src={iconNightly} width={64} height={64} loading="eager" {...imageProps} />
         </span>
-        <h1 class="heading">Download T3 Code</h1>
+        <h1 class="heading">Download Spindle</h1>
       </div>
       <div class="channel-toggle" role="tablist" aria-label="Release channel" data-rise style="--d:90ms">
         <span class="channel-thumb" aria-hidden="true"></span>
@@ -108,7 +108,7 @@ const imageProps = {
       <section class="platform-section platform-section--mobile" data-rise style="--d:420ms">
         <div class="platform-header">
           <svg class="platform-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18.5h2"/></svg>
-          <h2 class="platform-name">Mobile</h2>
+          <h2 class="platform-name">Upstream T3 Code mobile clients</h2>
         </div>
         <div class="download-cards">
           <a class="download-card" href={IOS_APP_STORE_URL} target="_blank" rel="noopener noreferrer">
@@ -131,7 +131,8 @@ const imageProps = {
           <svg class="platform-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7l5 5-5 5M12 17h7"/></svg>
           <h2 class="platform-name">Terminal</h2>
         </div>
-        <code class="cli-line">npx t3@nightly</code>
+        <p>Run Spindle from a checkout of this repository:</p>
+        <code class="cli-line">vp i &amp;&amp; vp run dev</code>
       </section>
     </div>
 

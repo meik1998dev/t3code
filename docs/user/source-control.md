@@ -1,11 +1,11 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Bitbucket, and Azure DevOps to clone and publish
+Spindle integrates with GitHub, GitLab, Bitbucket, and Azure DevOps to clone and publish
 repositories, create pull requests, and review changes.
 
 ## Connect an account
 
-Install Git and configure authentication on the machine running your T3 Code server. For a remote
+Install Git and configure authentication on the machine running your Spindle server. For a remote
 environment, do this on the remote machine. After signing in, open **Settings → Source Control**
 and choose **Rescan**.
 
@@ -24,7 +24,7 @@ which account to use:
 git config gh.account your-login
 ```
 
-T3 Code runs every GitHub command for that project as the named account. Repositories without the
+Spindle runs every GitHub command for that project as the named account. Repositories without the
 key keep using the active `gh` account.
 
 ### GitLab
@@ -74,7 +74,7 @@ make your first commit before pushing.
 
 ## Create a pull request
 
-Use a thread's Git actions to commit, push, and create a pull request. T3 Code can generate commit
+Use a thread's Git actions to commit, push, and create a pull request. Spindle can generate commit
 messages, review titles, and descriptions from your changes.
 
 Choose the writing style and model in **Settings → Source Control**. **Repository conventions**

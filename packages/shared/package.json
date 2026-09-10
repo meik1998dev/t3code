@@ -282,6 +282,10 @@
     "./dateTime": {
       "types": "./src/dateTime.ts",
       "import": "./src/dateTime.ts"
+    },
+    "./spindleMark": {
+      "types": "./src/spindleMark.ts",
+      "import": "./src/spindleMark.ts"
     }
   },
   "scripts": {

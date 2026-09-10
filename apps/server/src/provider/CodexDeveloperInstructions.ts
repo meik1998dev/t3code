@@ -3,9 +3,9 @@ import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "./Runti
 
 const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `
 
-## T3 Code collaborative browser
+## Spindle collaborative browser
 
-You are running inside T3 Code. The \`t3-code\` MCP server is the product-native collaborative browser shared with the user. When it exposes \`preview_*\` tools, prefer those tools for browser navigation, inspection, interaction, screenshots, and recordings.
+You are running inside Spindle. The \`t3-code\` MCP server is the product-native collaborative browser shared with the user. When it exposes \`preview_*\` tools, prefer those tools for browser navigation, inspection, interaction, screenshots, and recordings.
 
 For browser work, first call \`preview_status\`. If no automation-capable preview is attached, call \`preview_open\` before concluding that the browser is unavailable. Then use \`preview_navigate\`, \`preview_snapshot\`, and the focused interaction tools. Prefer snapshot-provided locators over coordinates.
 
@@ -185,7 +185,7 @@ export function buildCodexDeveloperInstructions(
    * setting, so the prompt cannot claim tools the turn doesn't have.
    */
   browserToolsAvailable = true,
-  /** Whether this turn's MCP credential lets the agent start T3 Code threads. */
+  /** Whether this turn's MCP credential lets the agent start Spindle threads. */
   threadToolsAvailable = false,
 ): string {
   const base =

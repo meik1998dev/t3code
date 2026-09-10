@@ -453,6 +453,10 @@
         object-fit: contain;
       }
 
+      html.dark #boot-shell-logo {
+        filter: invert(1);
+      }
+
       #boot-error {
         display: grid;
         justify-items: center;
@@ -477,13 +481,13 @@
         cursor: pointer;
       }
     </style>
-    <title>T3 Code (Alpha)</title>
+    <title>Spindle (Alpha)</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" aria-label="Spindle splash screen">
+          <img id="boot-shell-logo" src="/spindle-logo.svg" alt="Spindle" />
         </div>
       </div>
     </div>

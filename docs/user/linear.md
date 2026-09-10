@@ -1,13 +1,13 @@
 # Linear
 
-Start a new worktree from one of your Linear issues. T3 Code names the branch after the issue and puts the issue text in the composer, so the agent starts with the full task.
+Start a new worktree from one of your Linear issues. Spindle names the branch after the issue and puts the issue text in the composer, so the agent starts with the full task.
 
 ## Connect
 
 1. In Linear, open **Settings → Security & access → Personal API keys** and create a key.
-2. In T3 Code, open **Settings → Integrations → Linear**, paste the key, and choose **Connect**.
+2. In Spindle, open **Settings → Integrations → Linear**, paste the key, and choose **Connect**.
 
-T3 Code checks the key with Linear before saving it. The key is stored on the environment you are connected to and never sent to other clients. **Disconnect** removes it.
+Spindle checks the key with Linear before saving it. The key is stored on the environment you are connected to and never sent to other clients. **Disconnect** removes it.
 
 Settings connect the environment you are paired with as primary. For any other environment, set the `T3CODE_LINEAR_API_KEY` environment variable on that server. When the variable is set, it wins over a saved key and Settings shows the key as managed by the server.
 
@@ -23,7 +23,7 @@ After the pick:
 - The worktree branch will be named after the issue, using the branch name Linear suggests when your workspace has one.
 - Nothing is created yet. The worktree and branch appear when you send the first message, as usual.
 
-If a branch with that name already exists, T3 Code tells you and leaves the branch unchanged. Pick the existing branch from the branch selector to continue that work.
+If a branch with that name already exists, Spindle tells you and leaves the branch unchanged. Pick the existing branch from the branch selector to continue that work.
 
 ## Change your mind
 

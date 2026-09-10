@@ -51,7 +51,7 @@ const readonlyTool = <T extends Tool.Any>(tool: T): T =>
 export const ListProjectsTool = readonlyTool(
   Tool.make("list_projects", {
     description:
-      "List the T3 Code projects on this machine. Use a project id with start_thread. `defaultWorkspace` is what start_thread uses when `workspace` is omitted.",
+      "List the Spindle projects on this machine. Use a project id with start_thread. `defaultWorkspace` is what start_thread uses when `workspace` is omitted.",
     success: Schema.Struct({
       projects: Schema.Array(
         Schema.Struct({
@@ -113,7 +113,7 @@ export const ThreadPhase = Schema.Literals([
 export const ListThreadsTool = readonlyTool(
   Tool.make("list_threads", {
     description:
-      "List active (not archived) T3 Code threads, newest first, with branch, worktree, model and status. Check this before start_thread so you do not start the same task twice.",
+      "List active (not archived) Spindle threads, newest first, with branch, worktree, model and status. Check this before start_thread so you do not start the same task twice.",
     parameters: Schema.Struct({
       projectId: Schema.optional(ProjectId).annotate({
         description: "Only list threads in this project.",
@@ -145,7 +145,7 @@ export const ListThreadsTool = readonlyTool(
 export const ReadThreadTool = readonlyTool(
   Tool.make("read_thread", {
     description: [
-      "Read another T3 Code thread's details and the files it changed, for example to review its work. It does not return the chat.",
+      "Read another Spindle thread's details and the files it changed, for example to review its work. It does not return the chat.",
       "Per-file line counts are summed over the thread's turns.",
       "`workspacePath` is where the thread's files are, including changes it has not committed, so review code there rather than from its branch. Never edit files in another thread's workspace.",
     ].join(" "),
@@ -179,7 +179,7 @@ export const ReadThreadTool = readonlyTool(
 
 export const StartThreadTool = Tool.make("start_thread", {
   description: [
-    "Start a new T3 Code thread that works on a task by itself, visible to the user in the sidebar.",
+    "Start a new Spindle thread that works on a task by itself, visible to the user in the sidebar.",
     "Use it for work that needs its own branch, a different model or provider, a different project, or should keep going after this turn ends.",
     "Do not use it for research or parallel steps you can do with your own sub-agents.",
     "`workspace: 'worktree'` creates a fresh git worktree and branch from `baseBranch` (default: the project's current branch) and runs the project setup script; `'local'` works in the project checkout itself.",
@@ -204,7 +204,7 @@ export const StartThreadTool = Tool.make("start_thread", {
     }),
     branch: Schema.optional(TrimmedNonEmptyString).annotate({
       description:
-        "Worktree only. New branch name. Omit to let T3 Code name it from the task after the first turn.",
+        "Worktree only. New branch name. Omit to let Spindle name it from the task after the first turn.",
     }),
     baseBranch: Schema.optional(TrimmedNonEmptyString).annotate({
       description: "Worktree only. Branch to start from. Defaults to the project's current branch.",
