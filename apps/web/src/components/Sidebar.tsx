@@ -51,6 +51,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -1491,6 +1492,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  // Threads another thread's agent started through the t3-code MCP tools.
+  const agentStartedIndicator = thread.parentThreadId ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label="Started by an agent"
+            className="inline-flex shrink-0 items-center text-muted-foreground/65"
+          />
+        }
+      >
+        <SparklesIcon aria-hidden className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">Started by an agent</TooltipPopup>
+    </Tooltip>
+  ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1566,6 +1584,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </span>
             {draftIndicator}
             {title}
+            {agentStartedIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1598,9 +1617,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           </span>
                         }
                       />
-                      <TooltipPopup side="top">
-                        Snoozed · {props.snoozeWakeLabelText}
-                      </TooltipPopup>
+                      <TooltipPopup side="top">Snoozed · {props.snoozeWakeLabelText}</TooltipPopup>
                     </Tooltip>
                   ) : isWoke ? (
                     // A wake can land straight in the settled tail (e.g. PR
@@ -1632,9 +1649,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           </span>
                         }
                       />
-                      <TooltipPopup side="top">
-                        Settled · {settledTimeLabel(thread)}
-                      </TooltipPopup>
+                      <TooltipPopup side="top">Settled · {settledTimeLabel(thread)}</TooltipPopup>
                     </Tooltip>
                   ) : null}
                 </span>
@@ -1743,6 +1758,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {agentStartedIndicator}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
@@ -2292,9 +2308,7 @@ export default function Sidebar() {
   // project preferences, so routes that unmount the sidebar (Settings) and
   // app restarts keep it.
   const persistedProjectScopeKeys = useUiStateStore((store) => store.sidebarProjectScopeKeys);
-  const setPersistedProjectScopeKeys = useUiStateStore(
-    (store) => store.setSidebarProjectScopeKeys,
-  );
+  const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   const projectScopeKeys = useMemo(
     () => new Set(persistedProjectScopeKeys),
     [persistedProjectScopeKeys],

@@ -743,6 +743,24 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  /**
+   * Only threads a person started may start threads. A thread with a parent
+   * was started by an agent, so it gets no orchestration tools: that keeps
+   * agent-started work one level deep. Unknown threads are denied.
+   */
+  const mayStartThreads = Effect.fn("ProviderService.mayStartThreads")(
+    function* (threadId: ThreadId) {
+      if (Option.isNone(projectionQuery)) return false;
+      const thread = yield* projectionQuery.value.getThreadShellById(threadId);
+      return Option.isSome(thread) && (thread.value.parentThreadId ?? null) === null;
+    },
+    Effect.catch((cause) =>
+      Effect.logWarning("Could not read the thread; withholding thread orchestration tools.", {
+        cause,
+      }).pipe(Effect.as(false)),
+    ),
+  );
+
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     Effect.gen(function* () {
       if (!(yield* agentBrowserAccessEnabled(threadId))) {
@@ -756,7 +774,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         yield* Effect.sync(() => McpProviderSession.clearMcpProviderSession(threadId));
         return undefined;
       }
-      const credential = yield* issueMcpCredential({ threadId, providerInstanceId });
+      const credential = yield* issueMcpCredential({
+        threadId,
+        providerInstanceId,
+        capabilities: (yield* mayStartThreads(threadId))
+          ? ["preview", "orchestration"]
+          : ["preview"],
+      });
       if (credential) {
         yield* Effect.sync(() => McpProviderSession.setMcpProviderSession(credential.config));
       }

@@ -40,6 +40,7 @@ import {
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_TERMINAL_FONT_SIZE,
   type QuitConfirmationMode,
+  THREAD_ROUTING_NOTES_MAX_LENGTH,
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -107,6 +108,8 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
+import { useCommitOnBlur } from "../../hooks/useCommitOnBlur";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -571,6 +574,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes
+        ? ["Thread routing notes"]
+        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -604,6 +610,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadUnpin,
       settings.composerCollapseOnScroll,
       settings.addProjectBaseDirectory,
+      settings.threadRoutingNotes,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
@@ -726,6 +733,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+      threadRoutingNotes: DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -2011,6 +2019,11 @@ export function GeneralSettingsPanel() {
   const updateSettings = useUpdatePrimarySettings();
   const navigate = useNavigate();
   const environmentId = usePrimaryEnvironmentId();
+  const threadRoutingNotesDraft = useCommitOnBlur(
+    settings.threadRoutingNotes,
+    (next) => updateSettings({ threadRoutingNotes: next }),
+    { multiline: true },
+  );
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
@@ -2590,6 +2603,33 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("thread-routing-notes")}
+          description="Tell agents which model and effort to use when they start threads. When empty, new threads use the project's default model, or the agent's own."
+          resetAction={
+            settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes ? (
+              <SettingResetButton
+                label="thread routing notes"
+                onClick={() =>
+                  updateSettings({
+                    threadRoutingNotes: DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes,
+                  })
+                }
+              />
+            ) : null
+          }
+        >
+          <div className="pt-2 pb-2">
+            <Textarea
+              size="sm"
+              {...threadRoutingNotesDraft}
+              maxLength={THREAD_ROUTING_NOTES_MAX_LENGTH}
+              placeholder="Fable: architecture, hard bugs. Soul: default. Flash: renames, docs."
+              aria-label="Thread routing notes"
+            />
+          </div>
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection id="confirmations" title="Confirmations">

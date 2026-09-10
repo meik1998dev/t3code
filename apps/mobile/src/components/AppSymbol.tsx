@@ -163,6 +163,7 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   "sidebar.left": IconLayoutSidebar,
   "sidebar.right": IconLayoutSidebarRight,
   "slider.horizontal.3": IconAdjustmentsHorizontal,
+  sparkles: IconSparkles,
   "square.and.pencil": IconEdit,
   "square.grid.2x2": IconApps,
   "square.split.2x1": IconLayoutColumns,

@@ -4733,7 +4733,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           type: "preset",
           preset: "claude_code",
           // Model and effort can change after this session-level prompt is set.
-          append: `${buildRuntimeInstructions({ harness: "Claude Code" })}
+          append: `${buildRuntimeInstructions({
+            harness: "Claude Code",
+            threadTools: mcpSession?.capabilities.includes("orchestration") === true,
+          })}
 
 ${buildTaskTrackingInstructions({ create: "TaskCreate", update: "TaskUpdate" })}`,
         },

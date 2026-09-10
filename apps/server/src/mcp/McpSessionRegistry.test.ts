@@ -54,6 +54,32 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
   }),
 );
 
+it.effect("scopes a credential to the capabilities it was issued with", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry(() => 1_000);
+    const issue = (threadId: string, capabilities?: ReadonlyArray<"preview" | "orchestration">) =>
+      registry.issue({
+        threadId: ThreadId.make(threadId),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        ...(capabilities ? { capabilities } : {}),
+      });
+    const resolveCapabilities = (header: string) =>
+      registry
+        .resolve(header.replace(/^Bearer\s+/, ""))
+        .pipe(Effect.map((scope) => [...(scope?.capabilities ?? [])]));
+
+    const parent = yield* issue("thread-parent", ["preview", "orchestration"]);
+    const child = yield* issue("thread-child");
+
+    expect(parent.config.capabilities).toEqual(["preview", "orchestration"]);
+    expect(yield* resolveCapabilities(parent.config.authorizationHeader)).toEqual([
+      "preview",
+      "orchestration",
+    ]);
+    expect(yield* resolveCapabilities(child.config.authorizationHeader)).toEqual(["preview"]);
+  }),
+);
+
 it.effect("builds MCP endpoints from the bound server host", () =>
   Effect.gen(function* () {
     const cases = [
