@@ -89,6 +89,7 @@ import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "../RuntimeInstructions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
+  claudeCatalogModelSupportsThinkingDisplay,
   type ClaudeModelCatalog,
   getClaudeCatalogModelCapabilities,
   isClaudeCatalogUltracodeEffort,
@@ -4657,7 +4658,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ) => runPromise(handleResumeDialog(request, callbackOptions));
 
       const claudeBinaryPath = claudeSdkExecutablePath;
-      const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
       const selectedModel =
         input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
       const modelSelection = selectedModel
@@ -4666,6 +4666,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             model: resolveClaudeModelSlug(modelCatalog, selectedModel.model),
           }
         : undefined;
+      const extraArgs = {
+        // Newer models default thinking to "omitted": blocks stream with no
+        // text, so the live Thinking preview stays empty. Ask for summaries;
+        // a display mode in the user's launch args still wins.
+        ...(claudeCatalogModelSupportsThinkingDisplay(modelCatalog, modelSelection?.model)
+          ? { "thinking-display": "summarized" }
+          : {}),
+        ...parseCliArgs(claudeSettings.launchArgs).flags,
+      };
       const caps = getClaudeCatalogModelCapabilities(modelCatalog, modelSelection?.model);
       const descriptors = getProviderOptionDescriptors({ caps });
       const apiModelId = modelSelection
