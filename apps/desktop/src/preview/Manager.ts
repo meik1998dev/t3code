@@ -135,7 +135,7 @@ const requestRecordingCaptureExpression = (tabId: string): string =>
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const DEFAULT_ANNOTATION_THEME: DesktopPreviewAnnotationTheme = {
   colorScheme: "light",
-  radius: "0.1875rem",
+  radius: "0.625rem",
   background: "white",
   foreground: "oklch(0.269 0 0)",
   popover: "white",
