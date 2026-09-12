@@ -5,9 +5,9 @@ import {
   SshConnectionTarget,
 } from "@t3tools/client-runtime/connection";
 import { buildRemoteOpenUrl, EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { resolveRemoteOpenState } from "./remoteOpen";
+import { openRemoteEditor, resolveRemoteOpenState } from "./remoteOpen";
 
 const environmentId = EnvironmentId.make("environment-1");
 
@@ -145,5 +145,56 @@ describe("buildRemoteOpenUrl", () => {
     expect(buildRemoteOpenUrl({ editor: "zed", host: "sol", absolutePath: "/tmp/x" })).toBe(
       undefined,
     );
+  });
+});
+
+describe("openRemoteEditor", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("runs ssh-cli editors through the desktop bridge and reports its answer", async () => {
+    const openRemoteEditorCommand = vi.fn(async () => true);
+    vi.stubGlobal("window", { desktopBridge: { openRemoteEditorCommand } });
+
+    await expect(
+      openRemoteEditor({ editor: "zed", host: "sol", absolutePath: "/tmp/x" }),
+    ).resolves.toBe(true);
+    expect(openRemoteEditorCommand).toHaveBeenCalledWith({
+      editor: "zed",
+      host: "sol",
+      absolutePath: "/tmp/x",
+    });
+  });
+
+  it("reports false for ssh-cli editors when the bridge cannot spawn them", async () => {
+    vi.stubGlobal("window", { desktopBridge: {} });
+    await expect(
+      openRemoteEditor({ editor: "zed", host: "sol", absolutePath: "/tmp/x" }),
+    ).resolves.toBe(false);
+
+    vi.stubGlobal("window", {
+      desktopBridge: { openRemoteEditorCommand: async () => Promise.reject(new Error("no")) },
+    });
+    await expect(
+      openRemoteEditor({ editor: "zed", host: "sol", absolutePath: "/tmp/x" }),
+    ).resolves.toBe(false);
+  });
+
+  it("hands deep-link editors to the shell as before", async () => {
+    const openExternal = vi.fn(async () => true);
+    vi.stubGlobal("window", { desktopBridge: { openExternal } });
+
+    await expect(
+      openRemoteEditor({ editor: "vscode", host: "sol", absolutePath: "/tmp/x" }),
+    ).resolves.toBe(true);
+    expect(openExternal).toHaveBeenCalledWith("vscode://vscode-remote/ssh-remote+sol/tmp/x");
+  });
+
+  it("reports false for editors without remote support", async () => {
+    vi.stubGlobal("window", { desktopBridge: {} });
+    await expect(
+      openRemoteEditor({ editor: "idea", host: "sol", absolutePath: "/tmp/x" }),
+    ).resolves.toBe(false);
   });
 });
