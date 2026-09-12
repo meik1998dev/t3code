@@ -83,6 +83,7 @@ const makeLayer = (input: {
   readonly platform?: NodeJS.Platform;
   readonly run?: ProcessRunner.ProcessRunner["Service"]["run"];
   readonly calls?: Array<ReadonlyArray<string>>;
+  readonly signals?: Array<readonly [number, string]>;
 }) =>
   AgentPortsService.layer.pipe(
     Layer.provide(
@@ -113,6 +114,13 @@ const makeLayer = (input: {
         }),
         Layer.succeed(HostProcessPlatform, input.platform ?? "darwin"),
         Layer.succeed(AgentPortsService.AgentPortsServerPid, SERVER_PID),
+        Layer.succeed(AgentPortsService.AgentPortsProcessControl, {
+          signal: (pid, signal) => {
+            input.signals?.push([pid, signal]);
+          },
+          // Every fake process dies on SIGTERM, except pid 700 which needs SIGKILL.
+          isAlive: (pid) => pid === 700,
+        }),
       ),
     ),
   );
@@ -237,4 +245,44 @@ describe("AgentPortsService.list", () => {
       ),
       Effect.runPromise,
     ));
+});
+
+describe("AgentPortsService.stop", () => {
+  it("signals a listed agent port and reports it", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.stop({ pid: 610, port: 5173, cwdRoots: [] });
+    }).pipe(Effect.provide(makeLayer({ signals })), Effect.runPromise);
+    assert.deepEqual(result, { stopped: true });
+    assert.deepEqual(signals, [[610, "SIGTERM"]]);
+  });
+
+  it("escalates to SIGKILL when the process survives the grace period", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.stop({ pid: 700, port: 3000, cwdRoots: ["/Users/alice/code/app"] });
+    }).pipe(Effect.provide(makeLayer({ signals })), Effect.runPromise);
+    assert.deepEqual(result, { stopped: true });
+    assert.deepEqual(signals, [
+      [700, "SIGTERM"],
+      [700, "SIGKILL"],
+    ]);
+  });
+
+  it("refuses pids that are not agent ports, including the server", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const layer = makeLayer({ signals });
+    const stop = (pid: number, port: number) =>
+      Effect.gen(function* () {
+        const service = yield* AgentPortsService.AgentPortsService;
+        return yield* service.stop({ pid, port, cwdRoots: [] });
+      }).pipe(Effect.provide(layer), Effect.runPromise);
+    assert.deepEqual(await stop(SERVER_PID, 3773), { stopped: false });
+    assert.deepEqual(await stop(800, 5432), { stopped: false });
+    // Right pid, wrong port: the caller's view is stale.
+    assert.deepEqual(await stop(610, 3000), { stopped: false });
+    assert.deepEqual(signals, []);
+  });
 });

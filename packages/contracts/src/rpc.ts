@@ -13,7 +13,12 @@ import {
 } from "./providerSetup.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
-import { AgentPortsList, AgentPortsListInput } from "./agentPorts.ts";
+import {
+  AgentPortsList,
+  AgentPortsListInput,
+  AgentPortStopInput,
+  AgentPortStopResult,
+} from "./agentPorts.ts";
 import {
   LinearGetIssueInput,
   LinearIssueDetail,
@@ -381,6 +386,7 @@ export const WS_METHODS = {
 
   // Agent ports (fork)
   agentPortsList: "agentPorts.list",
+  agentPortsStop: "agentPorts.stop",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
@@ -815,6 +821,12 @@ export const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
 export const WsAgentPortsListRpc = Rpc.make(WS_METHODS.agentPortsList, {
   payload: AgentPortsListInput,
   success: AgentPortsList,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsAgentPortsStopRpc = Rpc.make(WS_METHODS.agentPortsStop, {
+  payload: AgentPortStopInput,
+  success: AgentPortStopResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1299,6 +1311,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearListMyIssuesRpc,
   WsLinearGetIssueRpc,
   WsAgentPortsListRpc,
+  WsAgentPortsStopRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

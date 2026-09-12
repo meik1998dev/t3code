@@ -14,9 +14,9 @@ import {
   type AgentPort,
   type EnvironmentId,
 } from "@t3tools/contracts";
-import { CopyIcon, EthernetPortIcon, ExternalLinkIcon } from "lucide-react";
+import { CopyIcon, EthernetPortIcon, ExternalLinkIcon, SquareIcon } from "lucide-react";
 import * as Option from "effect/Option";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 import {
   collectAgentPortCwdRoots,
@@ -32,6 +32,7 @@ import { agentPortsEnvironment } from "../../state/agentPorts";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { toastManager } from "../ui/toast";
@@ -59,13 +60,17 @@ const AgentPortRow = memo(function AgentPortRow({
   port,
   owner,
   remote,
+  cwdRoots,
 }: {
   environmentId: EnvironmentId;
   port: AgentPort;
   owner: AgentPortOwner | null;
   remote: RemoteOpenState;
+  cwdRoots: ReadonlyArray<string>;
 }) {
   const openLink = useOpenLink(null);
+  const stopPort = useAtomCommand(agentPortsEnvironment.stop, { reportFailure: false });
+  const [isStopping, setIsStopping] = useState(false);
   const url = agentPortLocalUrl(port.port);
   const threadRef = owner?.kind === "thread" ? { environmentId, threadId: owner.threadId } : null;
   // A remote port is reachable from here only through the thread's in-app
@@ -92,6 +97,30 @@ const AgentPortRow = memo(function AgentPortRow({
     }
     copyText("URL", url);
   }, [tunnel, url]);
+
+  const handleStop = useCallback(() => {
+    if (isStopping) return;
+    setIsStopping(true);
+    void stopPort({
+      environmentId,
+      input: { pid: port.pid, port: port.port, cwdRoots },
+    })
+      .then((result) => {
+        if (result._tag === "Success" && result.value.stopped) {
+          toastManager.add({ type: "success", title: `Stopped :${port.port}` });
+          return;
+        }
+        toastManager.add({
+          type: "error",
+          title: `Could not stop :${port.port}`,
+          description:
+            result._tag === "Success"
+              ? "The process is not an agent port any more. The list was refreshed."
+              : "The environment did not accept the request.",
+        });
+      })
+      .finally(() => setIsStopping(false));
+  }, [cwdRoots, environmentId, isStopping, port.pid, port.port, stopPort]);
 
   const owned = ownerLabel(owner, port.cwd);
   const primaryTitle = canOpenHere
@@ -151,16 +180,37 @@ const AgentPortRow = memo(function AgentPortRow({
           {tunnel === null ? "Copy URL" : "Copy SSH tunnel command"}
         </TooltipPopup>
       </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={`Stop the process on port ${port.port}`}
+              aria-disabled={isStopping || undefined}
+              className={cn(
+                "inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-hidden focus-visible:opacity-100 group-hover/port:opacity-100",
+                isStopping
+                  ? "cursor-progress opacity-100"
+                  : "cursor-pointer opacity-0 hover:text-destructive",
+              )}
+              onClick={handleStop}
+            >
+              <SquareIcon aria-hidden="true" className="size-3 fill-current" />
+            </button>
+          }
+        />
+        <TooltipPopup align="end" side="top">
+          {isStopping ? "Stopping…" : `Stop ${formatAgentPortCommand(port)} (pid ${port.pid})`}
+        </TooltipPopup>
+      </Tooltip>
     </div>
   );
 });
 
 const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   environment,
-  onCountChange,
 }: {
   environment: EnvironmentPresentation;
-  onCountChange: (environmentId: EnvironmentId, count: number) => void;
 }) {
   const environmentId = environment.environmentId;
   const projects = useProjects();
@@ -186,10 +236,6 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
 
   const ports = query.data?.ports ?? [];
   const count = ports.length;
-  // The trigger badge keeps showing the last known total after the popover closes.
-  useEffect(() => {
-    onCountChange(environmentId, count);
-  }, [count, environmentId, onCountChange]);
 
   const status = !connected
     ? "offline"
@@ -222,6 +268,7 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
           port={port}
           owner={resolveAgentPortOwner({ environmentId, cwd: port.cwd, projects, threads })}
           remote={remote}
+          cwdRoots={cwdRoots}
         />
       ))}
     </section>
@@ -230,41 +277,21 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
 
 export function SidebarPortsPill() {
   const [open, setOpen] = useState(false);
-  const [countsById, setCountsById] = useState<ReadonlyMap<EnvironmentId, number>>(new Map());
   const { environments } = useEnvironments();
-
-  const handleCountChange = useCallback((environmentId: EnvironmentId, count: number) => {
-    setCountsById((previous) => {
-      if (previous.get(environmentId) === count) return previous;
-      const next = new Map(previous);
-      next.set(environmentId, count);
-      return next;
-    });
-  }, []);
-
-  const total = useMemo(
-    () => [...countsById.values()].reduce((sum, count) => sum + count, 0),
-    [countsById],
-  );
-  const tooltip = total > 0 ? `Agent ports (${total})` : "Agent ports";
+  const tooltip = "Agent ports";
 
   const trigger = (
     <button
       type="button"
       aria-label={tooltip}
       className={cn(
-        "relative inline-flex size-8 cursor-pointer items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
+        "inline-flex size-8 cursor-pointer items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
         open
           ? "bg-sidebar-control-surface text-sidebar-foreground"
           : "text-[var(--sidebar-icon-color)] hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
       )}
     >
       <EthernetPortIcon aria-hidden="true" className="size-4" />
-      {total > 0 ? (
-        <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-sidebar-control-surface px-1 text-center text-[10px] leading-4 font-medium text-sidebar-foreground tabular-nums">
-          {total}
-        </span>
-      ) : null}
     </button>
   );
 
@@ -296,7 +323,6 @@ export function SidebarPortsPill() {
                   <EnvironmentPortsSection
                     key={environment.environmentId}
                     environment={environment}
-                    onCountChange={handleCountChange}
                   />
                 ))
               )}

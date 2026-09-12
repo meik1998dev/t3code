@@ -292,19 +292,22 @@ Host <hostname>.local
 - Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
 - Check: pick two projects in each filter. Only those threads and pull requests show.
 
-### Agent ports popover (#44)
+### Agent ports popover (#44, #45)
 
 - What: a button at the bottom right of the sidebar (next to the update pill) opens a popover
   with the TCP ports that agent sessions opened, grouped by environment (Mac, VPS). Each row
   shows the port, the command, and the thread or project behind it. Click opens
   `http://localhost:<port>` (in the thread's in-app browser when the port belongs to a thread,
   which also works for a remote environment); a remote port with no thread copies an `ssh -L`
-  tunnel command instead.
-- How ports are found: live, no bookkeeping. `lsof` lists listeners, `ps` gives the process tree,
-  `lsof -d cwd` gives each listener's folder. A port is kept when its process is a child of the
-  Spindle server (agents and their shells are) or when its folder is inside a project root or
-  thread worktree (catches detached servers). The server's own port and system services are
-  dropped. Windows returns an empty list with `supported: false`.
+  tunnel command instead. The square button stops the process (`agentPorts.stop`: SIGTERM,
+  SIGKILL after 2 s; the server re-scans first so only a current agent port can be hit).
+- How ports are found: live, no bookkeeping. Linux: `ss -ltnpH` + `/proc/<pid>/cwd`; macOS:
+  `lsof` + `lsof -d cwd`. `ps` gives the process tree. A port is kept when its process is a
+  child of the Spindle server (agents and their shells are) or when its folder is inside a
+  project root or thread worktree (catches detached servers). The server's own port and system
+  services are dropped. Windows returns an empty list with `supported: false`.
+- Warning: do not switch Linux back to `lsof`. lsof 4.95 on Ubuntu skips processes whose name
+  has parentheses (`next-server (v16.0.3)`), so Next.js never showed up (#45).
 - Key files: `packages/contracts/src/agentPorts.ts` (new) + `rpc.ts` (`agentPorts.list`),
   `apps/server/src/ports/AgentPortsService.ts` (new) + `ws.ts`, `server.ts`,
   `auth/RpcAuthorization.ts`, `packages/client-runtime/src/state/agentPorts.ts` (new) +

@@ -24,6 +24,8 @@ import {
   type AgentPortOrigin,
   type AgentPortsList,
   type AgentPortsListInput,
+  type AgentPortStopInput,
+  type AgentPortStopResult,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
@@ -38,6 +40,12 @@ export class AgentPortsService extends Context.Service<
   AgentPortsService,
   {
     readonly list: (input: AgentPortsListInput) => Effect.Effect<AgentPortsList>;
+    /**
+     * SIGTERM the listener, SIGKILL if it is still there after the grace
+     * period. Re-scans first: the pid must still own that port and still count
+     * as an agent port, so a recycled pid or the server itself is never hit.
+     */
+    readonly stop: (input: AgentPortStopInput) => Effect.Effect<AgentPortStopResult>;
   }
 >()("t3/ports/AgentPortsService") {}
 
@@ -45,6 +53,33 @@ export class AgentPortsService extends Context.Service<
 export const AgentPortsServerPid = Context.Reference<number>("t3/ports/AgentPortsServerPid", {
   defaultValue: () => process.pid,
 });
+
+export interface AgentPortsProcessControl {
+  readonly signal: (pid: number, signal: "SIGTERM" | "SIGKILL") => void;
+  readonly isAlive: (pid: number) => boolean;
+}
+
+/** How signals reach a pid; tests record instead of killing. */
+export const AgentPortsProcessControl = Context.Reference<AgentPortsProcessControl>(
+  "t3/ports/AgentPortsProcessControl",
+  {
+    defaultValue: () => ({
+      signal: (pid, signal) => {
+        process.kill(pid, signal);
+      },
+      isAlive: (pid) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    }),
+  },
+);
+
+const STOP_GRACE_PERIOD = Duration.seconds(2);
 
 const PROBE_TIMEOUT = Duration.seconds(5);
 const PROBE_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -225,6 +260,7 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const platform = yield* HostProcessPlatform;
   const serverPid = yield* AgentPortsServerPid;
+  const processControl = yield* AgentPortsProcessControl;
 
   const runProbe = (label: string, command: string, args: ReadonlyArray<string>) =>
     processRunner
@@ -329,7 +365,33 @@ export const make = Effect.gen(function* () {
     return { ports, scannedAt, supported: true } satisfies AgentPortsList;
   });
 
-  return AgentPortsService.of({ list });
+  const stop = Effect.fn("AgentPortsService.stop")(function* (input: AgentPortStopInput) {
+    const current = yield* list({ cwdRoots: input.cwdRoots });
+    const target = current.ports.find((port) => port.pid === input.pid && port.port === input.port);
+    if (target === undefined || target.pid === serverPid) {
+      return { stopped: false } satisfies AgentPortStopResult;
+    }
+    const signalled = yield* Effect.try(() => processControl.signal(target.pid, "SIGTERM")).pipe(
+      Effect.as(true),
+      Effect.catch((cause) =>
+        Effect.logDebug("agent port SIGTERM failed", { pid: target.pid, cause }).pipe(
+          Effect.as(false),
+        ),
+      ),
+    );
+    if (!signalled) {
+      return { stopped: false } satisfies AgentPortStopResult;
+    }
+    yield* Effect.sleep(STOP_GRACE_PERIOD);
+    if (processControl.isAlive(target.pid)) {
+      yield* Effect.try(() => processControl.signal(target.pid, "SIGKILL")).pipe(
+        Effect.catch(() => Effect.void),
+      );
+    }
+    return { stopped: true } satisfies AgentPortStopResult;
+  });
+
+  return AgentPortsService.of({ list, stop });
 });
 
 export const layer = Layer.effect(AgentPortsService, make);
@@ -340,5 +402,6 @@ export const layerTest = Layer.succeed(
   AgentPortsService.of({
     list: () =>
       Effect.succeed({ ports: [], scannedAt: "1970-01-01T00:00:00.000Z", supported: true }),
+    stop: () => Effect.succeed({ stopped: false }),
   }),
 );
