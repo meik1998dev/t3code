@@ -1,6 +1,8 @@
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as PlatformError from "effect/PlatformError";
 import { assert, describe, it } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -51,6 +53,21 @@ const LSOF_CWDS = [
   "n/opt/homebrew/var",
 ].join("\n");
 
+// Real `ss -ltnpH` output from Ubuntu 24.04: the Next.js name is cut at 15 bytes
+// and carries a parenthesis, which is exactly what lsof 4.95 chokes on.
+const SS_LISTENERS = [
+  `LISTEN 0      511        127.0.0.1:3773 0.0.0.0:* users:(("node",pid=${SERVER_PID},fd=22))`,
+  'LISTEN 0      511                *:3000       *:* users:(("next-server (v1",pid=105641,fd=22))',
+  'LISTEN 0      4096       127.0.0.53%lo:53  0.0.0.0:* users:(("systemd-resolve",pid=6220,fd=15))',
+  'LISTEN 0      128              0.0.0.0:22   0.0.0.0:* users:(("sshd",pid=6208,fd=3),("systemd",pid=1,fd=148))',
+  "",
+].join("\n");
+
+const PROC_CWDS: Record<string, string> = {
+  "/proc/105641/cwd": "/root/repos/shaar/syrian-data-platform-frontend",
+  "/proc/6220/cwd": "/",
+};
+
 const okResult = (stdout: string): ProcessRunner.ProcessRunOutput => ({
   stdout,
   stderr: "",
@@ -76,9 +93,23 @@ const makeLayer = (input: {
             ((request) => {
               input.calls?.push([request.command, ...request.args]);
               if (request.command === "ps") return Effect.succeed(okResult(PS_TABLE));
+              if (request.command === "ss") return Effect.succeed(okResult(SS_LISTENERS));
               if (request.args.includes("cwd")) return Effect.succeed(okResult(LSOF_CWDS));
               return Effect.succeed(okResult(LSOF_LISTENERS));
             }),
+        }),
+        FileSystem.layerNoop({
+          readLink: (path) =>
+            path in PROC_CWDS
+              ? Effect.succeed(PROC_CWDS[path]!)
+              : Effect.fail(
+                  PlatformError.systemError({
+                    module: "FileSystem",
+                    method: "readLink",
+                    _tag: "NotFound",
+                    pathOrDescriptor: path,
+                  }),
+                ),
         }),
         Layer.succeed(HostProcessPlatform, input.platform ?? "darwin"),
         Layer.succeed(AgentPortsService.AgentPortsServerPid, SERVER_PID),
@@ -87,6 +118,16 @@ const makeLayer = (input: {
   );
 
 describe("AgentPortsService parsers", () => {
+  it("reads pids and ports from ss, one row per pid", () => {
+    assert.deepEqual(AgentPortsService.parseSsListeners(SS_LISTENERS), [
+      { pid: SERVER_PID, processName: "node", host: "127.0.0.1", port: 3773 },
+      { pid: 105641, processName: "next-server (v1", host: "*", port: 3000 },
+      { pid: 6220, processName: "systemd-resolve", host: "127.0.0.53%lo", port: 53 },
+      { pid: 6208, processName: "sshd", host: "0.0.0.0", port: 22 },
+      { pid: 1, processName: "systemd", host: "0.0.0.0", port: 22 },
+    ]);
+  });
+
   it("reads one row per pid and port from lsof, ignoring fd lines", () => {
     assert.deepEqual(AgentPortsService.parseLsofListeners(LSOF_LISTENERS), [
       { pid: 1, processName: "launchd", host: "*", port: 22 },
@@ -144,6 +185,19 @@ describe("AgentPortsService.list", () => {
     }).pipe(Effect.provide(makeLayer({ calls })), Effect.runPromise);
     const cwdCall = calls.find((call) => call.includes("cwd"));
     assert.deepEqual(cwdCall, ["lsof", "-a", "-p", "1,610,700,800", "-d", "cwd", "-F", "pn"]);
+  });
+
+  it("uses ss and /proc on Linux, so a detached Next.js server in a project is found", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.list({ cwdRoots: ["/root/repos/shaar/syrian-data-platform-frontend"] });
+    }).pipe(Effect.provide(makeLayer({ platform: "linux", calls })), Effect.runPromise);
+    assert.deepEqual(
+      result.ports.map((port) => [port.port, port.pid, port.origin, port.cwd]),
+      [[3000, 105641, "workspace", "/root/repos/shaar/syrian-data-platform-frontend"]],
+    );
+    assert.isFalse(calls.some((call) => call[0] === "lsof"));
   });
 
   it("reports unsupported on Windows without running anything", () =>

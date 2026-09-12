@@ -3,9 +3,12 @@
  * environment (dev servers, previews, test databases).
  *
  * Detection is live, no bookkeeping:
- *  1. `lsof -iTCP -sTCP:LISTEN -P -n -F pcn` gives every listener with its pid.
+ *  1. Listeners with their pid: `ss -ltnpH` on Linux, `lsof -iTCP -sTCP:LISTEN`
+ *     elsewhere. lsof 4.95 on Ubuntu skips processes whose name contains
+ *     parentheses (`next-server (v16.0.3)`), so Linux uses iproute2.
  *  2. `ps -A -o pid=,ppid=,args=` gives the process tree and command lines.
- *  3. `lsof -a -p <pids> -d cwd -F pn` gives each listener's working directory.
+ *  3. Working directory: `/proc/<pid>/cwd` on Linux, `lsof -a -p <pids> -d cwd`
+ *     on macOS.
  *
  * A listener is kept when its process descends from this server process
  * (agents and their shells are children of it) — origin `agent-process` — or
@@ -27,6 +30,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as ProcessRunner from "../processRunner.ts";
 
@@ -90,6 +94,40 @@ export function parseLsofListeners(stdout: string): ReadonlyArray<ListeningSocke
     if (seen.has(key)) continue;
     seen.add(key);
     sockets.push({ pid, processName, host, port });
+  }
+  return sockets;
+}
+
+const SS_USER_PATTERN = /\("((?:[^"\\]|\\.)*)",pid=(\d+),fd=\d+\)/g;
+
+/**
+ * `ss -ltnpH`: `LISTEN 0 511 *:3000 *:* users:(("next-server (v1",pid=105641,fd=22))`.
+ * The name inside `users:` is cut by ss at 15 bytes; `ps` supplies the full command.
+ */
+export function parseSsListeners(stdout: string): ReadonlyArray<ListeningSocket> {
+  const sockets: Array<ListeningSocket> = [];
+  const seen = new Set<string>();
+  for (const rawLine of stdout.split("\n")) {
+    const line = rawLine.trim();
+    if (line.length === 0) continue;
+    const columns = line.split(/\s+/);
+    // With -H the state column is absent only on some versions; accept both shapes.
+    const localIndex = columns[0] === "LISTEN" ? 3 : 2;
+    const local = columns[localIndex];
+    if (local === undefined) continue;
+    const separator = local.lastIndexOf(":");
+    if (separator <= 0) continue;
+    const port = Number.parseInt(local.slice(separator + 1), 10);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) continue;
+    const host = local.slice(0, separator).trim() || "*";
+    for (const match of line.matchAll(SS_USER_PATTERN)) {
+      const pid = Number.parseInt(match[2]!, 10);
+      if (!Number.isInteger(pid) || pid <= 0) continue;
+      const key = `${pid}:${port}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sockets.push({ pid, processName: match[1]!.trim() || null, host, port });
+    }
   }
   return sockets;
 }
@@ -184,6 +222,7 @@ export function resolveAgentPortOrigin(input: {
 
 export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
+  const fileSystem = yield* FileSystem.FileSystem;
   const platform = yield* HostProcessPlatform;
   const serverPid = yield* AgentPortsServerPid;
 
@@ -205,23 +244,51 @@ export const make = Effect.gen(function* () {
         ),
       );
 
+  // Suspended so the probe command is only built (and, in tests, recorded) when it runs.
+  const lsofListeners = Effect.suspend(() =>
+    runProbe("lsof", "lsof", ["-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pcn"]),
+  ).pipe(Effect.map((stdout) => (stdout === null ? null : parseLsofListeners(stdout))));
+
+  const ssListeners = Effect.suspend(() => runProbe("ss", "ss", ["-ltnpH"])).pipe(
+    Effect.map((stdout) => (stdout === null ? null : parseSsListeners(stdout))),
+    // Old images without iproute2 still have lsof.
+    Effect.flatMap((sockets) => (sockets === null ? lsofListeners : Effect.succeed(sockets))),
+  );
+
+  const probeListeners = platform === "linux" ? ssListeners : lsofListeners;
+
+  const procCwds = (pids: ReadonlyArray<number>) =>
+    Effect.forEach(
+      pids,
+      (pid) =>
+        fileSystem.readLink(`/proc/${pid}/cwd`).pipe(
+          Effect.map((cwd) => [pid, cwd] as const),
+          Effect.catch(() => Effect.succeed(null)),
+        ),
+      { concurrency: 8 },
+    ).pipe(
+      Effect.map(
+        (entries) =>
+          new Map(entries.filter((entry): entry is readonly [number, string] => entry !== null)),
+      ),
+    );
+
+  const lsofCwds = (pids: ReadonlyArray<number>) =>
+    runProbe("lsof-cwd", "lsof", ["-a", "-p", pids.join(","), "-d", "cwd", "-F", "pn"]).pipe(
+      Effect.map((stdout) => (stdout === null ? new Map<number, string>() : parseLsofCwds(stdout))),
+    );
+
+  const probeCwds = platform === "linux" ? procCwds : lsofCwds;
+
   const list = Effect.fn("AgentPortsService.list")(function* (input: AgentPortsListInput) {
     const scannedAt = DateTime.formatIso(yield* DateTime.now);
     if (platform === "win32") {
       return { ports: [], scannedAt, supported: false } satisfies AgentPortsList;
     }
-    const lsofStdout = yield* runProbe("lsof", "lsof", [
-      "-iTCP",
-      "-sTCP:LISTEN",
-      "-P",
-      "-n",
-      "-F",
-      "pcn",
-    ]);
-    if (lsofStdout === null) {
+    const sockets = yield* probeListeners;
+    if (sockets === null) {
       return { ports: [], scannedAt, supported: false } satisfies AgentPortsList;
     }
-    const sockets = parseLsofListeners(lsofStdout);
     if (sockets.length === 0) {
       return { ports: [], scannedAt, supported: true } satisfies AgentPortsList;
     }
@@ -234,19 +301,8 @@ export const make = Effect.gen(function* () {
     const listenerPids = [...new Set(sockets.map((socket) => socket.pid))].filter(
       (pid) => pid !== serverPid,
     );
-    const cwdStdout =
-      listenerPids.length === 0
-        ? null
-        : yield* runProbe("lsof-cwd", "lsof", [
-            "-a",
-            "-p",
-            listenerPids.join(","),
-            "-d",
-            "cwd",
-            "-F",
-            "pn",
-          ]);
-    const cwdByPid = cwdStdout === null ? new Map<number, string>() : parseLsofCwds(cwdStdout);
+    const cwdByPid =
+      listenerPids.length === 0 ? new Map<number, string>() : yield* probeCwds(listenerPids);
 
     const ports: Array<AgentPort> = [];
     for (const socket of sockets) {
