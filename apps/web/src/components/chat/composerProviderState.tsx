@@ -19,12 +19,7 @@ import type { buttonVariants } from "../ui/button";
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import type { ComposerControlSize } from "./ComposerControl";
-import {
-  getTraitsTriggerDisplay,
-  shouldRenderTraitsControls,
-  TraitsMenuContent,
-  TraitsPicker,
-} from "./TraitsPicker";
+import { shouldRenderTraitsControls, TraitsMenuContent, TraitsPicker } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
@@ -183,19 +178,4 @@ export function renderProviderTraitsMenuContent(input: TraitsRenderInput): React
 
 export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode {
   return renderTraitsControl(TraitsPicker, input);
-}
-
-export function getProviderTraitsTriggerDisplay(
-  input: TraitsRenderInput,
-): { label: string; showFastModeIcon: boolean } | null {
-  const hasTarget = input.threadRef !== undefined || input.draftId !== undefined;
-  if (!hasTarget) return null;
-  return getTraitsTriggerDisplay({
-    provider: input.provider,
-    models: input.models,
-    model: input.model,
-    modelOptions: input.modelOptions,
-    prompt: input.prompt,
-    planModeEnabled: input.planModeEnabled,
-  });
 }

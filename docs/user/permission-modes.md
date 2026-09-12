@@ -3,8 +3,7 @@
 Permission modes control when an agent needs your approval to act. Choose a mode in the message
 composer; it applies to that thread.
 
-The mode is set per thread from the settings pill in the message composer, next to the model
-name. New threads start in **Full access** unless you choose another mode before sending. A thread
+New threads start in **Full access** unless you choose another mode before sending. A thread
 created from another thread inherits its mode.
 
 | Mode                  | Behavior                                                                              |

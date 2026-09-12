@@ -345,16 +345,16 @@ describe("ClientSettings context window meter", () => {
 });
 
 describe("ClientSettings composer collapse", () => {
-  it("keeps the composer expanded by default and accepts opting in", () => {
-    expect(decodeClientSettings({}).composerCollapseOnScroll).toBe(false);
+  it("collapses on scroll by default and accepts opting out", () => {
+    expect(decodeClientSettings({}).composerCollapseOnScroll).toBe(true);
     expect(
-      decodeClientSettingsPatch({ composerCollapseOnScroll: true }).composerCollapseOnScroll,
-    ).toBe(true);
+      decodeClientSettingsPatch({ composerCollapseOnScroll: false }).composerCollapseOnScroll,
+    ).toBe(false);
   });
 
   it("drops the retired blur trigger key", () => {
     const decoded = decodeClientSettings({ composerCollapseOnBlur: false });
-    expect(decoded.composerCollapseOnScroll).toBe(false);
+    expect(decoded.composerCollapseOnScroll).toBe(true);
     expect(decoded).not.toHaveProperty("composerCollapseOnBlur");
   });
 });

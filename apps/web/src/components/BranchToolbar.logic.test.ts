@@ -10,6 +10,7 @@ import {
   resolveEffectiveEnvMode,
   resolveEnvModeLabel,
   resolveBranchTriggerLabel,
+  resolveBranchToolbarPrBranch,
   resolveBranchToolbarValue,
   resolveLockedWorkspaceLabel,
   resolveLocalCheckoutBranchMismatch,
@@ -17,9 +18,8 @@ import {
   resolvePreviousWorktreeSeed,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
-  shouldShowComposerContextControls,
+  shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
-  shouldShowEnvModeControl,
 } from "./BranchToolbar.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -177,22 +177,6 @@ describe("resolveBranchToolbarValue", () => {
   });
 });
 
-describe("shouldShowEnvModeControl", () => {
-  it("shows the control while the thread is still a draft", () => {
-    expect(shouldShowEnvModeControl({ envModeLocked: false, activeWorktreePath: null })).toBe(true);
-  });
-
-  it("hides a pinned local checkout once the thread has started", () => {
-    expect(shouldShowEnvModeControl({ envModeLocked: true, activeWorktreePath: null })).toBe(false);
-  });
-
-  it("keeps the worktree label once the thread has started", () => {
-    expect(
-      shouldShowEnvModeControl({ envModeLocked: true, activeWorktreePath: "/repo/.wt/a" }),
-    ).toBe(true);
-  });
-});
-
 describe("resolveBranchTriggerLabel", () => {
   it("shows the origin ref when a new worktree will start from origin", () => {
     expect(
@@ -285,6 +269,35 @@ describe("resolveBranchTriggerLabel", () => {
         startFromOrigin: true,
       }),
     ).toBe("From upstream/feature/demo");
+  });
+});
+
+describe("resolveBranchToolbarPrBranch", () => {
+  it("uses the explicit thread branch when it matches the displayed branch", () => {
+    expect(
+      resolveBranchToolbarPrBranch({
+        activeThreadBranch: "feature/current",
+        resolvedActiveBranch: "feature/current",
+      }),
+    ).toBe("feature/current");
+  });
+
+  it("hides PR state while an optimistic branch switch is in flight", () => {
+    expect(
+      resolveBranchToolbarPrBranch({
+        activeThreadBranch: "feature/current",
+        resolvedActiveBranch: "feature/next",
+      }),
+    ).toBeNull();
+  });
+
+  it("does not infer PR state without an explicit thread branch", () => {
+    expect(
+      resolveBranchToolbarPrBranch({
+        activeThreadBranch: null,
+        resolvedActiveBranch: "feature/current",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -410,33 +423,47 @@ describe("shouldShowEnvironmentIndicator", () => {
   });
 });
 
-describe("shouldShowComposerContextControls", () => {
+describe("shouldShowComposerContextStrip", () => {
   it("keeps the environment indicator visible for a non-Git project", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: true,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(true);
   });
 
-  it("hides the controls when a non-Git project has nothing to show", () => {
+  it("hides the strip when a non-Git project has nothing to show", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: false,
         showEnvironmentIndicator: false,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(false);
   });
 
+  it("keeps the strip for visible resting composer controls in a non-Git thread", () => {
+    expect(
+      shouldShowComposerContextStrip({
+        hasActiveProject: true,
+        isGitRepo: false,
+        showEnvironmentIndicator: false,
+        hostsRestingComposerControls: true,
+      }),
+    ).toBe(true);
+  });
+
   it("shows Git controls without requiring an environment indicator", () => {
     expect(
-      shouldShowComposerContextControls({
+      shouldShowComposerContextStrip({
         hasActiveProject: true,
         isGitRepo: true,
         showEnvironmentIndicator: false,
+        hostsRestingComposerControls: false,
       }),
     ).toBe(true);
   });

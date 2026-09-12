@@ -55,12 +55,31 @@ export function shouldShowEnvironmentIndicator(input: {
   return input.activeEnvironment !== null && !input.activeEnvironment.isPrimary;
 }
 
-export function shouldShowComposerContextControls(input: {
+export function shouldShowComposerContextStrip(input: {
   hasActiveProject: boolean;
   isGitRepo: boolean;
   showEnvironmentIndicator: boolean;
+  /** A collapsed composer's controls currently fit in their measured strip host. */
+  hostsRestingComposerControls: boolean;
 }): boolean {
-  return input.hasActiveProject && (input.isGitRepo || input.showEnvironmentIndicator);
+  return (
+    input.hasActiveProject &&
+    (input.isGitRepo || input.showEnvironmentIndicator || input.hostsRestingComposerControls)
+  );
+}
+
+// Labels collapse to icons when the strip's content no longer fits. A small
+// hysteresis on the way back out keeps the boundary from flapping.
+const CONTEXT_STRIP_COMPACT_EXPAND_HYSTERESIS_PX = 16;
+
+export function resolveContextStripLabelsCompact(input: {
+  compact: boolean;
+  neededWidth: number;
+  availableWidth: number;
+}): boolean {
+  return input.compact
+    ? input.neededWidth > input.availableWidth - CONTEXT_STRIP_COMPACT_EXPAND_HYSTERESIS_PX
+    : input.neededWidth > input.availableWidth;
 }
 
 export function resolveEnvModeLabel(mode: EnvMode): string {
@@ -73,19 +92,6 @@ export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null):
 
 export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): string {
   return activeWorktreePath ? "Worktree" : "Local checkout";
-}
-
-/**
- * Once a thread has started, its workspace is pinned. A pinned local checkout
- * carries no information the branch selector does not already show, so the
- * env-mode control disappears. A pinned worktree keeps its label so the user
- * can see the thread runs off the main checkout.
- */
-export function shouldShowEnvModeControl(input: {
-  envModeLocked: boolean;
-  activeWorktreePath: string | null;
-}): boolean {
-  return !input.envModeLocked || input.activeWorktreePath !== null;
 }
 
 export interface PreviousWorktreeSeed {
@@ -203,6 +209,13 @@ export function resolveBranchTriggerLabel(input: {
     return `From ${baseRef}`;
   }
   return resolvedActiveBranch;
+}
+
+export function resolveBranchToolbarPrBranch(input: {
+  activeThreadBranch: string | null;
+  resolvedActiveBranch: string | null;
+}): string | null {
+  return input.activeThreadBranch === input.resolvedActiveBranch ? input.activeThreadBranch : null;
 }
 
 export function resolveLocalCheckoutBranchMismatch(input: {
