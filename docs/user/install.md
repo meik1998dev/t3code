@@ -96,9 +96,6 @@ For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 [Claude](./providers-claude.md), [OpenCode](./providers-opencode.md), and
 [Antigravity](./providers-antigravity.md).
 
-Grok models that support adjustable reasoning show a **Reasoning** section in the composer
-settings pill beside the model picker. The levels come from the installed Grok Build CLI.
-
 ## Next steps
 
 - [Working with threads](./thread-sidebar.md): start tasks and organize parallel work.

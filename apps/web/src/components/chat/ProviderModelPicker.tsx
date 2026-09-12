@@ -15,8 +15,8 @@ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPick
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
-  getComposerTriggerModelName,
   getTriggerDisplayModelLabel,
+  getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import {
@@ -50,8 +50,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   triggerAriaLabel?: string;
-  /** Hide the dropdown chevron; the composer footer renders a plain pill. */
-  hideChevron?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
@@ -83,7 +81,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       ? undefined
       : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
-    ? getComposerTriggerModelName(selectedModel, activeEntry?.driverKind)
+    ? getTriggerDisplayModelName(selectedModel)
     : props.model === ANTIGRAVITY_DEFAULT_MODEL
       ? "Choose model"
       : props.model || "Choose model";
@@ -218,11 +216,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </Badge>
           ) : null}
         </span>
-        {props.hideChevron ? null : (
-          <span aria-hidden="true" className="flex items-center">
-            <ComposerControlChevron size={size} />
-          </span>
-        )}
+        <span aria-hidden="true" className="flex items-center">
+          <ComposerControlChevron size={size} />
+        </span>
       </PopoverTrigger>
       <PopoverPopup
         {...(props.isComposerOwned ? composerFloatingLayerProps : {})}

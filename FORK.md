@@ -57,11 +57,9 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 | File                                                              | Entries                                                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/web/src/components/ChatView.tsx`                            | Fork, Compaction fork, Pasted text, Tasks, Composer footer, Linear       |
+| `apps/web/src/components/ChatView.tsx`                            | Fork, Compaction fork, Pasted text, Tasks, Linear                        |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`               | Fork, Compaction fork, Thinking row                                      |
 | `apps/web/src/components/Sidebar.tsx`                             | Sidebar status, Sidebar filter, Sidebar style, Transcript, Agent threads |
-| `apps/web/src/components/chat/ChatComposer.tsx`                   | Composer footer, Settings pill                                           |
-| `apps/web/src/components/BranchToolbar*.tsx`                      | Composer footer, Branch font, Settings pill                              |
 | `apps/web/src/index.css`                                          | Sidebar style, Radius, Sidebar status, Mermaid                           |
 | `apps/server/src/ws.ts`                                           | GitHub account, Fork, Linear, Thinking row, Agent threads                |
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Checkpoint restore, Task tracking, Thinking row, Agent threads           |
@@ -171,39 +169,6 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 ## Composer
 
-### Branch controls in the composer footer (#4, #5, #16, #25, direct commit)
-
-- What: the branch bar is removed. Workspace, env mode, and branch controls sit in the composer
-  footer and stay readable in a narrow panel. The old measurement-based footer layout is deleted.
-- Key files: `apps/web/src/components/BranchToolbar.tsx`, `BranchToolbar.logic.ts`,
-  `BranchToolbar{BranchSelector,EnvModeSelector,EnvironmentSelector}.tsx`, `chat/ChatComposer.tsx`,
-  `chat/ComposerSurface.tsx`, `ChatView.tsx`, `packages/contracts/src/settings.ts`.
-- Deleted file (do not bring back on merge): `chat/restingComposerControlsMeasurement.ts`.
-  `composerFooterLayout.ts` was deleted too, but upstream reworked it and the 09-07 sync kept
-  upstream's version. `ChatView.tsx` and `ChatComposer.tsx` use it now.
-- Tests: `BranchToolbar.logic.test.ts`, `packages/contracts/src/settings.test.ts`.
-- Check: open a new thread, then narrow the panel. No branch bar above the composer, and the
-  footer controls do not overlap.
-- Drop when: upstream redesigns the footer the same way. If upstream changes the branch bar a lot,
-  take upstream's version and redo this change.
-
-### One settings pill (#13, #14)
-
-- What: model traits and access mode are merged into one composer pill. The lock icon is gone,
-  and workspace and branch controls are smaller.
-- Key files: `apps/web/src/components/chat/ComposerSettingsMenu.tsx`, `chat/ChatComposer.tsx`,
-  `chat/TraitsPicker.tsx`, `chat/ProviderModelPicker.tsx`, `chat/composerProviderState.tsx`,
-  `chat/providerIconUtils.ts`, `docs/user/{install,permission-modes}.md`.
-- Deleted file: `chat/CompactComposerControlsMenu.tsx`.
-- Check: click the pill. It shows traits and access mode in one menu.
-- Drop when: upstream merges these controls.
-
-### Hide local checkout control after the first turn (#11)
-
-- Key files: `apps/web/src/components/BranchToolbar.logic.ts`, `BranchToolbar.tsx`.
-- Tests: `BranchToolbar.logic.test.ts`.
-- Check: after the first turn, the env mode control is gone.
-
 ### Pasted text chips (#19, #26)
 
 - What: large pasted text becomes a chip. Clicking the chip shows the full text in a popover.
@@ -298,7 +263,8 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 ### Corner radius (#9; #36 reverted by #39)
 
-- What: a smaller border radius across the app. The composer radius was restored once after a sync.
+- What: a smaller border radius across the app. The composer radius was restored once after a sync,
+  and again when the upstream composer footer came back (`rounded-3xl` in `ComposerSurface.tsx`).
 - Key files: `apps/web/src/index.css`, `chat/{ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
 - Check: the composer and cards have the smaller radius.
 - Warning: upstream often changes radius tokens. Take upstream's token names, then set the fork values again.
