@@ -100,7 +100,7 @@ describe("DesktopEnvironment", () => {
       );
 
       assert.equal(environment.isDevelopment, false);
-      assert.equal(environment.displayName, "Spindle (Alpha)");
+      assert.equal(environment.displayName, "Spindle");
       assert.equal(environment.userDataDirName, "t3code");
       assert.equal(environment.legacyUserDataDirName, "T3 Code (Alpha)");
       assert.equal(environment.stateDir, "/tmp/t3/userdata");

@@ -321,7 +321,11 @@ export function setDefaultAdvertisedEndpointKey(state: UiState, key: string | nu
 // a scoped sidebar survives the upgrade instead of silently resetting to all.
 function sanitizeProjectScopeKeys(value: unknown, legacyValue: unknown): string[] {
   if (Array.isArray(value)) {
-    return [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry !== ""))];
+    return [
+      ...new Set(
+        value.filter((entry): entry is string => typeof entry === "string" && entry !== ""),
+      ),
+    ];
   }
   const legacyKey = sanitizeOptionalKey(legacyValue);
   return legacyKey === null ? [] : [legacyKey];

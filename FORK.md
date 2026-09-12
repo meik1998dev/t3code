@@ -372,6 +372,20 @@ Host <hostname>.local
 - Check: ask the agent for a small mermaid flowchart. It renders as a diagram.
 - Warning: on a lockfile conflict, take upstream's `pnpm-lock.yaml`, then run `vp i` again.
 
+### App name without "(Alpha)" (#43)
+
+- What: the stable desktop build is named `Spindle`, not `Spindle (Alpha)`. Dev and Nightly keep
+  their suffix so builds stay easy to tell apart. The `Alpha` stage label still exists in contracts;
+  only the display name drops it.
+- Key files: `apps/desktop/package.json` (`productName`), `apps/desktop/src/app/DesktopEnvironment.ts`,
+  `apps/desktop/scripts/electron-launcher.mjs`, `apps/web/src/branding.logic.ts`, `apps/web/index.html`.
+- Tests: `apps/web/src/branding.test.ts`, `apps/desktop/src/app/{DesktopEnvironment,DesktopAppIdentity}.test.ts`,
+  `scripts/build-desktop-artifact.test.ts` (the identity test also fixes the legacy user-data path,
+  which is `T3 Code (Alpha)` on real installs).
+- Check: the menu bar, window title, and About panel say `Spindle`; a `-nightly` version says `Spindle (Nightly)`.
+- Warning: the app bundle is now `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
+  the first install. User data is not affected (it lives under `~/.t3`).
+
 ### Hide "Add action" until a project has actions (direct commit)
 
 - Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
