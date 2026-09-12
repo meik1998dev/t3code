@@ -13,6 +13,7 @@ import {
 } from "./providerSetup.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
+import { AgentPortsList, AgentPortsListInput } from "./agentPorts.ts";
 import {
   LinearGetIssueInput,
   LinearIssueDetail,
@@ -377,6 +378,9 @@ export const WS_METHODS = {
   linearSetApiKey: "linear.setApiKey",
   linearListMyIssues: "linear.listMyIssues",
   linearGetIssue: "linear.getIssue",
+
+  // Agent ports (fork)
+  agentPortsList: "agentPorts.list",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
@@ -806,6 +810,12 @@ export const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
   payload: LinearGetIssueInput,
   success: LinearIssueDetail,
   error: LinearRpcErrorUnion,
+});
+
+export const WsAgentPortsListRpc = Rpc.make(WS_METHODS.agentPortsList, {
+  payload: AgentPortsListInput,
+  success: AgentPortsList,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsSourceControlLookupRepositoryRpc = Rpc.make(WS_METHODS.sourceControlLookupRepository, {
@@ -1288,6 +1298,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsLinearSetApiKeyRpc,
   WsLinearListMyIssuesRpc,
   WsLinearGetIssueRpc,
+  WsAgentPortsListRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

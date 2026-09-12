@@ -111,6 +111,10 @@
       "types": "./src/state/linear.ts",
       "default": "./src/state/linear.ts"
     },
+    "./state/agentPorts": {
+      "types": "./src/state/agentPorts.ts",
+      "default": "./src/state/agentPorts.ts"
+    },
     "./state/attachments": {
       "types": "./src/state/attachments.ts",
       "default": "./src/state/attachments.ts"
