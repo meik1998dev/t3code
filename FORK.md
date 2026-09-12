@@ -68,6 +68,79 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | `apps/server/src/persistence/Migrations.ts`                       | [Migrations](#migrations)                                                |
 | `packages/contracts/src/orchestration.ts`                         | Fork, Sidebar status, Thinking row, Agent threads                        |
 
+## Remote server (VPS) deploy
+
+The fork's server side (GitHub account per repo, Linear picker, agent thread tools,
+migrations 50–52) only runs on a machine that has the **fork build**. Every path that
+installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
+`t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
+same in the app, so the gap shows up late as "No skills found", no per-repo PR list, or a
+missing sidebar status.
+
+Learned on 2026-09-12 while setting up a root-login VPS (Ubuntu 24.04, Node 22).
+
+### Build and ship (Mac → server)
+
+`~/spindle/deploy.sh` on the Mac does all of this in one command (about 5 minutes).
+Move it into `scripts/` when it stabilises.
+
+1. `vp run --filter t3 build` — builds the web UI and bundles it into `apps/server/dist`.
+2. `cd apps/server && npm pack` — `pnpm pack` fails without a full `pnpm install`
+   (workspace devDependencies). `npm pack` works but copies `"catalog:"` specifiers as is,
+   and npm on the server rejects them (`Unsupported URL Type "catalog:"`). Rewrite each one
+   with the version from `pnpm-workspace.yaml` (`[catalog]`) and drop `devDependencies`.
+3. On the server: `cd ~/.t3/runtime/versions/<version> && npm install <tgz>`. The runtime
+   slot is what `~/.t3/runtime/service-launcher.mjs` starts:
+   `versions/<version>/node_modules/t3/dist/bin.mjs`, gated by `.install-complete`
+   containing `<version>`. `<version>` must equal `apps/server/package.json` and the desktop
+   app build (0.0.39 today), because the desktop matches remote runtimes by that number.
+4. `~/.t3/runtime/service-state.json` → `{"protocol": 2, "activeVersion": "<version>"}`,
+   then `systemctl --user restart t3code`. Keep the runtime's `node_modules` — `node-pty`
+   is compiled there, and the fork has the same 13 runtime dependencies as upstream.
+
+### Which side needs a rebuild
+
+- Server-side change (`apps/server`, migrations, server bits of `packages/*`): run the deploy
+  script. The installed desktop app keeps working against the new server.
+- Client-side change (`apps/web`, `apps/desktop`, `packages/client-runtime`, client bits of
+  `packages/contracts`): build and install a new desktop app, `vp run dist:desktop:dmg`. The
+  server needs no deploy for that, unless contracts changed what the server sends (then both).
+- Mobile (`apps/mobile`): a new mobile build, see `docs/user/install.md`.
+
+### Rules on the server
+
+- Never run `npx t3 service update` there. Never connect with the desktop "SSH environment"
+  mode. Both replace the slot with upstream. Use T3 Connect (`t3 connect` on the server).
+- The service runs as **root**. Claude Code refuses Full access (`--dangerously-skip-permissions`)
+  as root and exits, which surfaces as `turn/setPermissionMode failed` +
+  `Claude runtime stream failed`. Fix: `IS_SANDBOX=1` in a systemd drop-in
+  (`~/.config/systemd/user/t3code.service.d/env.conf`), plus `EnvironmentFile=` for
+  `CLAUDE_CODE_OAUTH_TOKEN`. A normal user account is the cleaner long-term fix.
+- The Claude instance field `CLAUDE_CONFIG_DIR` (`homePath`) must be a **directory**. Set to a
+  file (the token env file) it silently drops user skills, settings and commands; the global
+  skill list can still look fine because the server's cwd is `$HOME`, so
+  `$HOME/.claude/skills` is discovered a second time as a "project" root
+  (`apps/server/src/provider/Drivers/ClaudeSkills.ts`). Possible fork fix: validate the field
+  and show a warning in the provider card.
+- Database: a database first created by upstream npm (migrations ≤ 49 today) then booted by
+  the fork runs 50–52 cleanly. Never let upstream run again on that database afterwards —
+  see [Migrations](#migrations) for the number clash.
+- Check after each deploy: `~/.t3/userdata/logs/boot-service.log` prints "Spindle", the
+  `$` picker lists user skills inside a worktree thread, and a repo with `gh.account` set
+  shows its pull requests.
+
+### Open in editor from a remote environment
+
+The server advertises SSH host names for the Open menu: `<hostname>.local` via mDNS, or the
+tailnet name. A VPS reached through T3 Connect advertises its `<hostname>.local`, which the
+Mac cannot resolve. Map it once in `~/.ssh/config` on the Mac; VS Code and Zed both use it:
+
+```
+Host <hostname>.local
+  HostName <server-ip>
+  User <login-user>
+```
+
 ## Agent rules
 
 ### Fork ledger rule in AGENTS.md
