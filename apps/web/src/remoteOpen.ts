@@ -10,7 +10,9 @@
  */
 import type { ConnectionTarget } from "@t3tools/client-runtime/connection";
 import {
+  buildRemoteOpenUrl,
   REMOTE_CAPABLE_EDITOR_IDS,
+  remoteLaunchKindForEditor,
   type EditorId,
   type EnvironmentId,
   type RemoteOpenTarget,
@@ -124,7 +126,9 @@ export function useRemoteOpenState(environmentId: EnvironmentId | null): RemoteO
 
 /**
  * Editors offered in remote-link mode. The desktop app probes the machine the
- * renderer runs on; a browser cannot, so it offers VS Code only.
+ * renderer runs on; a browser cannot, so it offers VS Code only. `ssh-cli`
+ * editors (Zed) also need the desktop bridge to spawn the CLI, so a desktop
+ * build without `openRemoteEditorCommand` drops them from the probe result.
  */
 const REMOTE_FALLBACK_EDITORS: ReadonlyArray<EditorId> = ["vscode"];
 
@@ -147,7 +151,12 @@ export function useRemoteCapableEditors(): ReadonlyArray<EditorId> {
     let cancelled = false;
     probe().then(
       (ids) => {
-        const remoteCapable = ids.filter((id) => REMOTE_CAPABLE_EDITOR_IDS.includes(id));
+        const canSpawnCli = window.desktopBridge?.openRemoteEditorCommand !== undefined;
+        const remoteCapable = ids.filter(
+          (id) =>
+            REMOTE_CAPABLE_EDITOR_IDS.includes(id) &&
+            (canSpawnCli || remoteLaunchKindForEditor(id) === "deep-link"),
+        );
         cachedProbedEditors = remoteCapable.length > 0 ? remoteCapable : REMOTE_FALLBACK_EDITORS;
         if (!cancelled) {
           setEditors(cachedProbedEditors);
@@ -186,6 +195,36 @@ export async function openRemoteEditorUrl(url: string): Promise<boolean> {
   }
   window.location.assign(url);
   return true;
+}
+
+/**
+ * Open `absolutePath` on `host` with a local editor. Deep-link editors go
+ * through the OS URL handler; `ssh-cli` editors run their CLI via the desktop
+ * bridge. Resolves false when nothing opened, so callers do not record a
+ * preference or dismiss the SSH hint for an open that never happened.
+ */
+export async function openRemoteEditor(input: {
+  readonly editor: EditorId;
+  readonly host: string;
+  readonly absolutePath: string;
+}): Promise<boolean> {
+  switch (remoteLaunchKindForEditor(input.editor)) {
+    case "deep-link": {
+      const url = buildRemoteOpenUrl(input);
+      return url === undefined ? false : openRemoteEditorUrl(url);
+    }
+    case "ssh-cli": {
+      const spawn = window.desktopBridge?.openRemoteEditorCommand;
+      if (spawn === undefined) return false;
+      try {
+        return await spawn(input);
+      } catch {
+        return false;
+      }
+    }
+    case undefined:
+      return false;
+  }
 }
 
 /**

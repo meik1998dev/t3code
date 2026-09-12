@@ -98,7 +98,7 @@ import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } fr
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import type { ClientSettings, QuitConfirmationMode } from "./settings.ts";
-import type { EditorId } from "./editor.ts";
+import type { EditorId, RemoteEditorCommandInput } from "./editor.ts";
 import type {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
@@ -1137,6 +1137,12 @@ export interface DesktopBridge {
    * builds lack it; callers fall back to VS Code only.
    */
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
+  /**
+   * Open a remote folder with a local editor CLI that takes an `ssh://` URL
+   * (Zed). Resolves false when the CLI is missing or refused to start.
+   * Optional: older desktop builds lack it; callers hide such editors.
+   */
+  openRemoteEditorCommand?: (input: RemoteEditorCommandInput) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   /**
    * Quit-confirmation hint pushes. Optional: older desktop builds never emit
