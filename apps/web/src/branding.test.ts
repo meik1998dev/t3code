@@ -85,7 +85,7 @@ describe("branding logic", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Spindle",
-        fallbackDisplayName: "Spindle (Alpha)",
+        fallbackDisplayName: "Spindle",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.28-nightly.20260616.12",
       }),
@@ -96,21 +96,21 @@ describe("branding logic", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Spindle",
-        fallbackDisplayName: "Spindle (Alpha)",
+        fallbackDisplayName: "Spindle",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.27",
       }),
-    ).toBe("Spindle (Alpha)");
+    ).toBe("Spindle");
   });
 
   it("keeps the fallback display name for malformed nightly primary server versions", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Spindle",
-        fallbackDisplayName: "Spindle (Alpha)",
+        fallbackDisplayName: "Spindle",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.28-nightly.20260616",
       }),
-    ).toBe("Spindle (Alpha)");
+    ).toBe("Spindle");
   });
 });

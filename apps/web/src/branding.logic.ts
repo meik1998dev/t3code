@@ -4,7 +4,10 @@ export function formatAppDisplayName(input: {
   readonly baseName: string;
   readonly stageLabel: string;
 }): string {
-  if (input.stageLabel.trim().toLowerCase() === "latest") {
+  // Stable builds ("latest" hosted channel, "alpha" desktop stage) show the
+  // bare name; only Dev and Nightly carry a suffix.
+  const stage = input.stageLabel.trim().toLowerCase();
+  if (stage === "latest" || stage === "alpha") {
     return input.baseName;
   }
 

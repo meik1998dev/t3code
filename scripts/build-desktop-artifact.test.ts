@@ -260,7 +260,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "Spindle (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "Spindle");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "Spindle (Nightly)");
   });
 
@@ -658,7 +658,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/node_modules/.bin/**",
       ]);
       assert.deepStrictEqual(mac.dmg, {
-        title: "Spindle (Alpha) 1.2.3 Installer",
+        title: "Spindle 1.2.3 Installer",
         background: "dmg/dmg-background-latest.png",
         window: { width: 540, height: 412 },
         contents: [
