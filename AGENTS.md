@@ -165,3 +165,13 @@ Full glossary with file links: `docs/internals/glossary.md`
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+
+## Fork ledger
+
+This checkout is the `meik1998dev/t3code` fork of `pingdotgg/t3code`. [`FORK.md`](FORK.md) records every change the fork carries on top of upstream. It overrides the "Plans and work artifacts" rule for itself: it is a durable record, not a plan.
+
+- **Before changing code**, read the `FORK.md` entries for the files you will touch. Do not undo or break a fork change unless the task asks for it.
+- **When your PR adds, changes, or removes fork behavior**, update `FORK.md` in the same PR: what it does, key files, tests, a check to run in the app, and when to drop it. Add new files to Hot files if three or more entries touch them.
+- **When your PR adds a database migration**, record it in the `FORK.md` Migrations table and read the number clash rules there first.
+- **When syncing upstream** (`pingdotgg/main`), follow the `FORK.md` Sync steps. For each conflict, use its entry to keep, merge, or drop the fork side. Afterwards update "Last synced upstream commit", and remove entries for changes that upstream now ships.
+- **On a conflict in this file**, take upstream's version and keep this section at the end.

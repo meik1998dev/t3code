@@ -16,13 +16,11 @@
   --color-border: var(--t3-border);
   --color-input: var(--t3-input);
   --color-ring: var(--t3-ring);
-  /* Multiplicative scale, matching apps/web/src/index.css, so a small
-     --t3-radius cannot produce negative corners. */
-  --radius-sm: calc(var(--t3-radius) * 0.6);
-  --radius-md: calc(var(--t3-radius) * 0.8);
+  --radius-sm: calc(var(--t3-radius) - 4px);
+  --radius-md: calc(var(--t3-radius) - 2px);
   --radius-lg: var(--t3-radius);
-  --radius-xl: calc(var(--t3-radius) * 1.4);
-  --radius-2xl: calc(var(--t3-radius) * 1.8);
+  --radius-xl: calc(var(--t3-radius) + 4px);
+  --radius-2xl: calc(var(--t3-radius) + 8px);
 }
 
 :host {
@@ -31,7 +29,7 @@
     sans-serif;
   --t3-font-mono:
     "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  --t3-radius: 0.1875rem;
+  --t3-radius: 0.625rem;
   --t3-background: white;
   --t3-foreground: oklch(0.269 0 0);
   --t3-popover: white;
