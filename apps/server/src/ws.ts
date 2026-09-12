@@ -144,6 +144,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as LinearService from "./linear/LinearService.ts";
+import * as AgentPortsService from "./ports/AgentPortsService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -582,6 +583,7 @@ const makeWsRpcLayer = (
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const linear = yield* LinearService.LinearService;
+      const agentPorts = yield* AgentPortsService.AgentPortsService;
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const sessions = yield* SessionStore.SessionStore;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
@@ -1844,6 +1846,10 @@ const makeWsRpcLayer = (
         [WS_METHODS.linearGetStatus]: () =>
           observeRpcEffect(WS_METHODS.linearGetStatus, linear.getStatus, {
             "rpc.aggregate": "linear",
+          }),
+        [WS_METHODS.agentPortsList]: (input) =>
+          observeRpcEffect(WS_METHODS.agentPortsList, agentPorts.list(input), {
+            "rpc.aggregate": "agentPorts",
           }),
         [WS_METHODS.linearSetApiKey]: (input) =>
           observeRpcEffect(WS_METHODS.linearSetApiKey, linear.setApiKey(input), {

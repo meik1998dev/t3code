@@ -39,4 +39,5 @@ export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./linear.ts";
+export * from "./agentPorts.ts";
 export * from "./rpc.ts";

@@ -61,7 +61,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | `apps/web/src/components/chat/MessagesTimeline.tsx`               | Fork, Compaction fork, Thinking row                                      |
 | `apps/web/src/components/Sidebar.tsx`                             | Sidebar status, Sidebar filter, Sidebar style, Transcript, Agent threads |
 | `apps/web/src/index.css`                                          | Sidebar style, Radius, Sidebar status, Mermaid                           |
-| `apps/server/src/ws.ts`                                           | GitHub account, Fork, Linear, Thinking row, Agent threads                |
+| `apps/server/src/ws.ts`                                           | GitHub account, Fork, Linear, Thinking row, Agent threads, Agent ports   |
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Checkpoint restore, Task tracking, Thinking row, Agent threads           |
 | `apps/server/src/provider/RuntimeInstructions.ts`                 | Task tracking, Agent threads                                             |
 | `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` | Sidebar status, Compaction fork, Agent threads                           |
@@ -291,6 +291,30 @@ Host <hostname>.local
   `apps/web/src/routes/_chat.pull-requests.tsx`.
 - Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
 - Check: pick two projects in each filter. Only those threads and pull requests show.
+
+### Agent ports popover (#44)
+
+- What: a button at the bottom right of the sidebar (next to the update pill) opens a popover
+  with the TCP ports that agent sessions opened, grouped by environment (Mac, VPS). Each row
+  shows the port, the command, and the thread or project behind it. Click opens
+  `http://localhost:<port>` (in the thread's in-app browser when the port belongs to a thread,
+  which also works for a remote environment); a remote port with no thread copies an `ssh -L`
+  tunnel command instead.
+- How ports are found: live, no bookkeeping. `lsof` lists listeners, `ps` gives the process tree,
+  `lsof -d cwd` gives each listener's folder. A port is kept when its process is a child of the
+  Spindle server (agents and their shells are) or when its folder is inside a project root or
+  thread worktree (catches detached servers). The server's own port and system services are
+  dropped. Windows returns an empty list with `supported: false`.
+- Key files: `packages/contracts/src/agentPorts.ts` (new) + `rpc.ts` (`agentPorts.list`),
+  `apps/server/src/ports/AgentPortsService.ts` (new) + `ws.ts`, `server.ts`,
+  `auth/RpcAuthorization.ts`, `packages/client-runtime/src/state/agentPorts.ts` (new) +
+  `package.json` exports, `apps/web/src/agentPorts.logic.ts` (new),
+  `apps/web/src/components/sidebar/SidebarPortsPill.tsx` (new), `sidebar/SidebarChrome.tsx`.
+- Tests: `AgentPortsService.test.ts`, `agentPorts.logic.test.ts`.
+- Check: start `python3 -m http.server 8765` inside a project folder, open the popover: the port
+  shows under that environment with the project name. Stop it: the row goes away within 4 s.
+- Warning: both sides change. Ship the server with `deploy.sh` and build a new DMG; an old server
+  answers the RPC with "unavailable" in the popover, nothing else breaks.
 
 ### Sidebar look (#6, #8, #22, #23)
 
