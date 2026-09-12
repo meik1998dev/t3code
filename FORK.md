@@ -259,6 +259,24 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 - Check: open the Linear picker in a new thread. Issues load, and picking one names the branch.
 - Drop when: upstream ships a Linear integration.
 
+## Editors
+
+### Open remote folders in Zed (#42)
+
+- What: on a remote environment, the Open menu lists Zed when it is installed on the viewing
+  machine. The desktop app runs `zed ssh://<host><path>` locally (Zed has no URL scheme for
+  SSH). Browsers keep VS Code only.
+- Key files: `packages/contracts/src/{editor,ipc}.ts` (`remoteSshCli`, `buildRemoteEditorCommand`,
+  bridge method), `apps/desktop/src/ipc/methods/window.ts` (`openRemoteEditorCommand`),
+  `apps/desktop/src/{preload,ipc/channels,ipc/DesktopIpcHandlers}.ts`,
+  `apps/web/src/remoteOpen.ts` (`openRemoteEditor`), `apps/web/src/components/chat/OpenInPicker.tsx`.
+- Tests: `packages/contracts/src/editor.test.ts`, `apps/web/src/remoteOpen.test.ts`,
+  `apps/desktop/src/ipc/methods/window.test.ts`.
+- Check: desktop, remote environment, Zed CLI on PATH → Open ▾ shows Zed and opens the folder over
+  SSH. The host is the advertised name (`<hostname>.local` or tailnet) or the SSH alias, so it must
+  resolve in `~/.ssh/config`.
+- Drop when: upstream gives Zed (or a generic CLI editor) a remote launch path.
+
 ## Look and feel
 
 ### Corner radius (#9; #36 reverted by #39)
