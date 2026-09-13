@@ -166,6 +166,44 @@ describe("claudeRateLimitEventToUpdate", () => {
     });
   });
 
+  it("reads every window from unifiedWindows, which is all a token session sends", () => {
+    // Real event from an account signed in with CLAUDE_CODE_OAUTH_TOKEN: no
+    // top-level utilization, both windows inside `unifiedWindows`.
+    expect(
+      claudeRateLimitEventToUpdate(
+        {
+          status: "allowed",
+          rateLimitType: "five_hour",
+          resetsAt: 1_789_320_600,
+          unifiedWindows: {
+            five_hour: { utilization: 0.12, resetsAt: 1_789_320_600 },
+            seven_day: { utilization: 0.05, resetsAt: 1_789_776_000 },
+          },
+        } as never,
+        noNames,
+      ),
+    ).toEqual({
+      windows: [
+        {
+          id: "five_hour",
+          kind: "session",
+          label: "Session",
+          usedPercent: 12,
+          windowDurationMins: 300,
+          resetsAt: "2026-09-13T17:30:00.000Z",
+        },
+        {
+          id: "seven_day",
+          kind: "weekly",
+          label: "Weekly",
+          usedPercent: 5,
+          windowDurationMins: 10080,
+          resetsAt: "2026-09-19T00:00:00.000Z",
+        },
+      ],
+    });
+  });
+
   it("ignores windows the page does not render and events without a utilization", () => {
     expect(
       claudeRateLimitEventToUpdate(

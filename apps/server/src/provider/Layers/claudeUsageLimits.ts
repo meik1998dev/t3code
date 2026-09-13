@@ -6,7 +6,14 @@
  * - `get_usage` (on demand, during the capabilities probe) reports every
  *   window at once as 0–100 percentages with ISO reset times.
  * - `rate_limit_event` (streamed during a turn) names one window at a time
- *   with a 0–1 utilization fraction and an epoch-seconds reset.
+ *   with a 0–1 utilization fraction and an epoch-seconds reset, and newer CLIs
+ *   also carry every account window at once in `unifiedWindows`.
+ *
+ * The streamed path is the only one an account signed in with
+ * `CLAUDE_CODE_OAUTH_TOKEN` has: `get_usage` answers
+ * `rate_limits_available: false` for those sessions, while turns still report
+ * the windows. See `ClaudeProvider`, which keeps such an account open for
+ * turn updates instead of marking it unsupported.
  *
  * @module provider/Layers/claudeUsageLimits
  */
@@ -100,6 +107,32 @@ function readModelScoped(rateLimits: object): ReadonlyArray<ModelScopedWindow> {
   );
 }
 
+/**
+ * `unifiedWindows` ships in the CLI but not in the SDK typings we pin, so it
+ * is read structurally: `{ five_hour: { utilization, resetsAt }, … }` with
+ * utilization as a 0–1 fraction and resetsAt in epoch seconds.
+ */
+interface UnifiedWindow {
+  readonly utilization: number;
+  readonly resetsAt?: number;
+}
+
+function readUnifiedWindows(info: SDKRateLimitInfo): ReadonlyMap<string, UnifiedWindow> {
+  const raw = (info as { readonly unifiedWindows?: unknown }).unifiedWindows;
+  const windows = new Map<string, UnifiedWindow>();
+  if (typeof raw !== "object" || raw === null) return windows;
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== "object" || value === null) continue;
+    const { utilization, resetsAt } = value as UnifiedWindow;
+    if (typeof utilization !== "number") continue;
+    windows.set(id, {
+      utilization,
+      ...(typeof resetsAt === "number" ? { resetsAt } : {}),
+    });
+  }
+  return windows;
+}
+
 function isoFromEpochSeconds(value: number | undefined): string | undefined {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
   const dt = DateTime.make(value * 1000);
@@ -135,6 +168,24 @@ export function claudeRateLimitEventToUpdate(
   info: SDKRateLimitInfo,
   names: ClaudeScopedLimitNames,
 ): ProviderUsageLimitsUpdate | undefined {
+  // Prefer the full set: it carries every account window, which is all a
+  // token session ever gets, and it costs one event instead of two.
+  const unified = readUnifiedWindows(info);
+  if (unified.size > 0) {
+    const windows: ServerProviderUsageWindow[] = [];
+    for (const id of Object.keys(WINDOWS)) {
+      const window = unified.get(id);
+      if (!window) continue;
+      windows.push(
+        makeWindow(
+          id as keyof typeof WINDOWS & string,
+          window.utilization * 100,
+          isoFromEpochSeconds(window.resetsAt),
+        ),
+      );
+    }
+    if (windows.length > 0) return { windows };
+  }
   const type: string | undefined = info.rateLimitType;
   if (!type || typeof info.utilization !== "number") {
     return undefined;
