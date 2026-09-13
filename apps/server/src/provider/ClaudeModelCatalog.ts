@@ -132,26 +132,6 @@ export function resolveClaudeCatalogModel(
   );
 }
 
-/** Oldest Claude Code release known to accept `--thinking-display`. */
-const THINKING_DISPLAY_MIN_CLAUDE_VERSION = "2.1.128";
-
-/**
- * Whether a session on this model can pass `--thinking-display`. The CLI
- * rejects unknown flags and the adapter never sees the CLI version, but a
- * model is only offered when the CLI meets its `minVersion`. Older models
- * without a newer floor already default to summarized thinking.
- */
-export function claudeCatalogModelSupportsThinkingDisplay(
-  catalog: ClaudeModelCatalog,
-  slugOrAlias: string | null | undefined,
-): boolean {
-  const minVersion = resolveClaudeCatalogModel(catalog, slugOrAlias)?.compatibility.minVersion;
-  return (
-    minVersion !== undefined &&
-    compareSemverVersions(minVersion, THINKING_DISPLAY_MIN_CLAUDE_VERSION) >= 0
-  );
-}
-
 export function resolveClaudeModelSlug(catalog: ClaudeModelCatalog, slugOrAlias: string): string {
   return resolveClaudeCatalogModel(catalog, slugOrAlias)?.model.slug ?? slugOrAlias;
 }

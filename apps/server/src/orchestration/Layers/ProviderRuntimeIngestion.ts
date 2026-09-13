@@ -19,7 +19,6 @@ import {
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -44,7 +43,6 @@ import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/La
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
-import { ThreadThinkingPreviewService } from "../ThreadThinkingPreview.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -902,7 +900,6 @@ export function runtimeEventToActivities(
 const make = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
-  const threadThinkingPreview = yield* ThreadThinkingPreviewService;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
@@ -1480,30 +1477,7 @@ const make = Effect.gen(function* () {
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
       if (event.type === "content.delta" && event.payload.streamKind !== "assistant_text") {
-        // Reasoning is never persisted; it only feeds the live "Thinking"
-        // preview. No thread lookup here: this is the hottest delta path.
-        if (
-          event.payload.streamKind === "reasoning_text" ||
-          event.payload.streamKind === "reasoning_summary_text"
-        ) {
-          yield* threadThinkingPreview.recordReasoningDelta(
-            event.threadId,
-            event.payload.streamKind,
-            event.payload.delta,
-            yield* Clock.currentTimeMillis,
-          );
-        }
         return;
-      }
-
-      // Reasoning deltas above skip the thread lookup, so the preview can hold
-      // a tail for a thread this server no longer knows. Clear it by the raw
-      // thread id before the lookup, or such an entry would never go away.
-      if (event.type === "session.exited") {
-        yield* threadThinkingPreview.clearThreadThinkingPreview(
-          event.threadId,
-          yield* Clock.currentTimeMillis,
-        );
       }
 
       const thread = yield* resolveThreadRuntimeContext(event.threadId);
@@ -2032,8 +2006,7 @@ const make = Effect.gen(function* () {
       // cleared on settle so a finished plan never lingers as stale UI.
       // Events carrying a turn id that conflicts with the active turn are
       // stale (superseded turn) and must neither overwrite nor clear the
-      // active turn's progress; session.exited always clears (the thinking
-      // preview was already cleared before the thread lookup).
+      // active turn's progress; session.exited always clears.
       if (event.type === "session.exited") {
         threadPlanProgress.clearThreadPlanProgress(thread.id);
       } else if (!conflictsWithActiveTurn) {
@@ -2041,17 +2014,6 @@ const make = Effect.gen(function* () {
           threadPlanProgress.recordPlanProgress(thread.id, event.payload.plan);
         } else if (isTerminalTurn && shouldApplyThreadLifecycle) {
           threadPlanProgress.clearThreadPlanProgress(thread.id);
-          yield* threadThinkingPreview.clearThreadThinkingPreview(
-            thread.id,
-            yield* Clock.currentTimeMillis,
-          );
-        } else if (event.type === "turn.started" && shouldApplyThreadLifecycle) {
-          // A new turn starts from an empty tail so the previous turn's last
-          // thought never shows under the new "Thinking" row.
-          yield* threadThinkingPreview.clearThreadThinkingPreview(
-            thread.id,
-            yield* Clock.currentTimeMillis,
-          );
         }
       }
 

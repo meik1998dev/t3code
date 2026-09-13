@@ -4,7 +4,6 @@ import { ProviderInstanceId } from "@t3tools/contracts";
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import type { ModelManifestData } from "./ModelManifest.ts";
 import {
-  claudeCatalogModelSupportsThinkingDisplay,
   formatClaudeVersionUpgradeMessage,
   normalizeClaudeCatalogEffort,
   resolveClaudeCatalogApiModelId,
@@ -79,41 +78,6 @@ describe("Claude model catalog", () => {
       formatClaudeVersionUpgradeMessage(catalog, "3.1.9"),
       "Claude Code v3.1.9 is too old for Claude Synthetic Next. Upgrade to v3.2.0 or newer to access it.",
     );
-  });
-
-  it("passes --thinking-display only when the model's CLI floor guarantees the flag", () => {
-    const base = manifest();
-    const models = base.providers!.claudeAgent!.models;
-    const catalog = resolveClaudeModelCatalog({
-      ...base,
-      providers: {
-        ...base.providers,
-        claudeAgent: {
-          ...base.providers!.claudeAgent!,
-          models: [
-            ...models,
-            {
-              slug: "claude-synthetic-old",
-              name: "Claude Synthetic Old",
-              status: "legacy",
-              profile: "synthetic",
-              adapter: { claudeCode: { minVersion: "2.1.100" } },
-            },
-            {
-              slug: "claude-synthetic-unpinned",
-              name: "Claude Synthetic Unpinned",
-              status: "legacy",
-              profile: "synthetic",
-            },
-          ],
-        },
-      },
-    });
-    assert.isTrue(claudeCatalogModelSupportsThinkingDisplay(catalog, "synthetic"));
-    assert.isFalse(claudeCatalogModelSupportsThinkingDisplay(catalog, "claude-synthetic-old"));
-    assert.isFalse(claudeCatalogModelSupportsThinkingDisplay(catalog, "claude-synthetic-unpinned"));
-    assert.isFalse(claudeCatalogModelSupportsThinkingDisplay(catalog, "unknown-model"));
-    assert.isFalse(claudeCatalogModelSupportsThinkingDisplay(catalog, undefined));
   });
 
   it("resolves aliases and declarative adapter mappings", () => {

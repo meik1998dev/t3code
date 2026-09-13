@@ -58,15 +58,15 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | File                                                              | Entries                                                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `apps/web/src/components/ChatView.tsx`                            | Fork, Compaction fork, Pasted text, Tasks, Linear                        |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`               | Fork, Compaction fork, Thinking row                                      |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`               | Fork, Compaction fork                                                    |
 | `apps/web/src/components/Sidebar.tsx`                             | Sidebar status, Sidebar filter, Sidebar style, Transcript, Agent threads |
 | `apps/web/src/index.css`                                          | Sidebar style, Radius, Sidebar status, Mermaid                           |
-| `apps/server/src/ws.ts`                                           | GitHub account, Fork, Linear, Thinking row, Agent threads, Agent ports   |
-| `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Checkpoint restore, Task tracking, Thinking row, Agent threads           |
+| `apps/server/src/ws.ts`                                           | GitHub account, Fork, Linear, Agent threads, Agent ports                 |
+| `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Checkpoint restore, Task tracking, Agent threads                         |
 | `apps/server/src/provider/RuntimeInstructions.ts`                 | Task tracking, Agent threads                                             |
 | `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` | Sidebar status, Compaction fork, Agent threads                           |
 | `apps/server/src/persistence/Migrations.ts`                       | [Migrations](#migrations)                                                |
-| `packages/contracts/src/orchestration.ts`                         | Fork, Sidebar status, Thinking row, Agent threads                        |
+| `packages/contracts/src/orchestration.ts`                         | Fork, Sidebar status, Agent threads                                      |
 
 ## Remote server (VPS) deploy
 
@@ -181,20 +181,6 @@ Host <hostname>.local
   `codexLaunchArgs.test.ts`.
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
 - Drop when: upstream turns these tools on and adds its own instruction.
-
-### Live Thinking row (#38; #30 was reverted by #31)
-
-- What: the server streams a thinking preview into the Thinking row. Claude gets
-  `--thinking-display summarized`, because Opus 4.8+ sends empty thinking by default.
-  The flag is only sent when the model's catalog `minVersion` is 2.1.128 or newer.
-- Key files: `apps/server/src/orchestration/ThreadThinkingPreview.ts`,
-  `orchestration/Layers/ProviderRuntimeIngestion.ts`, `orchestration/runtimeLayer.ts`,
-  `provider/ClaudeModelCatalog.ts`, `provider/Layers/ClaudeAdapter.ts`, `ws.ts`,
-  `packages/contracts/src/{orchestration,server}.ts`, `packages/client-runtime/src/state/{threads,threadState}.ts`,
-  `apps/web/src/components/chat/MessagesTimeline.tsx`.
-- Tests: `ThreadThinkingPreview.test.ts`, `ClaudeModelCatalog.test.ts`, `ClaudeAdapter.test.ts`.
-- Check: send a hard prompt on Opus 5. Thinking text streams in the Thinking row.
-- Drop when: upstream shows live thinking text.
 
 ### Checkpoint restore without a live session (#7)
 

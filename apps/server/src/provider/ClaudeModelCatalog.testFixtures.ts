@@ -6,7 +6,6 @@ export const SYNTHETIC_CLAUDE_CAPABLE_MODEL = "claude-synthetic-capable";
 export const SYNTHETIC_CLAUDE_COLLIDING_ALIAS = "synthetic-collision";
 export const SYNTHETIC_CLAUDE_STANDARD_MODEL = "claude-synthetic-standard";
 export const SYNTHETIC_CLAUDE_THINKING_MODEL = "claude-synthetic-thinking";
-export const SYNTHETIC_CLAUDE_PINNED_MODEL = "claude-synthetic-pinned";
 
 const effort = {
   id: "effort",
@@ -79,16 +78,6 @@ export const SYNTHETIC_CLAUDE_MODEL_CATALOG: ClaudeModelCatalog = {
       },
       runtime: {},
       compatibility: {},
-    },
-    {
-      model: {
-        slug: SYNTHETIC_CLAUDE_PINNED_MODEL,
-        name: "Claude Synthetic Pinned",
-        isCustom: false,
-        capabilities: { optionDescriptors: [effort] },
-      },
-      runtime,
-      compatibility: { minVersion: "9.0.0" },
     },
   ],
 };
