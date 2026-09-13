@@ -135,6 +135,19 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
   return `Claude ${subscriptionLabel} Subscription`;
 }
 
+/**
+ * A subscription signed in through `CLAUDE_CODE_OAUTH_TOKEN`: first-party
+ * Anthropic auth from a token rather than an API key or an external backend.
+ */
+function isClaudeSubscriptionTokenSession(input: {
+  readonly tokenSource: string | undefined;
+  readonly apiProvider: string | undefined;
+}): boolean {
+  if (!input.tokenSource) return false;
+  if (normalizeClaudeAuthMethod(input.tokenSource) === "apiKey") return false;
+  return input.apiProvider === undefined || input.apiProvider === "firstParty";
+}
+
 function claudeAuthMetadata(input: {
   readonly subscriptionType: string | undefined;
   readonly authMethod: string | undefined;
@@ -559,7 +572,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
     }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
-  const usageLimits = !capabilities.usage
+  const probedUsageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
       ? yield* recordClaudeUsageResponse(scopedLimitNames, {
@@ -567,6 +580,19 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
           checkedAt,
         })
       : claudeUsageResponseToLimits({ response: capabilities.usage, checkedAt }).limits;
+  // An account signed in with `CLAUDE_CODE_OAUTH_TOKEN` has plan limits, but
+  // `get_usage` refuses to read them, so the probe looks like an API key. Turns
+  // still report the windows, and `probeFailed` is the reason that lets those
+  // updates through and keeps the rows a turn already drew.
+  const usageLimits =
+    probedUsageLimits.unavailable?.reason === "unsupported" &&
+    isClaudeSubscriptionTokenSession(capabilities)
+      ? makeUnavailableUsageLimits({
+          checkedAt,
+          reason: "probeFailed",
+          message: "Limits arrive with the first message on this account.",
+        })
+      : probedUsageLimits;
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,

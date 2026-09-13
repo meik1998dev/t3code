@@ -143,6 +143,7 @@ type TestClaudeCapabilities = {
   readonly tokenSource: string | undefined;
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+  readonly usage?: { readonly rate_limits_available: boolean; readonly rate_limits: null };
 };
 
 function claudeCapabilities(overrides: Partial<TestClaudeCapabilities> = {}) {
@@ -2684,6 +2685,53 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.auth.status, "authenticated");
           assert.strictEqual(status.auth.type, "bedrock");
           assert.strictEqual(status.auth.label, "Amazon Bedrock");
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("keeps a token account open for the limits a turn reports", () =>
+        Effect.gen(function* () {
+          // `get_usage` refuses to read plan limits for a CLAUDE_CODE_OAUTH_TOKEN
+          // session, but its turns still stream them, so the account must not be
+          // filed as "no subscription limits".
+          const status = yield* checkClaudeProviderStatus(
+            defaultClaudeSettings,
+            claudeCapabilities({
+              tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+              apiProvider: "firstParty",
+              usage: { rate_limits_available: false, rate_limits: null },
+            }),
+          );
+          assert.strictEqual(status.usageLimits?.unavailable?.reason, "probeFailed");
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("still reports an API key account as having no subscription limits", () =>
+        Effect.gen(function* () {
+          const status = yield* checkClaudeProviderStatus(
+            defaultClaudeSettings,
+            claudeCapabilities({
+              tokenSource: "ANTHROPIC_API_KEY",
+              apiProvider: "firstParty",
+              usage: { rate_limits_available: false, rate_limits: null },
+            }),
+          );
+          assert.strictEqual(status.usageLimits?.unavailable?.reason, "unsupported");
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args) => {

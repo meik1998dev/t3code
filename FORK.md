@@ -182,6 +182,25 @@ Host <hostname>.local
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
 - Drop when: upstream turns these tools on and adds its own instruction.
 
+### Claude limits for token accounts (#48)
+
+- What: a Claude instance signed in with `CLAUDE_CODE_OAUTH_TOKEN` (how the VPS runs two
+  accounts) now shows Session and Weekly bars on Usage → Limits. Until its first message the
+  row reads "Limits arrive with the first message on this account."
+- Why: the SDK's `get_usage` answers `rate_limits_available: false` for token sessions, so the
+  probe filed them as "no subscription limits" (`unsupported`) and the page hid them. Turns on
+  the same account do report the windows, in `rate_limit_event.unifiedWindows`.
+- Key files: `apps/server/src/provider/Layers/ClaudeProvider.ts` (token sessions become
+  `probeFailed`, the reason that lets turn updates through),
+  `apps/server/src/provider/Layers/claudeUsageLimits.ts` (reads `unifiedWindows`, which the
+  pinned SDK typings do not carry yet).
+- Tests: `claudeUsageLimits.test.ts`, `ProviderRegistry.test.ts`.
+- Check: on the VPS, send one message with each Claude instance, then open Usage → Limits:
+  one block per account with its own bars. A machine signed in with `claude auth login` keeps
+  the old probe path and shows bars without sending anything.
+- Drop when: the SDK reports plan limits for token sessions, or upstream reads the streamed
+  windows itself.
+
 ### Checkpoint restore without a live session (#7)
 
 - What: restoring a checkpoint works when the provider session is not running.
