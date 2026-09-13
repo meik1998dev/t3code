@@ -43,6 +43,22 @@ export const AgentPort = Schema.Struct({
 });
 export type AgentPort = typeof AgentPort.Type;
 
+export const AgentPortStopInput = Schema.Struct({
+  pid: Schema.Int.check(Schema.isGreaterThan(0)),
+  port: Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThan(65536)),
+  /** Same roots as the list call, so the server can re-check ownership before it signals. */
+  cwdRoots: Schema.Array(TrimmedNonEmptyString).check(
+    Schema.isMaxLength(AGENT_PORTS_CWD_ROOTS_MAX_ITEMS),
+  ),
+});
+export type AgentPortStopInput = typeof AgentPortStopInput.Type;
+
+export const AgentPortStopResult = Schema.Struct({
+  /** False when the pid no longer owns that port, so nothing was signalled. */
+  stopped: Schema.Boolean,
+});
+export type AgentPortStopResult = typeof AgentPortStopResult.Type;
+
 export const AgentPortsList = Schema.Struct({
   ports: Schema.Array(AgentPort),
   scannedAt: IsoDateTime,

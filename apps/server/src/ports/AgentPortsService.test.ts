@@ -1,6 +1,8 @@
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as PlatformError from "effect/PlatformError";
 import { assert, describe, it } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -51,6 +53,21 @@ const LSOF_CWDS = [
   "n/opt/homebrew/var",
 ].join("\n");
 
+// Real `ss -ltnpH` output from Ubuntu 24.04: the Next.js name is cut at 15 bytes
+// and carries a parenthesis, which is exactly what lsof 4.95 chokes on.
+const SS_LISTENERS = [
+  `LISTEN 0      511        127.0.0.1:3773 0.0.0.0:* users:(("node",pid=${SERVER_PID},fd=22))`,
+  'LISTEN 0      511                *:3000       *:* users:(("next-server (v1",pid=105641,fd=22))',
+  'LISTEN 0      4096       127.0.0.53%lo:53  0.0.0.0:* users:(("systemd-resolve",pid=6220,fd=15))',
+  'LISTEN 0      128              0.0.0.0:22   0.0.0.0:* users:(("sshd",pid=6208,fd=3),("systemd",pid=1,fd=148))',
+  "",
+].join("\n");
+
+const PROC_CWDS: Record<string, string> = {
+  "/proc/105641/cwd": "/root/repos/shaar/syrian-data-platform-frontend",
+  "/proc/6220/cwd": "/",
+};
+
 const okResult = (stdout: string): ProcessRunner.ProcessRunOutput => ({
   stdout,
   stderr: "",
@@ -66,6 +83,7 @@ const makeLayer = (input: {
   readonly platform?: NodeJS.Platform;
   readonly run?: ProcessRunner.ProcessRunner["Service"]["run"];
   readonly calls?: Array<ReadonlyArray<string>>;
+  readonly signals?: Array<readonly [number, string]>;
 }) =>
   AgentPortsService.layer.pipe(
     Layer.provide(
@@ -76,17 +94,48 @@ const makeLayer = (input: {
             ((request) => {
               input.calls?.push([request.command, ...request.args]);
               if (request.command === "ps") return Effect.succeed(okResult(PS_TABLE));
+              if (request.command === "ss") return Effect.succeed(okResult(SS_LISTENERS));
               if (request.args.includes("cwd")) return Effect.succeed(okResult(LSOF_CWDS));
               return Effect.succeed(okResult(LSOF_LISTENERS));
             }),
         }),
+        FileSystem.layerNoop({
+          readLink: (path) =>
+            path in PROC_CWDS
+              ? Effect.succeed(PROC_CWDS[path]!)
+              : Effect.fail(
+                  PlatformError.systemError({
+                    module: "FileSystem",
+                    method: "readLink",
+                    _tag: "NotFound",
+                    pathOrDescriptor: path,
+                  }),
+                ),
+        }),
         Layer.succeed(HostProcessPlatform, input.platform ?? "darwin"),
         Layer.succeed(AgentPortsService.AgentPortsServerPid, SERVER_PID),
+        Layer.succeed(AgentPortsService.AgentPortsProcessControl, {
+          signal: (pid, signal) => {
+            input.signals?.push([pid, signal]);
+          },
+          // Every fake process dies on SIGTERM, except pid 700 which needs SIGKILL.
+          isAlive: (pid) => pid === 700,
+        }),
       ),
     ),
   );
 
 describe("AgentPortsService parsers", () => {
+  it("reads pids and ports from ss, one row per pid", () => {
+    assert.deepEqual(AgentPortsService.parseSsListeners(SS_LISTENERS), [
+      { pid: SERVER_PID, processName: "node", host: "127.0.0.1", port: 3773 },
+      { pid: 105641, processName: "next-server (v1", host: "*", port: 3000 },
+      { pid: 6220, processName: "systemd-resolve", host: "127.0.0.53%lo", port: 53 },
+      { pid: 6208, processName: "sshd", host: "0.0.0.0", port: 22 },
+      { pid: 1, processName: "systemd", host: "0.0.0.0", port: 22 },
+    ]);
+  });
+
   it("reads one row per pid and port from lsof, ignoring fd lines", () => {
     assert.deepEqual(AgentPortsService.parseLsofListeners(LSOF_LISTENERS), [
       { pid: 1, processName: "launchd", host: "*", port: 22 },
@@ -146,6 +195,19 @@ describe("AgentPortsService.list", () => {
     assert.deepEqual(cwdCall, ["lsof", "-a", "-p", "1,610,700,800", "-d", "cwd", "-F", "pn"]);
   });
 
+  it("uses ss and /proc on Linux, so a detached Next.js server in a project is found", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.list({ cwdRoots: ["/root/repos/shaar/syrian-data-platform-frontend"] });
+    }).pipe(Effect.provide(makeLayer({ platform: "linux", calls })), Effect.runPromise);
+    assert.deepEqual(
+      result.ports.map((port) => [port.port, port.pid, port.origin, port.cwd]),
+      [[3000, 105641, "workspace", "/root/repos/shaar/syrian-data-platform-frontend"]],
+    );
+    assert.isFalse(calls.some((call) => call[0] === "lsof"));
+  });
+
   it("reports unsupported on Windows without running anything", () =>
     Effect.gen(function* () {
       const service = yield* AgentPortsService.AgentPortsService;
@@ -183,4 +245,44 @@ describe("AgentPortsService.list", () => {
       ),
       Effect.runPromise,
     ));
+});
+
+describe("AgentPortsService.stop", () => {
+  it("signals a listed agent port and reports it", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.stop({ pid: 610, port: 5173, cwdRoots: [] });
+    }).pipe(Effect.provide(makeLayer({ signals })), Effect.runPromise);
+    assert.deepEqual(result, { stopped: true });
+    assert.deepEqual(signals, [[610, "SIGTERM"]]);
+  });
+
+  it("escalates to SIGKILL when the process survives the grace period", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      return yield* service.stop({ pid: 700, port: 3000, cwdRoots: ["/Users/alice/code/app"] });
+    }).pipe(Effect.provide(makeLayer({ signals })), Effect.runPromise);
+    assert.deepEqual(result, { stopped: true });
+    assert.deepEqual(signals, [
+      [700, "SIGTERM"],
+      [700, "SIGKILL"],
+    ]);
+  });
+
+  it("refuses pids that are not agent ports, including the server", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const layer = makeLayer({ signals });
+    const stop = (pid: number, port: number) =>
+      Effect.gen(function* () {
+        const service = yield* AgentPortsService.AgentPortsService;
+        return yield* service.stop({ pid, port, cwdRoots: [] });
+      }).pipe(Effect.provide(layer), Effect.runPromise);
+    assert.deepEqual(await stop(SERVER_PID, 3773), { stopped: false });
+    assert.deepEqual(await stop(800, 5432), { stopped: false });
+    // Right pid, wrong port: the caller's view is stale.
+    assert.deepEqual(await stop(610, 3000), { stopped: false });
+    assert.deepEqual(signals, []);
+  });
 });

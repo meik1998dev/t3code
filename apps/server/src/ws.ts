@@ -1851,6 +1851,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.agentPortsList, agentPorts.list(input), {
             "rpc.aggregate": "agentPorts",
           }),
+        [WS_METHODS.agentPortsStop]: (input) =>
+          observeRpcEffect(WS_METHODS.agentPortsStop, agentPorts.stop(input), {
+            "rpc.aggregate": "agentPorts",
+          }),
         [WS_METHODS.linearSetApiKey]: (input) =>
           observeRpcEffect(WS_METHODS.linearSetApiKey, linear.setApiKey(input), {
             "rpc.aggregate": "linear",
