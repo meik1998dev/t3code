@@ -5,6 +5,10 @@
  * results per environment, names the thread or project behind each port, and
  * opens or tunnels it.
  *
+ * The "All ports" switch asks the same scan to keep system listeners as well
+ * (a distro postgres, another service). Those rows are read-only: the stop
+ * button is agent-only, on the client and again on the server.
+ *
  * Queries are mounted only while the popover is open, so the 4 s polling
  * stops as soon as it closes.
  */
@@ -12,8 +16,10 @@ import {
   agentPortLocalUrl,
   agentPortTunnelCommand,
   type AgentPort,
+  type AgentPortsScope,
   type EnvironmentId,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { CopyIcon, EthernetPortIcon, ExternalLinkIcon, SquareIcon } from "lucide-react";
 import * as Option from "effect/Option";
 import { memo, useCallback, useMemo, useState } from "react";
@@ -26,6 +32,7 @@ import {
   type AgentPortOwner,
 } from "../../agentPorts.logic";
 import { useOpenLink } from "../../browser/useOpenLink";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { resolveRemoteOpenState, type RemoteOpenState } from "../../remoteOpen";
 import { agentPortsEnvironment } from "../../state/agentPorts";
@@ -37,6 +44,8 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
+const PORTS_SCOPE_KEY = "t3code:agent-ports:show-all";
 
 function copyText(title: string, value: string): void {
   void navigator.clipboard.writeText(value).then(
@@ -122,6 +131,7 @@ const AgentPortRow = memo(function AgentPortRow({
       .finally(() => setIsStopping(false));
   }, [cwdRoots, environmentId, isStopping, port.pid, port.port, stopPort]);
 
+  const canStop = port.origin !== "system";
   const owned = ownerLabel(owner, port.cwd);
   const primaryTitle = canOpenHere
     ? `Open ${url}`
@@ -180,37 +190,41 @@ const AgentPortRow = memo(function AgentPortRow({
           {tunnel === null ? "Copy URL" : "Copy SSH tunnel command"}
         </TooltipPopup>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={`Stop the process on port ${port.port}`}
-              aria-disabled={isStopping || undefined}
-              className={cn(
-                "inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-hidden focus-visible:opacity-100 group-hover/port:opacity-100",
-                isStopping
-                  ? "cursor-progress opacity-100"
-                  : "cursor-pointer opacity-0 hover:text-destructive",
-              )}
-              onClick={handleStop}
-            >
-              <SquareIcon aria-hidden="true" className="size-3 fill-current" />
-            </button>
-          }
-        />
-        <TooltipPopup align="end" side="top">
-          {isStopping ? "Stopping…" : `Stop ${formatAgentPortCommand(port)} (pid ${port.pid})`}
-        </TooltipPopup>
-      </Tooltip>
+      {canStop ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={`Stop the process on port ${port.port}`}
+                aria-disabled={isStopping || undefined}
+                className={cn(
+                  "inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-hidden focus-visible:opacity-100 group-hover/port:opacity-100",
+                  isStopping
+                    ? "cursor-progress opacity-100"
+                    : "cursor-pointer opacity-0 hover:text-destructive",
+                )}
+                onClick={handleStop}
+              >
+                <SquareIcon aria-hidden="true" className="size-3 fill-current" />
+              </button>
+            }
+          />
+          <TooltipPopup align="end" side="top">
+            {isStopping ? "Stopping…" : `Stop ${formatAgentPortCommand(port)} (pid ${port.pid})`}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
     </div>
   );
 });
 
 const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   environment,
+  scope,
 }: {
   environment: EnvironmentPresentation;
+  scope: AgentPortsScope;
 }) {
   const environmentId = environment.environmentId;
   const projects = useProjects();
@@ -221,7 +235,7 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
     [environmentId, projects, threads],
   );
   const query = useEnvironmentQuery(
-    connected ? agentPortsEnvironment.list({ environmentId, input: { cwdRoots } }) : null,
+    connected ? agentPortsEnvironment.list({ environmentId, input: { cwdRoots, scope } }) : null,
   );
   const remote = useMemo(() => {
     const profile = Option.getOrNull(environment.entry.profile);
@@ -246,7 +260,9 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
         : !query.data.supported
           ? "not supported here"
           : count === 0
-            ? "no agent ports"
+            ? scope === "all"
+              ? "no ports"
+              : "no agent ports"
             : null;
 
   return (
@@ -277,7 +293,9 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
 
 export function SidebarPortsPill() {
   const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useLocalStorage(PORTS_SCOPE_KEY, false, Schema.Boolean);
   const { environments } = useEnvironments();
+  const scope: AgentPortsScope = showAll ? "all" : "agent";
   const tooltip = "Agent ports";
 
   const trigger = (
@@ -306,13 +324,41 @@ export function SidebarPortsPill() {
         </Tooltip>
         <PopoverPopup
           align="end"
-          aria-label="Agent ports"
+          aria-label={showAll ? "All ports" : "Agent ports"}
           className="w-80 max-w-[calc(100vw-2rem)] p-1.5"
           side="top"
         >
           <div className="flex items-center justify-between gap-2 px-1 pb-1">
-            <span className="text-xs font-medium text-sidebar-foreground">Agent ports</span>
-            <span className="text-[11px] text-muted-foreground">refreshes every 4 s</span>
+            <span className="text-xs font-medium text-sidebar-foreground">
+              {showAll ? "All ports" : "Agent ports"}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">refreshes every 4 s</span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-pressed={showAll}
+                      className={cn(
+                        "cursor-pointer rounded px-1.5 py-0.5 text-[11px] outline-hidden ring-ring focus-visible:ring-2",
+                        showAll
+                          ? "bg-sidebar-control-surface text-sidebar-foreground"
+                          : "text-muted-foreground hover:text-sidebar-foreground",
+                      )}
+                      onClick={() => setShowAll(!showAll)}
+                    >
+                      All
+                    </button>
+                  }
+                />
+                <TooltipPopup align="end" side="top">
+                  {showAll
+                    ? "Show only ports agent sessions opened"
+                    : "Show every listening port, system services included"}
+                </TooltipPopup>
+              </Tooltip>
+            </div>
           </div>
           {open ? (
             <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
@@ -323,6 +369,7 @@ export function SidebarPortsPill() {
                   <EnvironmentPortsSection
                     key={environment.environmentId}
                     environment={environment}
+                    scope={scope}
                   />
                 ))
               )}

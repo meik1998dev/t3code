@@ -16,6 +16,11 @@
  * servers that were detached and reparented — origin `workspace`. The server's
  * own listeners and everything else on the machine are dropped.
  *
+ * With `scope: "all"` nothing is dropped: the rest of the machine comes back
+ * as origin `system` (this server included), so a user can see what already
+ * holds a port. `stop` always re-scans in the agent scope, so those rows can
+ * be read but never signalled.
+ *
  * Windows has no lsof; the list is empty with `supported: false`.
  */
 import {
@@ -24,6 +29,7 @@ import {
   type AgentPortOrigin,
   type AgentPortsList,
   type AgentPortsListInput,
+  type AgentPortsScope,
   type AgentPortStopInput,
   type AgentPortStopResult,
 } from "@t3tools/contracts";
@@ -318,15 +324,16 @@ export const make = Effect.gen(function* () {
 
   const list = Effect.fn("AgentPortsService.list")(function* (input: AgentPortsListInput) {
     const scannedAt = DateTime.formatIso(yield* DateTime.now);
+    const scope: AgentPortsScope = input.scope ?? "agent";
     if (platform === "win32") {
-      return { ports: [], scannedAt, supported: false } satisfies AgentPortsList;
+      return { ports: [], scannedAt, scope, supported: false } satisfies AgentPortsList;
     }
     const sockets = yield* probeListeners;
     if (sockets === null) {
-      return { ports: [], scannedAt, supported: false } satisfies AgentPortsList;
+      return { ports: [], scannedAt, scope, supported: false } satisfies AgentPortsList;
     }
     if (sockets.length === 0) {
-      return { ports: [], scannedAt, supported: true } satisfies AgentPortsList;
+      return { ports: [], scannedAt, scope, supported: true } satisfies AgentPortsList;
     }
 
     const psStdout = yield* runProbe("ps", "ps", ["-A", "-o", "pid=,ppid=,args="]);
@@ -343,14 +350,15 @@ export const make = Effect.gen(function* () {
     const ports: Array<AgentPort> = [];
     for (const socket of sockets) {
       const cwd = cwdByPid.get(socket.pid) ?? null;
-      const origin = resolveAgentPortOrigin({
+      const agentOrigin = resolveAgentPortOrigin({
         socket,
         serverPid,
         parentByPid,
         cwd,
         cwdRoots: input.cwdRoots,
       });
-      if (origin === null) continue;
+      if (agentOrigin === null && scope !== "all") continue;
+      const origin = agentOrigin ?? "system";
       ports.push({
         port: socket.port,
         host: socket.host,
@@ -362,11 +370,12 @@ export const make = Effect.gen(function* () {
       });
     }
     ports.sort((a, b) => a.port - b.port || a.pid - b.pid);
-    return { ports, scannedAt, supported: true } satisfies AgentPortsList;
+    return { ports, scannedAt, scope, supported: true } satisfies AgentPortsList;
   });
 
   const stop = Effect.fn("AgentPortsService.stop")(function* (input: AgentPortStopInput) {
-    const current = yield* list({ cwdRoots: input.cwdRoots });
+    // Agent scope on purpose: a `system` listener is never a stop target.
+    const current = yield* list({ cwdRoots: input.cwdRoots, scope: "agent" });
     const target = current.ports.find((port) => port.pid === input.pid && port.port === input.port);
     if (target === undefined || target.pid === serverPid) {
       return { stopped: false } satisfies AgentPortStopResult;
@@ -401,7 +410,12 @@ export const layerTest = Layer.succeed(
   AgentPortsService,
   AgentPortsService.of({
     list: () =>
-      Effect.succeed({ ports: [], scannedAt: "1970-01-01T00:00:00.000Z", supported: true }),
+      Effect.succeed({
+        ports: [],
+        scannedAt: "1970-01-01T00:00:00.000Z",
+        scope: "agent" as const,
+        supported: true,
+      }),
     stop: () => Effect.succeed({ stopped: false }),
   }),
 );

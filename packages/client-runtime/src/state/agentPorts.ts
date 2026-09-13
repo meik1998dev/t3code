@@ -32,14 +32,17 @@ export function createAgentPortsEnvironmentAtoms<R, E>(
       tag: WS_METHODS.agentPortsStop,
       scheduler: createAtomCommandScheduler(),
       // The row should go away right after the kill, not on the next 4 s tick.
+      // Both scopes are refreshed because the popover may be showing either.
       onSettled: (target, registry) =>
         Effect.sync(() => {
-          registry.refresh(
-            list({
-              environmentId: target.environmentId,
-              input: { cwdRoots: target.input.cwdRoots },
-            }),
-          );
+          for (const scope of ["agent", "all"] as const) {
+            registry.refresh(
+              list({
+                environmentId: target.environmentId,
+                input: { cwdRoots: target.input.cwdRoots, scope },
+              }),
+            );
+          }
         }),
     }),
   };

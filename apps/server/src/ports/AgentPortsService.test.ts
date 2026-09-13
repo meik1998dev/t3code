@@ -171,6 +171,7 @@ describe("AgentPortsService.list", () => {
       const service = yield* AgentPortsService.AgentPortsService;
       const result = yield* service.list({ cwdRoots: ["/Users/alice/code/app"] });
       assert.isTrue(result.supported);
+      assert.equal(result.scope, "agent");
       assert.deepEqual(
         result.ports.map((port) => [port.port, port.origin, port.command, port.cwd]),
         [
@@ -184,6 +185,36 @@ describe("AgentPortsService.list", () => {
         ],
       );
     }).pipe(Effect.provide(makeLayer({})), Effect.runPromise));
+
+  it("adds system listeners and the server itself in the all scope", () =>
+    Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      const result = yield* service.list({ cwdRoots: ["/Users/alice/code/app"], scope: "all" });
+      assert.equal(result.scope, "all");
+      assert.deepEqual(
+        result.ports.map((port) => [port.port, port.origin]),
+        [
+          [22, "system"],
+          [3000, "workspace"],
+          [3773, "system"],
+          [5173, "agent-process"],
+          [5432, "system"],
+        ],
+      );
+    }).pipe(Effect.provide(makeLayer({})), Effect.runPromise));
+
+  it("refuses to stop a system port even while the all scope lists it", async () => {
+    const signals: Array<readonly [number, string]> = [];
+    const layer = makeLayer({ signals });
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      const listed = yield* service.list({ cwdRoots: [], scope: "all" });
+      assert.isTrue(listed.ports.some((port) => port.pid === 800 && port.port === 5432));
+      return yield* service.stop({ pid: 800, port: 5432, cwdRoots: [] });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+    assert.deepEqual(result, { stopped: false });
+    assert.deepEqual(signals, []);
+  });
 
   it("asks lsof for the cwd of listener pids only, without the server pid", async () => {
     const calls: Array<ReadonlyArray<string>> = [];
