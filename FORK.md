@@ -292,7 +292,7 @@ Host <hostname>.local
 - Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
 - Check: pick two projects in each filter. Only those threads and pull requests show.
 
-### Agent ports popover (#44, #45)
+### Agent ports popover (#44, #45, #46)
 
 - What: a button at the bottom right of the sidebar (next to the update pill) opens a popover
   with the TCP ports that agent sessions opened, grouped by environment (Mac, VPS). Each row
@@ -306,9 +306,15 @@ Host <hostname>.local
   child of the Spindle server (agents and their shells are) or when its folder is inside a
   project root or thread worktree (catches detached servers). The server's own port and system
   services are dropped. Windows returns an empty list with `supported: false`.
+- "All" switch in the popover header (#46): the same scan keeps everything else too, as origin
+  `system` (a distro postgres, another service, the Spindle server itself), so a user can see
+  what already holds a port. The choice is remembered per client in `localStorage`
+  (`t3code:agent-ports:show-all`). System rows have no stop button, and `stop` re-scans in the
+  agent scope on the server, so they can never be signalled.
 - Warning: do not switch Linux back to `lsof`. lsof 4.95 on Ubuntu skips processes whose name
   has parentheses (`next-server (v16.0.3)`), so Next.js never showed up (#45).
-- Key files: `packages/contracts/src/agentPorts.ts` (new) + `rpc.ts` (`agentPorts.list`),
+- Key files: `packages/contracts/src/agentPorts.ts` (new, `AgentPortsScope`) + `rpc.ts`
+  (`agentPorts.list`, `agentPorts.stop`),
   `apps/server/src/ports/AgentPortsService.ts` (new) + `ws.ts`, `server.ts`,
   `auth/RpcAuthorization.ts`, `packages/client-runtime/src/state/agentPorts.ts` (new) +
   `package.json` exports, `apps/web/src/agentPorts.logic.ts` (new),
@@ -316,6 +322,8 @@ Host <hostname>.local
 - Tests: `AgentPortsService.test.ts`, `agentPorts.logic.test.ts`.
 - Check: start `python3 -m http.server 8765` inside a project folder, open the popover: the port
   shows under that environment with the project name. Stop it: the row goes away within 4 s.
+  Turn "All" on: system ports such as `:22` and the server's own port appear, with no stop
+  button.
 - Warning: both sides change. Ship the server with `deploy.sh` and build a new DMG; an old server
   answers the RPC with "unavailable" in the popover, nothing else breaks.
 

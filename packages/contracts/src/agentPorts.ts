@@ -7,12 +7,19 @@
  * directory lives under a project workspace or thread worktree. The second
  * rule catches servers that were detached (`nohup … &`) and reparented away
  * from the agent. Everything else on the machine is left out on purpose.
+ *
+ * `scope: "all"` keeps those leftovers too, tagged `system`, for the times a
+ * user needs to see what already owns a port (a distro postgres, another
+ * service). Stopping stays agent-only, so a system listener is read-only.
  */
 import * as Schema from "effect/Schema";
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const AGENT_PORTS_CWD_ROOTS_MAX_ITEMS = 500;
 export const AGENT_PORTS_COMMAND_MAX_LENGTH = 1000;
+
+export const AgentPortsScope = Schema.Literals(["agent", "all"]);
+export type AgentPortsScope = typeof AgentPortsScope.Type;
 
 export const AgentPortsListInput = Schema.Struct({
   /**
@@ -22,10 +29,13 @@ export const AgentPortsListInput = Schema.Struct({
   cwdRoots: Schema.Array(TrimmedNonEmptyString).check(
     Schema.isMaxLength(AGENT_PORTS_CWD_ROOTS_MAX_ITEMS),
   ),
+  /** Omitted means `agent`, so older clients keep the filtered list. */
+  scope: Schema.optionalKey(AgentPortsScope),
 });
 export type AgentPortsListInput = typeof AgentPortsListInput.Type;
 
-export const AgentPortOrigin = Schema.Literals(["agent-process", "workspace"]);
+/** `system` only appears in the `all` scope: a listener no agent started. */
+export const AgentPortOrigin = Schema.Literals(["agent-process", "workspace", "system"]);
 export type AgentPortOrigin = typeof AgentPortOrigin.Type;
 
 export const AgentPort = Schema.Struct({
@@ -62,6 +72,8 @@ export type AgentPortStopResult = typeof AgentPortStopResult.Type;
 export const AgentPortsList = Schema.Struct({
   ports: Schema.Array(AgentPort),
   scannedAt: IsoDateTime,
+  /** Echo of the scope that produced this list. */
+  scope: AgentPortsScope,
   /** False on platforms without lsof (Windows); `ports` is empty then. */
   supported: Schema.Boolean,
 });
