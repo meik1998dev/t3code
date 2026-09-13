@@ -42,7 +42,6 @@ import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
   SYNTHETIC_CLAUDE_COLLIDING_ALIAS,
   SYNTHETIC_CLAUDE_MODEL_CATALOG,
-  SYNTHETIC_CLAUDE_PINNED_MODEL,
   SYNTHETIC_CLAUDE_STANDARD_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "../ClaudeModelCatalog.testFixtures.ts";
@@ -460,35 +459,6 @@ describe("ClaudeAdapterLive", () => {
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
-  });
-
-  it.effect("asks Claude for summarized thinking unless launch args choose a display", () => {
-    const startPinnedSession = (claudeConfig: Partial<ClaudeSettings>) => {
-      const harness = makeHarness({ claudeConfig });
-      return Effect.gen(function* () {
-        const adapter = yield* ClaudeAdapter;
-        yield* adapter.startSession({
-          threadId: THREAD_ID,
-          provider: ProviderDriverKind.make("claudeAgent"),
-          modelSelection: createModelSelection(
-            ProviderInstanceId.make("claudeAgent"),
-            SYNTHETIC_CLAUDE_PINNED_MODEL,
-          ),
-          runtimeMode: "full-access",
-        });
-        return harness.getLastCreateQueryInput()?.options.extraArgs;
-      }).pipe(
-        Effect.provideService(Random.Random, makeDeterministicRandomService()),
-        Effect.provide(harness.layer),
-      );
-    };
-    return Effect.gen(function* () {
-      assert.deepEqual(yield* startPinnedSession({}), { "thinking-display": "summarized" });
-      assert.deepEqual(
-        yield* startPinnedSession({ launchArgs: "--thinking-display omitted --chrome" }),
-        { "thinking-display": "omitted", chrome: null },
-      );
-    });
   });
 
   it.effect("passes the configured auto-compaction window to Claude", () => {

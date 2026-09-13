@@ -118,7 +118,6 @@ import {
 } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
-import * as ThreadThinkingPreview from "./orchestration/ThreadThinkingPreview.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
@@ -960,8 +959,6 @@ const buildAppUnderTest = (options?: {
             drainThrough: () => Effect.void,
             ...options?.layers?.threadDeletionReactor,
           }),
-          // Real and in-memory: nothing feeds it here, so it stays empty.
-          ThreadThinkingPreview.layer,
         ),
       ),
       Layer.provide(
