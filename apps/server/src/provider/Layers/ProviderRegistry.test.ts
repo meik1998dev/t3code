@@ -646,6 +646,47 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         );
       });
 
+      it("drops stale per-cwd snapshots when a fresh probe carries none", () => {
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          driver: ProviderDriverKind.make("claudeAgent"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [{ name: "old" }],
+          skills: [{ name: "old", path: "/skills/old/SKILL.md", enabled: true }],
+          workspaceSnapshots: [
+            {
+              cwd: "/workspace",
+              checkedAt: "2026-04-14T00:00:00.000Z",
+              slashCommands: [{ name: "old" }],
+              skills: [{ name: "old", path: "/skills/old/SKILL.md", enabled: true }],
+            },
+          ],
+        } as const satisfies ServerProvider;
+        const { workspaceSnapshots: _stale, ...previousWithoutSnapshots } = previousProvider;
+        const refreshedProvider = {
+          ...previousWithoutSnapshots,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          slashCommands: [{ name: "old" }, { name: "new" }],
+          skills: [
+            ...previousProvider.skills,
+            { name: "new", path: "/skills/new/SKILL.md", enabled: true },
+          ],
+        } satisfies ServerProvider;
+
+        // The client asks for the per-cwd snapshot again once it is gone, so a
+        // Refresh surfaces the new skill without a server restart.
+        assert.strictEqual(
+          mergeProviderSnapshot(previousProvider, refreshedProvider).workspaceSnapshots,
+          undefined,
+        );
+      });
+
       it("drops custom models the refreshed snapshot no longer carries", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("claudeAgent"),

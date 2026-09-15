@@ -109,8 +109,13 @@ Move it into `scripts/` when it stabilises.
 
 ### Rules on the server
 
-- Never run `npx t3 service update` there. Never connect with the desktop "SSH environment"
-  mode. Both replace the slot with upstream. Use T3 Connect (`t3 connect` on the server).
+- Never run `npx t3 service update` there; it replaces the slot with upstream.
+- The desktop "SSH environment" mode is fine **only while the service is up**: its launch
+  script reuses the server named in `~/.t3/userdata/server-runtime.json`. If that file is
+  missing (service restarting, or an old copy deleted it on exit) it starts upstream
+  `npx t3 serve` on 3774 in the same `~/.t3`, which then hijacks the T3 Connect tunnel too.
+  Restart order: quit the desktop app → `systemctl --user restart t3code` → reopen. Check
+  `ss -ltnp | grep 377` shows only 3773. See [Shared runtime state](#shared-runtime-state-and-refresh-direct-commit).
 - The service runs as **root**. Claude Code refuses Full access (`--dangerously-skip-permissions`)
   as root and exits, which surfaces as `turn/setPermissionMode failed` +
   `Claude runtime stream failed`. Fix: `IS_SANDBOX=1` in a systemd drop-in
@@ -152,6 +157,23 @@ Host <hostname>.local
 - On conflict: take upstream's `AGENTS.md`, then add the section back at the end.
 
 ## Agents and providers
+
+### Shared runtime state and Refresh (direct commit)
+
+- What: two server fixes for a machine that runs the background service. (1) A server
+  removes `server-runtime.json` on shutdown only when the recorded pid is its own, so a
+  second server sharing `~/.t3` cannot erase the service's record. (2) A provider Refresh
+  drops the cached per-cwd `workspaceSnapshots`; the composer requests them again, so new
+  skills, plugins and commands show without a restart.
+- Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`),
+  `apps/server/src/provider/Layers/ProviderRegistry.ts` (`mergeProviderSnapshot`).
+- Tests: `apps/server/src/serverRuntimeState.test.ts`,
+  `apps/server/src/provider/Layers/ProviderRegistry.test.ts`.
+- Check: add a skill dir under `~/.claude/skills`, Settings → Providers → Refresh, open a
+  thread in that project, type `$` — the skill is listed. Restart the service while the
+  desktop SSH environment is connected: `ss -ltnp | grep 377` still shows only 3773.
+- Drop when: upstream guards the runtime-state clear by pid and invalidates workspace
+  snapshots on refresh.
 
 ### Agent thread tools (#37)
 
