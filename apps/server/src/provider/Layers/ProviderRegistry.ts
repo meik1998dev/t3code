@@ -209,11 +209,13 @@ export const mergeProviderSnapshot = (
     ...(savedAccount?.status === "ready" ? nextWithoutMessage : nextProvider),
     ...savedAccount,
     models: mergeProviderModels(nextProvider, previousProvider.models, nextProvider.models),
+    // A fresh probe carries no per-cwd snapshots. Dropping the old ones here
+    // lets a Refresh pick up new skills/plugins: the client requests the
+    // per-cwd snapshot again on the next composer open. Carrying them over
+    // would pin the stale lists until the server restarts.
     ...(nextProvider.workspaceSnapshots !== undefined
       ? { workspaceSnapshots: nextProvider.workspaceSnapshots }
-      : previousProvider.workspaceSnapshots !== undefined
-        ? { workspaceSnapshots: previousProvider.workspaceSnapshots }
-        : {}),
+      : {}),
     ...(shouldRetainMissingOpenCodeMetadata(nextProvider)
       ? {
           slashCommands:

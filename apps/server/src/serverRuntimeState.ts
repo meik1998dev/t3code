@@ -79,9 +79,22 @@ export const persistServerRuntimeState = (input: {
     ),
   );
 
-export const clearPersistedServerRuntimeState = (path: string) =>
+/**
+ * Remove the runtime state file, but only when this process wrote it. Two
+ * servers can share one base dir (the background service plus a desktop-launched
+ * `t3 serve`); if the second one deleted the first one's record on exit, the
+ * next SSH launch would find no server and start yet another copy.
+ */
+export const clearPersistedServerRuntimeState = (path: string, ownerPid = process.pid) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
+    const current = yield* readPersistedServerRuntimeState(path);
+    if (Option.isSome(current) && current.value.pid !== ownerPid) {
+      yield* Effect.logInfo(
+        "Server runtime state belongs to another server process; leaving it in place.",
+      ).pipe(Effect.annotateLogs({ statePath: path, ownerPid, recordedPid: current.value.pid }));
+      return;
+    }
     yield* fs.remove(path, { force: true }).pipe(
       Effect.mapError(
         (cause) =>

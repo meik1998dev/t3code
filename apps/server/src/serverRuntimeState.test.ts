@@ -183,4 +183,34 @@ describe("serverRuntimeState", () => {
       }
     }).pipe(Effect.provide(NodeServices.layer)),
   );
+
+  it.effect("clears only the runtime state this process wrote", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-runtime-state-test-",
+      });
+      const statePath = path.join(root, "server.json");
+      const state: ServerRuntimeState.PersistedServerRuntimeState = {
+        version: 1,
+        pid: 4_242,
+        port: 4_971,
+        origin: "http://127.0.0.1:4971",
+        startedAt: "2026-06-20T00:00:00.000Z",
+      };
+      yield* ServerRuntimeState.persistServerRuntimeState({ path: statePath, state });
+
+      // Another server's record survives this process's shutdown.
+      yield* ServerRuntimeState.clearPersistedServerRuntimeState(statePath, 9_999);
+      assert.isTrue(yield* fileSystem.exists(statePath));
+
+      // The owner's own record is removed.
+      yield* ServerRuntimeState.clearPersistedServerRuntimeState(statePath, 4_242);
+      assert.isFalse(yield* fileSystem.exists(statePath));
+
+      // A missing file is not an error.
+      yield* ServerRuntimeState.clearPersistedServerRuntimeState(statePath, 4_242);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });
