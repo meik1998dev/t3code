@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `9a49d6d5a6` (2026-09-16, `ci(desktop): sign fork PR macOS previews without exposing signing secrets (#11760)`).
+- Last synced upstream commit: `32e8b2584` (2026-09-16, `fix(web): show private repository media in pull request tabs (#11706)`, v0.0.42).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -36,8 +36,11 @@ Fork migrations today:
 | ------ | -------------------------------------------- | -------------- |
 | 53     | `053_RepairThreadBranchPullRequestColumn.ts` | Sync repair    |
 | 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair    |
+| 56     | `056_RepairThreadTitleStateColumn.ts`        | Sync repair    |
 
-Upstream owns 50 (`ProjectionThreadPullRequests`) and 51 (`ProjectionThreadMessageContext`).
+Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`), and
+52 (`ProjectionThreadTitleState`). Migration 56 idempotently adds `title_state_json` for databases
+that had already recorded the fork's own 52.
 Migration 55 idempotently reapplies upstream 50–51 and fork 53 for databases that had already
 recorded the fork's old 50–54 sequence. The removed parent-thread migration remains only as a
 historical row in upgraded databases; the removed task-plan lookup may likewise remain as an
@@ -340,12 +343,14 @@ Host <hostname>.local
 - Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
 - Check: a project with no actions shows no "Add action" in the chat header.
 
-### Download page installs from a checkout (sync/v0.0.42)
+### Install instructions point at a checkout (sync/v0.0.42)
 
-- What: the marketing download page's Terminal section tells people to run the fork from a git
-  checkout (`vp i && vp run dev`). Upstream shows `npx t3@nightly` plus the `t3.codes` install
-  scripts, which install upstream T3 Code, not this fork.
-- Key files: `apps/marketing/src/pages/download.astro`.
+- What: the fork does not publish an npm package, an installer script, or store listings, so every
+  "how to get it" surface tells people to run from a git checkout (`vp i && vp run dev`). Upstream
+  shows `curl https://t3.codes/install.sh`, `npx t3@latest`, Homebrew, winget, and AUR, all of which
+  install upstream T3 Code instead of this fork.
+- Key files: `apps/marketing/src/pages/download.astro`, `README.md`, `docs/user/install.md`,
+  `docs/user/background-service.md`, `docs/user/welcome-wizard.md`.
 - Check: open the download page. The Terminal section shows the checkout command, not `npx t3`.
 - Warning: this conflicts on every sync while upstream keeps improving its installers. Keep the
   fork side unless the fork starts publishing its own package or install script.
