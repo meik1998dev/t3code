@@ -626,7 +626,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
           planProgress: null,
-          taskProgress: null,
         },
       ]);
 
@@ -2589,41 +2588,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
     snapshot.thread.messages.map((message) => message.id).toSorted();
   const activityIds = (snapshot: { thread: { activities: ReadonlyArray<{ id: string }> } }) =>
     snapshot.thread.activities.map((activity) => activity.id).toSorted();
-
-  it.effect("projects durable latest-turn task progress and pins its detail snapshot", () =>
-    Effect.gen(function* () {
-      yield* seedFanOutThread();
-      const sql = yield* SqlClient.SqlClient;
-      const query = yield* ProjectionSnapshotQuery;
-      yield* sql`
-        INSERT INTO projection_thread_activities (
-          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
-        ) VALUES ('current-plan', 'thread-w', 'turn-5', 'info', 'turn.plan.updated', 'Plan',
-          '{"plan":[{"step":"First","status":"completed"},{"step":"Second","status":"inProgress"},{"step":"Third","status":"pending"}]}' , 1, '2026-03-01T00:04:00.000Z')
-      `;
-      const expected = {
-        turnId: asTurnId("turn-5"),
-        step: "Second",
-        completedSteps: 1,
-        totalSteps: 3,
-        stepStatuses: ["completed", "inProgress", "pending"] as const,
-      };
-      const shell = yield* query.getShellSnapshot();
-      assert.deepEqual(shell.threads[0]?.taskProgress, expected);
-      const single = yield* query.getThreadShellById(threadW);
-      assert.equal(single._tag, "Some");
-      if (single._tag === "Some") assert.deepEqual(single.value.taskProgress, expected);
-      yield* sql`
-        WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 501)
-        INSERT INTO projection_thread_activities (activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at)
-        SELECT 'noise-' || n, 'thread-w', 'turn-5', 'tool', 'tool.completed', 'Tool', '{}', 10 + n, '2026-03-01T00:04:02.000Z' FROM numbers
-      `;
-      const detail = yield* query.getThreadDetailById(threadW);
-      assert.equal(detail._tag, "Some");
-      if (detail._tag === "Some")
-        assert.isTrue(detail.value.activities.some((activity) => activity.id === "current-plan"));
-    }),
-  );
 
   it.effect("returns the full thread with no page metadata when no window is requested", () =>
     Effect.gen(function* () {

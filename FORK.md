@@ -34,14 +34,14 @@ Fork migrations today:
 
 | Number | File                                         | From           |
 | ------ | -------------------------------------------- | -------------- |
-| 52     | `052_ThreadTaskPlanLookup.ts`                | Sidebar status |
 | 53     | `053_RepairThreadBranchPullRequestColumn.ts` | Sync repair    |
 | 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair    |
 
 Upstream owns 50 (`ProjectionThreadPullRequests`) and 51 (`ProjectionThreadMessageContext`).
-Migration 55 idempotently reapplies upstream 50–51 and fork 52–53 for databases that had already
+Migration 55 idempotently reapplies upstream 50–51 and fork 53 for databases that had already
 recorded the fork's old 50–54 sequence. The removed parent-thread migration remains only as a
-historical row in upgraded databases; new databases do not create that column.
+historical row in upgraded databases; the removed task-plan lookup may likewise remain as an
+unused index in upgraded databases. New databases create neither fork feature.
 
 On every sync where numbers clash:
 
@@ -60,23 +60,20 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | File                                                              | Entries                                                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `apps/web/src/components/ChatView.tsx`                            | Tasks                                                                    |
-| `apps/web/src/components/Sidebar.tsx`                             | Sidebar status, Sidebar filter, Sidebar style, Transcript                |
-| `apps/web/src/index.css`                                          | Sidebar style, Radius, Sidebar status, Mermaid                           |
+| `apps/web/src/components/Sidebar.tsx`                             | Sidebar filter, Sidebar style, Transcript                                |
+| `apps/web/src/index.css`                                          | Sidebar style, Radius, Mermaid                                           |
 | `apps/server/src/ws.ts`                                           | GitHub account, Agent ports                                              |
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Task tracking                                                            |
 | `apps/server/src/provider/RuntimeInstructions.ts`                 | Task tracking                                                            |
-| `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` | Sidebar status                                                           |
 | `apps/server/src/persistence/Migrations.ts`                       | [Migrations](#migrations)                                                |
-| `packages/contracts/src/orchestration.ts`                         | Sidebar status                                                           |
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, task progress, and repair
-migrations 52–55) only runs on a machine that has the **fork build**. Every path that
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 53 and 55)
+only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
-same in the app, so the gap shows up late as "No skills found", no per-repo PR list, or a
-missing sidebar status.
+same in the app, so the gap shows up late as "No skills found" or no per-repo PR list.
 
 Learned on 2026-09-12 while setting up a root-login VPS (Ubuntu 24.04, Node 22).
 
@@ -228,21 +225,6 @@ Host <hostname>.local
 - Check: after a turn with a task list ends, the badge is still there.
 
 ## Sidebar
-
-### Current status icons and task progress (direct commits)
-
-- What: new status icons on web and mobile, with task progress in the sidebar. Idle threads have
-  no icon. Thread rows have no provider icon. The Working wave does not mix into the Monitoring eye.
-- Key files: `packages/client-runtime/src/currentStatus.ts`, `packages/shared/src/taskProgress.ts`,
-  `apps/web/src/components/sidebar/{CurrentStatusIcon,SidebarTasks}.tsx`, `Sidebar.tsx`,
-  `LegacySidebar.tsx`, `ThreadStatusIndicators.tsx`, `index.css`,
-  `apps/mobile/src/components/CurrentStatusIcon.tsx`, `apps/mobile/src/features/threads/{SidebarTasks,thread-list-v2-items}.tsx`, `threadListV2.ts`,
-  `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`, migration 52,
-  `packages/contracts/src/orchestration.ts`, `docs/user/thread-sidebar.md`.
-- Tests: `taskProgress.test.ts`, `threadListV2.test.ts`, `ProjectionSnapshotQuery.test.ts`.
-- Check: start a turn with a task list. The sidebar row shows the working icon and progress.
-  An idle thread shows no icon.
-- Drop when: upstream ships the same status set.
 
 ### Multi-project filter (#20, #33)
 

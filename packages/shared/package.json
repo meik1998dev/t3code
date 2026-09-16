@@ -315,10 +315,6 @@
       "types": "./src/nodeSqliteClient.ts",
       "import": "./src/nodeSqliteClient.ts"
     },
-    "./taskProgress": {
-      "types": "./src/taskProgress.ts",
-      "import": "./src/taskProgress.ts"
-    },
     "./hostClassification": {
       "types": "./src/hostClassification.ts",
       "import": "./src/hostClassification.ts"

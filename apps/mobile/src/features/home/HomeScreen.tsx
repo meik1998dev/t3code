@@ -54,6 +54,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2SnoozedShelfHeader,
 } from "../threads/thread-list-v2-items";
+import { resolveThreadProviderInstance } from "../threads/thread-provider-instance";
 import {
   buildThreadListV2Items,
   getThreadListV2OrderedSection,
@@ -844,6 +845,7 @@ export function HomeScreen(props: HomeScreenProps) {
           projectTitle={v2ProjectTitleByProjectKey.get(
             scopedProjectKey(thread.environmentId, thread.projectId),
           )}
+          providerInstance={resolveThreadProviderInstance(serverConfigs, thread)}
           environmentLabel={
             Object.keys(props.savedConnectionsById).length > 1
               ? (props.savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
@@ -1221,7 +1223,6 @@ export function HomeScreen(props: HomeScreenProps) {
           `stickyHeaderIndices` if this gets revisited. */}
         <SwipeableScrollGateProvider enabled={swipeEnabled}>
           <LegendList
-            viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
             ref={listRef}
             data={listLayout.items}
             renderItem={renderItem}
@@ -1266,5 +1267,3 @@ export function HomeScreen(props: HomeScreenProps) {
     </View>
   );
 }
-
-const SIDEBAR_STATUS_VIEWABILITY = { itemVisiblePercentThreshold: 1 };

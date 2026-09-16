@@ -1,6 +1,3 @@
-import { CurrentStatusIcon } from "./sidebar/CurrentStatusIcon";
-import { SidebarTasks } from "./sidebar/SidebarTasks";
-import { autoAnimate } from "@formkit/auto-animate";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { useCompactSidebarEnabled } from "../hooks/useSettings";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
@@ -42,18 +39,23 @@ import {
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
+  AlarmClockIcon,
   AlarmClockOffIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
   CircleCheckIcon,
+  CircleDashedIcon,
   ClockIcon,
+  EyeIcon,
   FolderIcon,
   GitBranchIcon,
+  MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
   SettingsIcon,
+  ShieldQuestionIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -155,6 +157,7 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   formatSidebarProjectScopeLabel,
+  formatWorkingDurationLabel,
   firstValidTimestampMs,
   hasUnseenCompletion,
   isSidebarNestedLinkClick,
@@ -171,6 +174,7 @@ import {
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldRecedeSidebarThread,
+  resolveWorkingStartedAt,
   sidebarListItemId,
   sidebarMarkerId,
   sortLogicalProjectsForSidebar,
@@ -286,6 +290,19 @@ function JumpHintBadge(props: { label: string }) {
       {props.label}
     </span>
   );
+}
+
+// Self-ticking so only this span re-renders each second, not the whole row.
+function WorkingDuration(props: { startedAt: string | null }) {
+  const startedMs = props.startedAt !== null ? Date.parse(props.startedAt) : Number.NaN;
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (Number.isNaN(startedMs)) return;
+    const id = window.setInterval(() => setTick((tick) => tick + 1), 1_000);
+    return () => window.clearInterval(id);
+  }, [startedMs]);
+  if (Number.isNaN(startedMs)) return null;
+  return <span className="tabular-nums">{formatWorkingDurationLabel(Date.now() - startedMs)}</span>;
 }
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
@@ -1190,7 +1207,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     status === "working"
       ? {
           label: "Working",
-          icon: null,
+          icon: "working" as const,
           // No shimmer: a label that animates forever is noise in a sidebar
           // full of them (and repaints every vsync on high-refresh displays).
           className: "text-sky-600 dark:text-sky-400",
@@ -1246,6 +1263,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
+  const driverKind = providerEntry?.driverKind ?? null;
   const showInstanceBadge =
     providerEntry !== null &&
     shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
@@ -1776,17 +1794,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 >
                   {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
                     // Snoozed rows show when they come BACK, not when they were
-                    // last touched - the return ticket is the row's whole story.
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span aria-label={`Snoozed · ${props.snoozeWakeLabelText}`}>
-                            <CurrentStatusIcon status="snoozed" />
-                          </span>
-                        }
-                      />
-                      <TooltipPopup side="top">Snoozed · {props.snoozeWakeLabelText}</TooltipPopup>
-                    </Tooltip>
+                    // last touched — the return ticket is the row's whole story.
+                    <span className="text-xs text-blue-600 tabular-nums dark:text-blue-400">
+                      {props.snoozeWakeLabelText}
+                    </span>
                   ) : isWoke ? (
                     // A wake can land straight in the settled tail (e.g. PR
                     // merged while snoozed); the signal must survive the trip.
@@ -1799,27 +1810,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             onClick={handleAcknowledgeWokeClick}
                             className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-amber-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-300"
                           >
-                            <CurrentStatusIcon status="woke" />
-                            <span role="status" className="sr-only">
-                              Woke
-                            </span>
+                            <AlarmClockIcon aria-hidden className="size-3" />
+                            <span role="status">Woke</span>
                           </button>
                         }
                       />
                       <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
                     </Tooltip>
-                  ) : variantAction === "unsettle" ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span>
-                            <CheckIcon aria-label="Settled" className="size-3.5" />
-                          </span>
-                        }
-                      />
-                      <TooltipPopup side="top">Settled · {settledTimeLabel(thread)}</TooltipPopup>
-                    </Tooltip>
-                  ) : null}
+                  ) : (
+                    <span className="text-xs">
+                      {variantAction === "unsettle"
+                        ? settledTimeLabel(thread)
+                        : threadTimeLabel(thread)}
+                    </span>
+                  )}
                 </span>
                 {variantAction === "unsnooze" ? (
                   !props.snoozeSupported ? null : (
@@ -1849,7 +1853,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           )}
                         />
                       }
-                    />
+                    >
+                      <Undo2Icon className="mb-px size-3.5" />
+                    </TooltipTrigger>
                     <TooltipPopup side="top">Un-settle thread</TooltipPopup>
                   </Tooltip>
                 ) : (
@@ -1883,7 +1889,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the min-h-[4.875rem] content box; the py-0.5 padding is added on top.
+        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
         sortable?.isDragging && "relative z-20",
       )}
@@ -1909,7 +1915,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
-          <div className="relative z-10 min-h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
+          <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
@@ -1936,8 +1942,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 dragDestination
               ) : (
                 <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
-                  {/* Keep the state visible when row actions are revealed. */}
-                  <span className="flex items-center self-center justify-self-end text-secondary-label">
+                  {/* Read-only status labels yield to the hover actions. Woke is
+                    itself an action, so it stays pointer-enabled and visible
+                    while the other controls appear beside it. */}
+                  <span
+                    className={cn(
+                      isWokeStatus
+                        ? "pointer-events-auto"
+                        : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0",
+                      "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
+                      snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
+                    )}
+                  >
                     {topStatus ? (
                       isWokeStatus ? (
                         <Tooltip>
@@ -1952,34 +1968,47 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                   topStatus.className,
                                 )}
                               >
-                                <CurrentStatusIcon status="woke" />
-                                <span role="status" className="sr-only">
-                                  {topStatus.label}
-                                </span>
+                                <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+                                <span role="status">{topStatus.label}</span>
                               </button>
                             }
                           />
                           <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
                         </Tooltip>
                       ) : (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <span className={cn("inline-flex items-center", topStatus.className)}>
-                                <CurrentStatusIcon
-                                  status={status === "ready" ? "done" : status}
-                                  animate={leaseLiveStatus}
-                                />
-                                <span role="status" className="sr-only">
-                                  {topStatus.label}
-                                </span>
-                              </span>
-                            }
-                          />
-                          <TooltipPopup side="top">{topStatus.label}</TooltipPopup>
-                        </Tooltip>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 font-medium",
+                            topStatus.className,
+                          )}
+                        >
+                          {topStatus.icon === "working" ? (
+                            <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "input" ? (
+                            <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "approval" ? (
+                            <ShieldQuestionIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "failed" ? (
+                            <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "monitoring" ? (
+                            <EyeIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "done" ? (
+                            <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
+                          ) : null}
+                          {/* The label alone is the live region: a role="status"
+                            wrapper around the ticking duration would make
+                            screen readers announce every second. */}
+                          <span role="status">{topStatus.label}</span>
+                          {status === "working" ? (
+                            <span aria-hidden>
+                              <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
+                            </span>
+                          ) : null}
+                        </span>
                       )
-                    ) : null}
+                    ) : (
+                      threadTimeLabel(thread)
+                    )}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
                     <span
@@ -2084,9 +2113,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     />
                   </span>
                 ) : null}
+                {driverKind ? (
+                  <span className="inline-flex shrink-0 items-center">
+                    <ProviderInstanceIcon
+                      driverKind={driverKind}
+                      displayName={
+                        providerEntry?.displayName ??
+                        thread.session?.providerName ??
+                        modelInstanceId
+                      }
+                      accentColor={providerEntry?.accentColor}
+                      showBadge={showInstanceBadge}
+                      // Glyph dims, badge stays saturated; offset matches the composer trigger.
+                      iconClassName="size-3.5 opacity-60"
+                      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-[7px]"
+                    />
+                  </span>
+                ) : null}
               </span>
             </div>
-            <SidebarTasks thread={thread} threadRef={threadRef} leaseLiveStatus={leaseLiveStatus} />
           </div>
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>

@@ -1,4 +1,3 @@
-import { SidebarTasks } from "./sidebar/SidebarTasks";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { GitPullRequestIcon } from "lucide-react";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
@@ -941,9 +940,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           </div>
         </div>
       </SidebarMenuSubButton>
-      <div className="px-2">
-        <SidebarTasks thread={thread} threadRef={threadRef} leaseLiveStatus={leaseLiveStatus} />
-      </div>
     </SidebarMenuSubItem>
   );
 });

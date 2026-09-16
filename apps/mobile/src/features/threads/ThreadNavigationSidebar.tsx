@@ -79,6 +79,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2SnoozedShelfHeader,
 } from "./thread-list-v2-items";
+import { resolveThreadProviderInstance } from "./thread-provider-instance";
 import {
   buildThreadListV2Items,
   getThreadListV2OrderedSection,
@@ -907,6 +908,7 @@ function ThreadNavigationSidebarPane(
               snoozeWakeLabelText={item.snoozeWakeLabelText}
               project={projectByKey.get(scopeKey) ?? null}
               projectTitle={projectTitleByProjectKey.get(scopeKey)}
+              providerInstance={resolveThreadProviderInstance(serverConfigs, thread)}
               environmentLabel={
                 Object.keys(savedConnectionsById).length > 1
                   ? (savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
@@ -1210,7 +1212,6 @@ function ThreadNavigationSidebarPane(
           <SwipeableScrollGateProvider enabled={swipeEnabled}>
             <GestureDetector gesture={sidebarScrollGesture}>
               <LegendList
-                viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
                 data={listItems}
                 drawDistance={500}
                 estimatedItemSize={64}
@@ -1271,7 +1272,6 @@ function ThreadNavigationSidebarPane(
         <SwipeableScrollGateProvider enabled={swipeEnabled}>
           <GestureDetector gesture={sidebarScrollGesture}>
             <LegendList
-              viewabilityConfig={SIDEBAR_STATUS_VIEWABILITY}
               data={listItems}
               drawDistance={500}
               estimatedItemSize={64}
@@ -1391,5 +1391,3 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
 });
-
-const SIDEBAR_STATUS_VIEWABILITY = { itemVisiblePercentThreshold: 1 };

@@ -255,10 +255,6 @@
       "types": "./src/work-log/scrollAnchor.ts",
       "default": "./src/work-log/scrollAnchor.ts"
     },
-    "./current-status": {
-      "types": "./src/currentStatus.ts",
-      "default": "./src/currentStatus.ts"
-    },
     "./thread-pull-request-compatibility": {
       "types": "./src/threadPullRequestCompatibility.ts",
       "default": "./src/threadPullRequestCompatibility.ts"
