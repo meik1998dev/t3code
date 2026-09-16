@@ -1,5 +1,5 @@
 import { ProjectId } from "@t3tools/contracts";
-export { CHECKPOINT_REFS_PREFIX, checkpointRefForThreadTurn } from "@t3tools/shared/git";
+export { checkpointRefForThreadTurn } from "@t3tools/shared/git";
 
 export function resolveThreadWorkspaceCwd(input: {
   readonly thread: {

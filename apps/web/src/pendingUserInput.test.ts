@@ -313,3 +313,22 @@ describe("resolvePendingUserInputAnswer pasted text", () => {
     ).toBe("Use this: a\nb");
   });
 });
+
+it("accepts attachment-only answers after every upload finishes", () => {
+  const questions = [
+    { id: "spec", header: "Spec", question: "Provide a spec", options: [], multiSelect: false },
+  ];
+  expect(buildPendingUserInputAnswers(questions, { spec: { attachmentCount: 1 } })).toEqual({
+    spec: "",
+  });
+  expect(
+    buildPendingUserInputAnswers(questions, {
+      spec: { attachmentCount: 1, attachmentsBlocked: true },
+    }),
+  ).toBeNull();
+  expect(
+    buildPendingUserInputAnswers([{ ...questions[0]!, allowCustomAnswer: false }], {
+      spec: { attachmentCount: 1 },
+    }),
+  ).toBeNull();
+});
