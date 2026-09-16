@@ -10,11 +10,12 @@ import * as Effect from "effect/Effect";
 
 /**
  * `preview` drives the collaborative browser. `pull-requests` links the
- * thread's own pull requests and is always granted. `orchestration` lets the
- * agent start other threads; it is only granted to threads a person started,
- * so an agent-started thread cannot start more.
+ * thread's own pull requests and is always granted. `device` drives mobile
+ * simulators and emulators. `orchestration` lets the agent start other
+ * threads; it is only granted to threads a person started, so an agent-started
+ * thread cannot start more.
  */
-export type McpCapability = "preview" | "pull-requests" | "orchestration";
+export type McpCapability = "preview" | "device" | "pull-requests" | "orchestration";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;

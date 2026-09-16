@@ -14,13 +14,7 @@ import * as McpProviderSession from "./McpProviderSession.ts";
 export interface McpCredentialRequest {
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
-  /**
-   * Whether the credential may drive the user's browser. The pull request
-   * toolkit is always granted: it only touches the thread's own links.
-   */
-  readonly preview: boolean;
-  /** Whether the thread may start other threads. See `McpCapability`. */
-  readonly orchestration?: boolean;
+  readonly capabilities: ReadonlySet<McpInvocationContext.McpCapability>;
 }
 
 export interface McpIssuedCredential {
@@ -137,8 +131,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         providerInstanceId: ProviderInstanceId.make(request.providerInstanceId),
         capabilities: new Set<McpInvocationContext.McpCapability>([
           "pull-requests",
-          ...(request.preview ? (["preview"] as const) : []),
-          ...(request.orchestration ? (["orchestration"] as const) : []),
+          ...request.capabilities,
         ]),
         issuedAt,
       };
@@ -153,10 +146,9 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           threadId: scope.threadId,
           providerSessionId,
           providerInstanceId: scope.providerInstanceId,
-          capabilities: [...scope.capabilities],
           endpoint,
           authorizationHeader: `Bearer ${rawToken}`,
-          preview: request.preview,
+          capabilities: scope.capabilities,
         },
       };
     },

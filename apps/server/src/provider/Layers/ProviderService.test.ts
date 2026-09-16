@@ -4800,17 +4800,18 @@ describe("agent browser access", () => {
   const projectId = ProjectId.make("project-browser-access");
 
   const startSessionWith = (
-    enableAgentBrowserAccess: boolean,
+    access: boolean | { readonly browser: boolean; readonly device: boolean },
     threadId: ThreadId,
-    projectOverride?: boolean,
-    parentThreadId: ThreadId | null = null,
+    projectOverride?: boolean | { readonly browser?: boolean; readonly device?: boolean },
+    options?: {
+      readonly parentThreadId?: ThreadId | null;
+      readonly withoutOrchestration?: boolean;
+    },
   ) =>
     Effect.gen(function* () {
-      const issued: Array<{
-        readonly threadId: ThreadId;
-        readonly preview: boolean;
-        readonly orchestration: boolean;
-      }> = [];
+      const enableAgentBrowserAccess = typeof access === "boolean" ? access : access.browser;
+      const enableAgentDeviceAccess = typeof access === "boolean" ? access : access.device;
+      const issued: Array<{ threadId: ThreadId; capabilities: ReadonlyArray<string> }> = [];
       const codex = makeFakeCodexAdapter();
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
@@ -4851,7 +4852,7 @@ describe("agent browser access", () => {
                 runtimeMode: "full-access",
                 branch: null,
                 worktreePath: null,
-                parentThreadId,
+                parentThreadId: options?.parentThreadId ?? null,
                 latestTurn: null,
                 createdAt: "2026-01-01T00:00:00.000Z",
                 updatedAt: "2026-01-01T00:00:00.000Z",
@@ -4872,20 +4873,33 @@ describe("agent browser access", () => {
           Effect.sync(() => {
             issued.push({
               threadId: request.threadId,
-              preview: request.preview,
-              orchestration: request.orchestration === true,
+              capabilities: [...request.capabilities].toSorted(),
             });
             return undefined;
           }),
       }).pipe(
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
-        Layer.provide(projectionLayer),
+        Layer.provide(options?.withoutOrchestration ? Layer.empty : projectionLayer),
         Layer.provide(
           ServerSettings.ServerSettingsService.layerTest({
             enableAgentBrowserAccess,
-            projectAgentBrowserAccessOverrides:
-              projectOverride === undefined ? {} : { [projectId]: projectOverride },
+            enableAgentDeviceAccess,
+            projectSettingsOverrides:
+              projectOverride === undefined
+                ? {}
+                : typeof projectOverride === "boolean"
+                  ? { [projectId]: { enableAgentBrowserAccess: projectOverride } }
+                  : {
+                      [projectId]: {
+                        ...(projectOverride.browser !== undefined
+                          ? { enableAgentBrowserAccess: projectOverride.browser }
+                          : {}),
+                        ...(projectOverride.device !== undefined
+                          ? { enableAgentDeviceAccess: projectOverride.device }
+                          : {}),
+                      },
+                    },
           }),
         ),
         Layer.provide(serverConfigTestLayer),
@@ -4920,7 +4934,9 @@ describe("agent browser access", () => {
 
       const issued = yield* startSessionWith(false, threadId);
 
-      assert.deepEqual(issued, [{ threadId, preview: false, orchestration: true }]);
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["orchestration", "pull-requests"] },
+      ]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -4930,15 +4946,44 @@ describe("agent browser access", () => {
 
       const issued = yield* startSessionWith(true, threadId);
 
-      assert.deepEqual(issued, [{ threadId, preview: true, orchestration: true }]);
+      assert.deepEqual(issued, [
+        {
+          threadId,
+          capabilities: ["device", "orchestration", "preview", "pull-requests"],
+        },
+      ]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("drops only the preview capability when browser access alone is off", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-browser-off-device-on");
+
+      const issued = yield* startSessionWith({ browser: false, device: true }, threadId);
+
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["device", "orchestration", "pull-requests"] },
+      ]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("issues a credential without preview when the project disables browser access", () =>
     Effect.gen(function* () {
       const threadId = asThreadId("thread-project-browser-off");
+      const issued = yield* startSessionWith({ browser: true, device: false }, threadId, false);
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["orchestration", "pull-requests"] },
+      ]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("a project browser override leaves device access alone", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-project-browser-off-device-on");
       const issued = yield* startSessionWith(true, threadId, false);
-      assert.deepEqual(issued, [{ threadId, preview: false, orchestration: true }]);
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["device", "orchestration", "pull-requests"] },
+      ]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -4949,15 +4994,21 @@ describe("agent browser access", () => {
         true,
         asThreadId("thread-agent-started"),
         undefined,
-        asThreadId("thread-top-level"),
+        { parentThreadId: asThreadId("thread-top-level") },
       );
 
-      // Thread tools do not depend on browser access.
+      // Thread tools do not depend on browser or device access.
       assert.deepEqual(topLevel, [
-        { threadId: asThreadId("thread-top-level"), preview: false, orchestration: true },
+        {
+          threadId: asThreadId("thread-top-level"),
+          capabilities: ["orchestration", "pull-requests"],
+        },
       ]);
       assert.deepEqual(agentStarted, [
-        { threadId: asThreadId("thread-agent-started"), preview: true, orchestration: false },
+        {
+          threadId: asThreadId("thread-agent-started"),
+          capabilities: ["device", "preview", "pull-requests"],
+        },
       ]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
@@ -4965,8 +5016,37 @@ describe("agent browser access", () => {
   it.effect("requests an MCP credential when the project overrides browser access to on", () =>
     Effect.gen(function* () {
       const threadId = asThreadId("thread-project-browser-on");
-      const issued = yield* startSessionWith(false, threadId, true);
-      assert.deepEqual(issued, [{ threadId, preview: true, orchestration: true }]);
+      const issued = yield* startSessionWith({ browser: false, device: false }, threadId, true);
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["orchestration", "preview", "pull-requests"] },
+      ]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("a project device override grants device access when the environment denies it", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-project-device-on");
+      const issued = yield* startSessionWith({ browser: false, device: false }, threadId, {
+        device: true,
+      });
+      assert.deepEqual(issued, [
+        { threadId, capabilities: ["device", "orchestration", "pull-requests"] },
+      ]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  // Without orchestration the project cannot be resolved, so an overridden
+  // capability is withheld; one no project overrides keeps its environment value.
+  it.effect("withholds only the overridden capability when the project cannot be resolved", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-no-orchestration-device-override");
+      const issued = yield* startSessionWith(
+        { browser: true, device: true },
+        threadId,
+        { device: false },
+        { withoutOrchestration: true },
+      );
+      assert.deepEqual(issued, [{ threadId, capabilities: ["preview", "pull-requests"] }]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

@@ -39,7 +39,7 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
     const issued = yield* registry.issue({
       threadId,
       providerInstanceId: ProviderInstanceId.make("codex"),
-      preview: true,
+      capabilities: new Set(["preview"]),
     });
     expect(issued.config.endpoint).toBe("http://127.0.0.1:43123/mcp");
     const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
@@ -55,24 +55,24 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
   }),
 );
 
-it.effect("always grants pull-requests and gates preview and orchestration on the request", () =>
+it.effect("always grants pull-requests and gates optional capabilities independently", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry(() => 1_000);
-    const issue = (threadId: string, preview: boolean, orchestration?: boolean) =>
+    const issue = (threadId: string, capabilities: ReadonlyArray<"preview" | "device" | "orchestration">) =>
       registry.issue({
         threadId: ThreadId.make(threadId),
         providerInstanceId: ProviderInstanceId.make("codex"),
-        preview,
-        ...(orchestration === undefined ? {} : { orchestration }),
+        capabilities: new Set(capabilities),
       });
     const capabilitiesOf = (issued: { readonly config: { readonly authorizationHeader: string } }) =>
       registry
         .resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, ""))
         .pipe(Effect.map((scope) => [...(scope?.capabilities ?? [])].sort()));
 
-    const parent = yield* issue("thread-parent", true, true);
-    const withoutPreview = yield* issue("thread-no-preview", false, true);
-    const child = yield* issue("thread-child", true);
+    const parent = yield* issue("thread-parent", ["preview", "orchestration"]);
+    const withoutPreview = yield* issue("thread-no-preview", ["orchestration"]);
+    const child = yield* issue("thread-child", ["preview"]);
+    const withDevice = yield* issue("thread-device", ["device"]);
 
     expect([...parent.config.capabilities].sort()).toEqual([
       "orchestration",
@@ -82,6 +82,7 @@ it.effect("always grants pull-requests and gates preview and orchestration on th
     expect(yield* capabilitiesOf(parent)).toEqual(["orchestration", "preview", "pull-requests"]);
     expect(yield* capabilitiesOf(withoutPreview)).toEqual(["orchestration", "pull-requests"]);
     expect(yield* capabilitiesOf(child)).toEqual(["preview", "pull-requests"]);
+    expect(yield* capabilitiesOf(withDevice)).toEqual(["device", "pull-requests"]);
   }),
 );
 
@@ -99,7 +100,7 @@ it.effect("builds MCP endpoints from the bound server host", () =>
       const issued = yield* registry.issue({
         threadId: ThreadId.make(`thread-${hostname}`),
         providerInstanceId: ProviderInstanceId.make("codex"),
-        preview: true,
+        capabilities: new Set(["preview"]),
       });
       expect(issued.config.endpoint).toBe(expectedEndpoint);
     }
@@ -113,7 +114,7 @@ it.effect("expires credentials once their session stops showing signs of life", 
     const issued = yield* registry.issue({
       threadId: ThreadId.make("thread-2"),
       providerInstanceId: ProviderInstanceId.make("claude"),
-      preview: true,
+      capabilities: new Set(["preview"]),
     });
     const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
     timestamp += 101;
@@ -129,7 +130,7 @@ it.effect("keeps a credential alive across turns that never touch an MCP tool", 
     const issued = yield* registry.issue({
       threadId,
       providerInstanceId: ProviderInstanceId.make("claude"),
-      preview: true,
+      capabilities: new Set(["preview"]),
     });
     const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
 
@@ -151,7 +152,7 @@ it.effect("does not keep credentials of other threads alive", () =>
     const issued = yield* registry.issue({
       threadId: ThreadId.make("thread-4"),
       providerInstanceId: ProviderInstanceId.make("codex"),
-      preview: true,
+      capabilities: new Set(["preview"]),
     });
     const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
 
