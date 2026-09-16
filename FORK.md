@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `9bf349cf6b` (2026-09-13, `fix(cursor): preserve internal agent errors without transport labels (#11365)`).
+- Last synced upstream commit: `9a49d6d5a6` (2026-09-16, `ci(desktop): sign fork PR macOS previews without exposing signing secrets (#11760)`).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -339,3 +339,14 @@ Host <hostname>.local
 
 - Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
 - Check: a project with no actions shows no "Add action" in the chat header.
+
+### Download page installs from a checkout (sync/v0.0.42)
+
+- What: the marketing download page's Terminal section tells people to run the fork from a git
+  checkout (`vp i && vp run dev`). Upstream shows `npx t3@nightly` plus the `t3.codes` install
+  scripts, which install upstream T3 Code, not this fork.
+- Key files: `apps/marketing/src/pages/download.astro`.
+- Check: open the download page. The Terminal section shows the checkout command, not `npx t3`.
+- Warning: this conflicts on every sync while upstream keeps improving its installers. Keep the
+  fork side unless the fork starts publishing its own package or install script.
+- Drop it when: Spindle ships a real installer or npm package of its own.
