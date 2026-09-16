@@ -1,10 +1,15 @@
-import { EditorId, type EnvironmentId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import {
+  buildRemoteOpenUrl,
+  EditorId,
+  type EnvironmentId,
+  type ResolvedKeybindingsConfig,
+} from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
 import { usePreferredEditor } from "../../editorPreferences";
 import { editorLabelForPlatform } from "../../editorLabels";
 import {
-  openRemoteEditor,
+  openRemoteEditorUrl,
   useRemoteCapableEditors,
   useRemoteOpenHint,
   useRemoteOpenState,
@@ -205,15 +210,19 @@ export const OpenInPicker = memo(function OpenInPicker({
       if (!editor) return;
       if (remote.mode === "remote-unavailable") return;
       if (remote.mode === "remote-links") {
-        // Only record hint-seen/preferred when the editor actually opened (an
-        // older desktop build can refuse the URL scheme or lack the CLI bridge).
-        void openRemoteEditor({ editor, host: remote.host.host, absolutePath: openInCwd }).then(
-          (opened) => {
-            if (!opened) return;
-            markRemoteHintSeen();
-            setPreferredEditor(editor);
-          },
-        );
+        const url = buildRemoteOpenUrl({
+          editor,
+          host: remote.host.host,
+          absolutePath: openInCwd,
+        });
+        if (url === undefined) return;
+        // Only record hint-seen/preferred when the shell actually accepted
+        // the URL (an older desktop build can refuse the editor scheme).
+        void openRemoteEditorUrl(url).then((opened) => {
+          if (!opened) return;
+          markRemoteHintSeen();
+          setPreferredEditor(editor);
+        });
         return;
       }
       const result = openInEditorMutation({

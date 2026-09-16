@@ -250,6 +250,10 @@
     "./current-status": {
       "types": "./src/currentStatus.ts",
       "default": "./src/currentStatus.ts"
+    },
+    "./thread-pull-request-compatibility": {
+      "types": "./src/threadPullRequestCompatibility.ts",
+      "default": "./src/threadPullRequestCompatibility.ts"
     }
   },
   "scripts": {

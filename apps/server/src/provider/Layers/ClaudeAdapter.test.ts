@@ -1,3 +1,4 @@
+import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "../RuntimeInstructions.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -392,8 +393,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.systemPrompt, {
         type: "preset",
         preset: "claude_code",
-        append:
-          '<runtime_info>In case you\'re asked: you are running in Spindle through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n<task_tracking>Spindle shows your TaskCreate and TaskUpdate calls as a task list in the UI. The user relies on it, so keep one for every request that names 3 or more things to make, change or check. Count each file, change or check as one step, even if you could do them all in one command. For example, "create 3 files" is 3 steps. Before the first tool call, create every step with TaskCreate. Mark a step in_progress when you begin it and completed as soon as it is done. Skip the list only for one- or two-step requests.</task_tracking>',
+        append: `${buildRuntimeInstructions({ harness: "Claude Code" })}\n\n${buildTaskTrackingInstructions({ create: "TaskCreate", update: "TaskUpdate" })}`,
       });
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);

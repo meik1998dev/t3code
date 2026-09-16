@@ -9,26 +9,18 @@ import {
   PickFolderOptionsSchema,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   REMOTE_CAPABLE_EDITOR_IDS,
-  RemoteEditorCommandInput,
   SystemSettingsPaneSchema,
-  buildRemoteEditorCommand,
   type DesktopEnvironmentBootstrap,
   type PickedThemeFile,
 } from "@t3tools/contracts";
 import { WORKSPACE_IMAGE_PREVIEW_EXTENSIONS } from "@t3tools/shared/filePreview";
-import {
-  CommandAvailability,
-  isCommandAvailable,
-  resolveSpawnCommand,
-} from "@t3tools/shared/shell";
+import { isCommandAvailable } from "@t3tools/shared/shell";
 import * as NodeOS from "node:os";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../../backend/DesktopLocalEnvironmentAuth.ts";
@@ -338,47 +330,6 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
       }
     }
     return available;
-  }),
-});
-
-export const openRemoteEditorCommand = DesktopIpc.makeIpcMethod({
-  channel: IpcChannels.OPEN_REMOTE_EDITOR_COMMAND_CHANNEL,
-  payload: RemoteEditorCommandInput,
-  result: Schema.Boolean,
-  // Runs THIS machine's editor CLI (e.g. `zed ssh://host/path`) for editors
-  // that have no OS deep link. Detached with stdio ignored, like the server's
-  // local editor launcher, so a slow SSH handshake never blocks the renderer.
-  // False means "nothing started": the CLI is missing or spawn failed.
-  handler: Effect.fn("desktop.ipc.window.openRemoteEditorCommand")(function* (input) {
-    const launch = buildRemoteEditorCommand(input);
-    if (launch === undefined) return false;
-    const checkCommand = yield* CommandAvailability;
-    let command: string | undefined;
-    for (const candidate of launch.commands) {
-      if (yield* checkCommand(candidate, { env: process.env })) {
-        command = candidate;
-        break;
-      }
-    }
-    if (command === undefined) return false;
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const resolved = yield* resolveSpawnCommand(command, launch.args, { env: process.env });
-    return yield* spawner
-      .spawn(
-        ChildProcess.make(resolved.command, resolved.args, {
-          shell: resolved.shell,
-          detached: true,
-          stdin: "ignore",
-          stdout: "ignore",
-          stderr: "ignore",
-        }),
-      )
-      .pipe(
-        Effect.flatMap((handle) => handle.unref),
-        Effect.as(true),
-        Effect.scoped,
-        Effect.catch(() => Effect.succeed(false)),
-      );
   }),
 });
 

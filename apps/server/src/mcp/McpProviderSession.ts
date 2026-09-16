@@ -11,6 +11,8 @@ export interface McpProviderSessionConfig {
   readonly capabilities: ReadonlyArray<McpCapability>;
   readonly endpoint: string;
   readonly authorizationHeader: string;
+  /** Whether the credential grants the preview (browser) toolkit; the pull request toolkit always is. */
+  readonly preview: boolean;
 }
 
 const sessionsByThread = new Map<ThreadId, McpProviderSessionConfig>();

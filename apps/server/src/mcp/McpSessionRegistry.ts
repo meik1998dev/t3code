@@ -14,8 +14,13 @@ import * as McpProviderSession from "./McpProviderSession.ts";
 export interface McpCredentialRequest {
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
-  /** Defaults to `preview` only. */
-  readonly capabilities?: ReadonlyArray<McpInvocationContext.McpCapability>;
+  /**
+   * Whether the credential may drive the user's browser. The pull request
+   * toolkit is always granted: it only touches the thread's own links.
+   */
+  readonly preview: boolean;
+  /** Whether the thread may start other threads. See `McpCapability`. */
+  readonly orchestration?: boolean;
 }
 
 export interface McpIssuedCredential {
@@ -70,7 +75,7 @@ export interface McpSessionRegistryOptions {
  *
  * The bound matters because `/mcp` is mounted outside the environment auth
  * stack and is reachable on whatever host the server binds to, so this token is
- * the only thing guarding the preview toolkit on a remote-reachable server.
+ * the only thing guarding the `t3-code` toolkits on a remote-reachable server.
  */
 const DEFAULT_LIVENESS_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
@@ -130,7 +135,11 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         threadId: ThreadId.make(request.threadId),
         providerSessionId,
         providerInstanceId: ProviderInstanceId.make(request.providerInstanceId),
-        capabilities: new Set(request.capabilities ?? ["preview"]),
+        capabilities: new Set<McpInvocationContext.McpCapability>([
+          "pull-requests",
+          ...(request.preview ? (["preview"] as const) : []),
+          ...(request.orchestration ? (["orchestration"] as const) : []),
+        ]),
         issuedAt,
       };
       yield* SynchronizedRef.update(state, ({ records }) => {
@@ -147,6 +156,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           capabilities: [...scope.capabilities],
           endpoint,
           authorizationHeader: `Bearer ${rawToken}`,
+          preview: request.preview,
         },
       };
     },

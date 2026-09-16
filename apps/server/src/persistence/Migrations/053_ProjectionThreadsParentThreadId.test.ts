@@ -4,13 +4,13 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
-import migrateParentThreadId from "./052_ProjectionThreadsParentThreadId.ts";
+import migrateParentThreadId from "./053_ProjectionThreadsParentThreadId.ts";
 
-it.layer(NodeSqliteClient.layerMemory())("052_ProjectionThreadsParentThreadId", (it) => {
+it.layer(NodeSqliteClient.layerMemory())("053_ProjectionThreadsParentThreadId", (it) => {
   it.effect("gives existing threads no parent and can run twice", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 51 });
+      yield* runMigrations({ toMigrationInclusive: 52 });
       const now = "2026-01-01T00:00:00.000Z";
       yield* sql`
         INSERT INTO projection_threads (
@@ -21,7 +21,7 @@ it.layer(NodeSqliteClient.layerMemory())("052_ProjectionThreadsParentThreadId", 
           '{"instanceId":"codex","model":"gpt-5.4"}', 'full-access', ${now}, ${now}
         )
       `;
-      yield* runMigrations({ toMigrationInclusive: 52 });
+      yield* runMigrations({ toMigrationInclusive: 53 });
       // Recovery may re-run a migration against a database that has the column.
       yield* migrateParentThreadId;
       const rows = yield* sql<{ readonly parentThreadId: string | null }>`

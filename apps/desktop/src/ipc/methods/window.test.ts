@@ -1,12 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { NodeServices } from "@effect/platform-node";
-import { CommandAvailability } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
@@ -18,7 +13,6 @@ import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
-  openRemoteEditorCommand,
   pickProjectFavicon,
 } from "./window.ts";
 
@@ -191,87 +185,5 @@ describe("pickProjectFavicon", () => {
         ],
       ]);
     }),
-  );
-});
-
-describe("openRemoteEditorCommand", () => {
-  const spawned: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> = [];
-  const recordingSpawner = Layer.succeed(
-    ChildProcessSpawner.ChildProcessSpawner,
-    ChildProcessSpawner.make((command) => {
-      const childProcess = command as unknown as {
-        readonly command: string;
-        readonly args: ReadonlyArray<string>;
-      };
-      spawned.push({ command: childProcess.command, args: childProcess.args });
-      return Effect.succeed(
-        ChildProcessSpawner.makeHandle({
-          pid: ChildProcessSpawner.ProcessId(1),
-          exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
-          isRunning: Effect.succeed(true),
-          kill: () => Effect.void,
-          unref: Effect.succeed(Effect.void),
-          stdin: Sink.drain,
-          stdout: Stream.empty,
-          stderr: Stream.empty,
-          all: Stream.empty,
-          getInputFd: () => Sink.drain,
-          getOutputFd: () => Stream.empty,
-        }),
-      );
-    }),
-  );
-  const availableCommands = (names: ReadonlyArray<string>) =>
-    Layer.succeed(CommandAvailability, (command) => Effect.succeed(names.includes(command)));
-
-  it.effect("runs the first installed Zed CLI with an ssh:// URL", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "zed",
-        host: "srv1975423.local",
-        absolutePath: "/root/repos/news/newsifier-front",
-      });
-      assert.isTrue(opened);
-      assert.deepEqual(spawned, [
-        { command: "zeditor", args: ["ssh://srv1975423.local/root/repos/news/newsifier-front"] },
-      ]);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands(["zeditor"])),
-      ),
-    ),
-  );
-
-  it.effect("reports false without spawning when no Zed CLI is on PATH", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "zed",
-        host: "sol",
-        absolutePath: "/tmp/x",
-      });
-      assert.isFalse(opened);
-      assert.deepEqual(spawned, []);
-    }).pipe(
-      Effect.provide(Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands([]))),
-    ),
-  );
-
-  it.effect("reports false for editors that open remotely by deep link instead", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "vscode",
-        host: "sol",
-        absolutePath: "/tmp/x",
-      });
-      assert.isFalse(opened);
-      assert.deepEqual(spawned, []);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands(["code"])),
-      ),
-    ),
   );
 });
