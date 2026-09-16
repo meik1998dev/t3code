@@ -889,6 +889,39 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-pull
         assert.deepEqual(yield* readLinks(), []);
         assert.deepEqual(yield* readThreadUpdatedAt(), [{ updatedAt: "2026-01-01T00:00:05.000Z" }]);
 
+        // Older Forgejo rows stored a portless host; unlink by their URL's authority.
+        yield* eventStore.append({
+          ...base("2026-01-01T00:00:05.100Z"),
+          type: "thread.pull-request-linked",
+          payload: {
+            threadId,
+            link: {
+              host: "forge.example",
+              repository: "team/repo",
+              number: 42,
+              url: "http://forge.example:3000/team/repo/pulls/42",
+              source: "agent",
+              linkedAt: "2026-01-01T00:00:05.100Z",
+              snapshot: null,
+              stack: null,
+            },
+            updatedAt: "2026-01-01T00:00:05.100Z",
+          },
+        });
+        yield* eventStore.append({
+          ...base("2026-01-01T00:00:05.200Z"),
+          type: "thread.pull-request-unlinked",
+          payload: {
+            threadId,
+            host: "forge.example:3000",
+            repository: "team/repo",
+            number: 42,
+            updatedAt: "2026-01-01T00:00:05.200Z",
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+        assert.deepEqual(yield* readLinks(), []);
+
         // Deleting the thread clears whatever links it still had.
         yield* eventStore.append({
           ...base("2026-01-01T00:00:06.000Z"),
@@ -4605,63 +4638,6 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         (yield* cleanupCursor)[0]!.lastAppliedSequence,
         cursorBeforeRetry[0]!.lastAppliedSequence,
       );
-    }),
-  );
-
-  it.effect("keeps a child thread's parent through later thread updates", () =>
-    Effect.gen(function* () {
-      const engine = yield* OrchestrationEngineService;
-      const snapshotQuery = yield* ProjectionSnapshotQuery;
-      const createdAt = "2026-01-01T00:00:00.000Z";
-      const projectId = ProjectId.make("project-parent");
-      const parentThreadId = ThreadId.make("thread-parent");
-      const childThreadId = ThreadId.make("thread-child");
-      const threadFields = {
-        type: "thread.create" as const,
-        projectId,
-        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
-        runtimeMode: "full-access" as const,
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        branch: null,
-        worktreePath: null,
-        createdAt,
-      };
-
-      yield* engine.dispatch({
-        type: "project.create",
-        commandId: CommandId.make("cmd-parent-project-create"),
-        projectId,
-        title: "Parent Project",
-        workspaceRoot: "/tmp/project-parent",
-        createdAt,
-      });
-      yield* engine.dispatch({
-        ...threadFields,
-        commandId: CommandId.make("cmd-parent-thread-create"),
-        threadId: parentThreadId,
-        title: "Parent",
-      });
-      yield* engine.dispatch({
-        ...threadFields,
-        commandId: CommandId.make("cmd-child-thread-create"),
-        threadId: childThreadId,
-        title: "Child",
-        parentThreadId,
-      });
-      yield* engine.dispatch({
-        type: "thread.meta.update",
-        commandId: CommandId.make("cmd-child-thread-rename"),
-        threadId: childThreadId,
-        title: "Renamed child",
-      });
-
-      const snapshot = yield* snapshotQuery.getSnapshot();
-      const parents = Object.fromEntries(
-        snapshot.threads
-          .filter((thread) => thread.projectId === projectId)
-          .map((thread) => [thread.id, thread.parentThreadId]),
-      );
-      assert.deepEqual(parents, { [parentThreadId]: null, [childThreadId]: parentThreadId });
     }),
   );
 });

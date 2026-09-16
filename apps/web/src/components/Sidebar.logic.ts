@@ -803,9 +803,9 @@ export function shouldRecedeSidebarThread(input: {
   isActive: boolean;
   isSelected: boolean;
 }): boolean {
-  if (input.isActive || input.isSelected) return false;
+  if (input.isActive || input.isSelected || input.status === "input") return false;
   if (input.status === "working" || input.status === "monitoring") return true;
-  if (input.status === "ready" || input.status === "approval" || input.status === "input") {
+  if (input.status === "ready" || input.status === "approval") {
     return !input.isUnread && !input.isWoke;
   }
   return false;
@@ -898,8 +898,8 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   query: string;
   matches: (item: TItem, query: string) => boolean;
 }): readonly TItem[] {
-  const projectItems = input.items.filter((item) => item.value !== "all");
   const query = input.query.trim();
+  const projectItems = input.items.filter((item) => item.value !== "all");
   if (query.length > 0) {
     return projectItems.filter((item) => input.matches(item, query));
   }

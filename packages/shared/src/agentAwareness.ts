@@ -74,8 +74,7 @@ export function projectThreadAwareness(
   };
 }
 
-/** Where a thread stands for anyone watching it; null when it has not started work. */
-export function resolveThreadAwarenessPhase(
+function resolveThreadAwarenessPhase(
   thread: ProjectThreadAwarenessInput["thread"],
 ): AgentAwarenessPhase | null {
   if (thread.hasPendingApprovals) {

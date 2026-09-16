@@ -74,12 +74,6 @@ export const GitHubIcon: Icon = (props) => (
   </svg>
 );
 
-export const LinearIcon: Icon = (props) => (
-  <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" {...props}>
-    <path d="M1.225 61.523c-.222-.949.908-1.546 1.597-.857l36.512 36.512c.69.69.092 1.82-.857 1.597-18.425-4.323-32.93-18.827-37.252-37.252ZM.002 46.889a.99.99 0 0 0 .29.76L52.35 99.71a.99.99 0 0 0 .76.29c2.12-.037 4.204-.194 6.25-.464.845-.11 1.185-1.14.583-1.743L2.21 40.056c-.603-.602-1.633-.262-1.743.583a63.34 63.34 0 0 0-.464 6.25ZM4.21 29.705a.988.988 0 0 0 .213 1.09l64.782 64.782a.988.988 0 0 0 1.09.213c1.62-.673 3.19-1.43 4.706-2.263.53-.291.62-1.024.19-1.454L7.928 24.809c-.43-.43-1.163-.34-1.454.19a62.62 62.62 0 0 0-2.263 4.706ZM12.86 16.955a.99.99 0 0 1-.072-1.317C24.06 3.53 40.62-2.47 57.997.936c22.13 3.062 40.084 21.017 43.147 43.147 2.406 17.377-3.594 33.937-14.702 45.21a.99.99 0 0 1-1.317-.072L12.86 16.955Z" />
-  </svg>
-);
-
 export const GitIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 256 256">
     <path
@@ -772,5 +766,18 @@ export const PiAgentIcon: Icon = ({ className, ...props }) => (
       d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
     />
     <path fill="#fff" d="M517.36 400H634.72V634.72H517.36Z" />
+  </svg>
+);
+
+// Official two-color mark from https://forgejo.org/favicon.svg.
+export const ForgejoIcon: Icon = (props) => (
+  <svg viewBox="0 0 212 212" aria-hidden="true" {...props}>
+    <g transform="translate(6 6)" fill="none">
+      <path d="M58 168 v-98 a50 50 0 0 1 50-50 h20" stroke="#ff6600" strokeWidth="25" />
+      <path d="M58 168 v-30 a50 50 0 0 1 50-50 h20" stroke="#d40000" strokeWidth="25" />
+      <circle cx="142" cy="20" r="18" stroke="#ff6600" strokeWidth="15" />
+      <circle cx="142" cy="88" r="18" stroke="#d40000" strokeWidth="15" />
+      <circle cx="58" cy="180" r="18" stroke="#d40000" strokeWidth="15" />
+    </g>
   </svg>
 );

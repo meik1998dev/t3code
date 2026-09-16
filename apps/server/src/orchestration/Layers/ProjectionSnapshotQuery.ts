@@ -3,6 +3,7 @@ import {
   AgentSessionImportSource,
   ApprovalRequestId,
   ChatAttachment,
+  OrchestrationMessageContext,
   CheckpointRef,
   IsoDateTime,
   MessageId,
@@ -112,6 +113,7 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   Struct.assign({
     isStreaming: Schema.Number,
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
+    context: Schema.NullOr(Schema.fromJsonString(OrchestrationMessageContext)),
   }),
 );
 const ProjectionTurnStartMessageDbRowSchema = ProjectionThreadMessageDbRowSchema.mapFields(
@@ -520,9 +522,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   });
 
   const listProjectRows = SqlSchema.findAll({
-    Request: Schema.Void,
+    Request: Schema.UndefinedOr(
+      Schema.Struct({
+        activeOnly: Schema.Boolean,
+        projectIds: Schema.optional(Schema.Array(ProjectId)),
+      }),
+    ),
     Result: ProjectionProjectDbRowSchema,
-    execute: () =>
+    execute: (filter) =>
       sql`
         SELECT
           project_id AS "projectId",
@@ -538,6 +545,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           updated_at AS "updatedAt",
           deleted_at AS "deletedAt"
         FROM projection_projects
+        WHERE ${filter?.activeOnly === true ? sql`deleted_at IS NULL` : sql`1 = 1`}
+          AND ${filter?.projectIds === undefined ? sql`1 = 1` : sql.in("project_id", filter.projectIds)}
         ORDER BY created_at ASC, project_id ASC
       `,
   });
@@ -556,7 +565,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -597,7 +605,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -640,7 +647,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -681,6 +687,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           role,
           text,
           attachments_json AS "attachments",
+          context_json AS "context",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -1200,7 +1207,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          parent_thread_id AS "parentThreadId",
           linked_pull_request_json AS "linkedPullRequest",
           branch_pull_request_json AS "branchPullRequest",
           latest_turn_id AS "latestTurnId",
@@ -1277,6 +1283,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         role,
         text,
         attachments_json AS "attachments",
+        context_json AS "context",
         is_streaming AS "isStreaming",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
@@ -1309,6 +1316,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           role,
           text,
           attachments_json AS "attachments",
+          context_json AS "context",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -1734,6 +1742,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           role,
           text,
           attachments_json AS "attachments",
+          context_json AS "context",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -1843,17 +1852,11 @@ pending_approval_requests AS (
             AND kind = 'user-input.requested'
           UNION ALL
           SELECT activity_id FROM latest_task_plan
-          UNION ALL
-          SELECT activity_id
-          FROM projection_thread_activities
-          WHERE thread_id = ${threadId}
-            AND kind = 'context-compaction'
         )
   `;
 
-  // Blocking requests, compaction markers, and the current task list must
-  // survive the recent activity window. Pin at most one unresolved row per
-  // request and one plan; compaction markers are lightweight fork metadata.
+  // Blocking requests and the current task list must survive the recent
+  // activity window. Pin at most one unresolved row per request and one plan.
   const listPinnedThreadActivityRowsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityDbRowSchema,
@@ -2158,6 +2161,7 @@ pending_approval_requests AS (
                   role: row.role,
                   text: row.text,
                   ...(row.attachments !== null ? { attachments: row.attachments } : {}),
+                  ...(row.context !== null ? { context: row.context } : {}),
                   turnId: row.turnId,
                   streaming: row.isStreaming === 1,
                   createdAt: row.createdAt,
@@ -2294,7 +2298,6 @@ pending_approval_requests AS (
                 interactionMode: row.interactionMode,
                 branch: row.branch,
                 worktreePath: row.worktreePath,
-                parentThreadId: row.parentThreadId ?? null,
                 ...mapThreadPullRequests(
                   pullRequestsByThread.get(row.threadId) ?? [],
                   row.projectId,
@@ -2539,7 +2542,6 @@ pending_approval_requests AS (
                   interactionMode: row.interactionMode,
                   branch: row.branch,
                   worktreePath: row.worktreePath,
-                  parentThreadId: row.parentThreadId ?? null,
                   ...mapThreadPullRequests(
                     pullRequestsByThread.get(row.threadId) ?? [],
                     row.projectId,
@@ -2698,7 +2700,6 @@ pending_approval_requests AS (
                         interactionMode: row.interactionMode,
                         branch: row.branch,
                         worktreePath: row.worktreePath,
-                        parentThreadId: row.parentThreadId ?? null,
                         branchPullRequest: row.branchPullRequest,
                         ...mapThreadPullRequests(
                           pullRequestsByThread.get(row.threadId) ?? [],
@@ -2865,7 +2866,6 @@ pending_approval_requests AS (
                   interactionMode: row.interactionMode,
                   branch: row.branch,
                   worktreePath: row.worktreePath,
-                  parentThreadId: row.parentThreadId ?? null,
                   branchPullRequest: row.branchPullRequest,
                   ...mapThreadPullRequests(
                     pullRequestsByThread.get(row.threadId) ?? [],
@@ -3018,6 +3018,25 @@ pending_approval_requests AS (
               ),
         ),
       );
+
+  const getProjectShells: ProjectionSnapshotQueryShape["getProjectShells"] = (projectIds) => {
+    if (projectIds?.length === 0) return Effect.succeed([]);
+    return listProjectRows({ activeOnly: true, projectIds }).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionSnapshotQuery.getProjectShells:query",
+          "ProjectionSnapshotQuery.getProjectShells:decodeRows",
+        ),
+      ),
+      Effect.flatMap((projects) =>
+        resolveRepositoryIdentitiesForProjects(projects).pipe(
+          Effect.map((identities) =>
+            projects.map((row) => mapProjectShellRow(row, identities.get(row.projectId) ?? null)),
+          ),
+        ),
+      ),
+    );
+  };
 
   const getProjectShellById: ProjectionSnapshotQueryShape["getProjectShellById"] = (projectId) =>
     getActiveProjectRowById({ projectId }).pipe(
@@ -3201,7 +3220,6 @@ pending_approval_requests AS (
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
-        parentThreadId: threadRow.value.parentThreadId ?? null,
         ...mapThreadPullRequests(
           pullRequestRows.map(mapPullRequestRow),
           threadRow.value.projectId,
@@ -3276,6 +3294,7 @@ pending_approval_requests AS (
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         ...(row.attachments !== null ? { attachments: row.attachments } : {}),
+        ...(row.context !== null ? { context: row.context } : {}),
       },
       hasOtherUserMessages: row.hasOtherUserMessages === 1,
     }));
@@ -3501,7 +3520,6 @@ pending_approval_requests AS (
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
-        parentThreadId: threadRow.value.parentThreadId ?? null,
         ...mapThreadPullRequests(
           pullRequestRows.map(mapPullRequestRow),
           threadRow.value.projectId,
@@ -3536,7 +3554,10 @@ pending_approval_requests AS (
             updatedAt: row.updatedAt,
           };
           if (row.attachments !== null) {
-            return Object.assign(message, { attachments: row.attachments });
+            Object.assign(message, { attachments: row.attachments });
+          }
+          if (row.context !== null) {
+            Object.assign(message, { context: row.context });
           }
           return message;
         }),
@@ -3731,6 +3752,7 @@ pending_approval_requests AS (
     getEventReplayStats,
     getActiveProjectByWorkspaceRoot,
     getProjectShellById,
+    getProjectShells,
     getFirstActiveThreadIdByProjectId,
     getImportedAgentSessionSources,
     getThreadCheckpointContext,

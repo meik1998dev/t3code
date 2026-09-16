@@ -10,7 +10,6 @@ import {
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
-  THREAD_ROUTING_NOTES_MAX_LENGTH,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
@@ -21,18 +20,32 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
-describe("ServerSettings thread routing notes", () => {
-  it("defaults to empty and trims at the patch boundary", () => {
-    expect(DEFAULT_SERVER_SETTINGS.threadRoutingNotes).toBe("");
-    expect(
-      decodeServerSettingsPatch({ threadRoutingNotes: "  Fable: hard bugs.  " }).threadRoutingNotes,
-    ).toBe("Fable: hard bugs.");
+describe("ServerSettings default permissions", () => {
+  it("keeps full access for settings saved before a default was configured", () => {
+    expect(decodeServerSettings({}).defaultRuntimeMode).toBe("full-access");
+    expect(DEFAULT_SERVER_SETTINGS.defaultRuntimeMode).toBe("full-access");
   });
 
-  it("rejects notes over the cap in a patch but still loads a long saved value", () => {
-    const long = "x".repeat(THREAD_ROUTING_NOTES_MAX_LENGTH + 1);
-    expect(() => decodeServerSettingsPatch({ threadRoutingNotes: long })).toThrow();
-    expect(decodeServerSettings({ threadRoutingNotes: long }).threadRoutingNotes).toBe(long);
+  it.each(["approval-required", "auto-accept-edits", "auto", "full-access"])(
+    "round-trips %s as an environment default and project override",
+    (defaultRuntimeMode) => {
+      const input = {
+        defaultRuntimeMode,
+        projectSettingsOverrides: { project: { defaultRuntimeMode } },
+      };
+      expect(encodeServerSettings(decodeServerSettings(input))).toMatchObject(input);
+      expect(decodeServerSettingsPatch(input)).toEqual(input);
+    },
+  );
+
+  it("rejects unsupported permission defaults", () => {
+    expect(() => decodeServerSettings({ defaultRuntimeMode: "unsupported" })).toThrow();
+    expect(() => decodeServerSettingsPatch({ defaultRuntimeMode: "unsupported" })).toThrow();
+    expect(() =>
+      decodeServerSettingsPatch({
+        projectSettingsOverrides: { project: { defaultRuntimeMode: "unsupported" } },
+      }),
+    ).toThrow();
   });
 });
 
@@ -148,6 +161,69 @@ describe("ClaudeSettings auto-compaction", () => {
     expect(
       decodeServerSettingsPatch({ providers: { claudeAgent: { autoCompactWindow: "300000" } } }),
     ).toBeDefined();
+  });
+});
+
+describe("ClientSettings notifications", () => {
+  it("requires opt-in when existing settings omit notification preferences", () => {
+    expect(decodeClientSettings({}).notificationMode).toBe("off");
+    expect(decodeClientSettings({}).inAppNotificationsEnabled).toBe(false);
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("inAppNotificationsEnabled");
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("notificationMode");
+  });
+
+  it.each([true, false])(
+    "round-trips in-app notifications set to %s",
+    (inAppNotificationsEnabled) => {
+      const settings = decodeClientSettings({ inAppNotificationsEnabled });
+      expect(encodeClientSettings(settings).inAppNotificationsEnabled).toBe(
+        inAppNotificationsEnabled,
+      );
+      expect(
+        decodeClientSettingsPatch({ inAppNotificationsEnabled }).inAppNotificationsEnabled,
+      ).toBe(inAppNotificationsEnabled);
+    },
+  );
+
+  it.each(["true", 1, null])(
+    "rejects an invalid in-app notification preference %s",
+    (inAppNotificationsEnabled) => {
+      expect(() => decodeClientSettings({ inAppNotificationsEnabled })).toThrow();
+      expect(() => decodeClientSettingsPatch({ inAppNotificationsEnabled })).toThrow();
+    },
+  );
+
+  it.each(["off", "notifications", "sound", "notifications-and-sound"])(
+    "round-trips the %s mode",
+    (notificationMode) => {
+      const settings = decodeClientSettings({ notificationMode });
+      expect(encodeClientSettings(settings).notificationMode).toBe(notificationMode);
+      expect(decodeClientSettingsPatch({ notificationMode }).notificationMode).toBe(
+        notificationMode,
+      );
+    },
+  );
+
+  it.each(["always", true, null])(
+    "rejects unsupported notification mode %s",
+    (notificationMode) => {
+      expect(() => decodeClientSettings({ notificationMode })).toThrow();
+      expect(() => decodeClientSettingsPatch({ notificationMode })).toThrow();
+    },
+  );
+});
+
+describe("ClientSettings default diff file state", () => {
+  it("keeps files expanded when existing settings omit the preference", () => {
+    expect(decodeClientSettings({}).diffFilesCollapsed).toBe(false);
+  });
+
+  it.each([true, false])("preserves a saved collapsed preference of %s", (diffFilesCollapsed) => {
+    const settings = decodeClientSettings({ diffFilesCollapsed });
+    expect(encodeClientSettings(settings).diffFilesCollapsed).toBe(diffFilesCollapsed);
+    expect(decodeClientSettingsPatch({ diffFilesCollapsed }).diffFilesCollapsed).toBe(
+      diffFilesCollapsed,
+    );
   });
 });
 

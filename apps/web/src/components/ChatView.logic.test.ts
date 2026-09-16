@@ -1,6 +1,8 @@
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
+  CheckpointRef,
   EnvironmentId,
+  EventId,
   MessageId,
   ProjectId,
   ProviderDriverKind,
@@ -10,11 +12,13 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Atom, AsyncResult } from "effect/unstable/reactivity";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { environmentThreadDetails } from "../state/threads";
 
 import type { Thread, ThreadShell, TurnDiffSummary } from "../types";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
-import { serializePastedText } from "../lib/pastedText";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type RightPanelSurface,
@@ -37,7 +41,6 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
-  deriveAssistantRevertTurnCounts,
   deriveLockedProvider,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
@@ -53,6 +56,7 @@ import {
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
+  restorePlanFollowUpComposer,
   resolveComposerProviderSelection,
   resolveDraftPromotionNavigationTarget,
   observeProactivePanelUserChoice,
@@ -77,12 +81,14 @@ import {
   shouldOpenProactivePullRequest,
   shouldRetargetThreadPullRequestPanel,
   shouldOpenProactiveTurnDiff,
+  deriveComposerTasksProgress,
   shouldRenderPreviewMiniPlayer,
   shouldShowBranchMismatchBanner,
-  deriveComposerTasksProgress,
   shouldShowPlanFollowUpPrompt,
   shouldWriteThreadErrorToCurrentServerThread,
   toolGroupConsumesUpwardNavigation,
+  waitForRevertedMessage,
+  prepareRevertedMessageAttachments,
 } from "./ChatView.logic";
 
 describe("agent browser close confirmation", () => {
@@ -119,6 +125,37 @@ describe("agent browser close confirmation", () => {
         "tab-2": { controller: "agent" },
       }),
     ).toContain("Close 2 browsers");
+  });
+});
+
+describe("deriveComposerTasksProgress", () => {
+  const latestTurnId = TurnId.make("turn-1");
+  const plan = (
+    steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
+    turnId: TurnId | null = latestTurnId,
+  ) => ({ createdAt: "2026-09-06T00:00:00.000Z", turnId, steps });
+
+  it("keeps a finished latest-turn list visible", () => {
+    expect(
+      deriveComposerTasksProgress(
+        plan([
+          { step: "Write a.txt", status: "completed" },
+          { step: "Write b.txt", status: "completed" },
+        ]),
+        latestTurnId,
+      ),
+    ).toEqual({ step: "Write b.txt", completedSteps: 2, totalSteps: 2 });
+  });
+
+  it("hides empty and older-turn lists", () => {
+    expect(deriveComposerTasksProgress(null, latestTurnId)).toBeNull();
+    expect(deriveComposerTasksProgress(plan([]), latestTurnId)).toBeNull();
+    expect(
+      deriveComposerTasksProgress(
+        plan([{ step: "Old task", status: "pending" }]),
+        TurnId.make("turn-2"),
+      ),
+    ).toBeNull();
   });
 });
 
@@ -431,26 +468,6 @@ describe("proactive panels", () => {
         isGitRepo: undefined,
       }),
     ).toBe("defer");
-  });
-});
-
-describe("deriveAssistantRevertTurnCounts", () => {
-  it("maps ready assistant checkpoints, including the last turn", () => {
-    const assistantMessageId = MessageId.make("assistant-last");
-    expect(
-      deriveAssistantRevertTurnCounts([
-        { assistantMessageId, checkpointTurnCount: 4, status: "ready" },
-      ]).get(assistantMessageId),
-    ).toBe(4);
-  });
-
-  it("omits assistant turns without a ready checkpoint", () => {
-    const assistantMessageId = MessageId.make("assistant-missing");
-    const counts = deriveAssistantRevertTurnCounts([
-      { assistantMessageId, checkpointTurnCount: 3, status: "missing" },
-      { assistantMessageId: null, checkpointTurnCount: 4, status: "ready" },
-    ]);
-    expect(counts.has(assistantMessageId)).toBe(false);
   });
 });
 
@@ -1571,7 +1588,7 @@ describe("buildRunningThreadTurnInterruptInput", () => {
 describe("deriveComposerSendState", () => {
   it("treats expired terminal pills as non-sendable content", () => {
     const state = deriveComposerSendState({
-      prompt: "\uFFFC",
+      prompt: "[Terminal 1 line 4](t3-context://v1/terminal/ctx-expired)",
       imageCount: 0,
       terminalContexts: [
         {
@@ -1595,7 +1612,7 @@ describe("deriveComposerSendState", () => {
 
   it("keeps text sendable while excluding expired terminal pills", () => {
     const state = deriveComposerSendState({
-      prompt: `yoo \uFFFC waddup`,
+      prompt: "yoo [Terminal 1 line 4](t3-context://v1/terminal/ctx-expired) waddup",
       imageCount: 0,
       terminalContexts: [
         {
@@ -2165,70 +2182,6 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 });
 
-describe("deriveComposerSendState pasted text", () => {
-  it("strips pasted-text chip markers from the trimmed prompt", () => {
-    const state = deriveComposerSendState({
-      prompt: `Review ${serializePastedText("a\nb")} `,
-      imageCount: 0,
-      terminalContexts: [],
-    });
-    expect(state.trimmedPrompt).toBe("Review a\nb");
-    expect(state.hasSendableContent).toBe(true);
-  });
-});
-
-describe("deriveComposerTasksProgress", () => {
-  const latestTurnId = TurnId.make("turn-1");
-  const plan = (
-    steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
-    turnId: TurnId | null = latestTurnId,
-  ) => ({
-    createdAt: "2026-09-06T00:00:00.000Z",
-    turnId,
-    steps,
-  });
-
-  it("reports the in-progress step while work is running", () => {
-    expect(
-      deriveComposerTasksProgress(
-        plan([
-          { step: "Write a.txt", status: "completed" },
-          { step: "Write b.txt", status: "inProgress" },
-          { step: "Write c.txt", status: "pending" },
-        ]),
-        latestTurnId,
-      ),
-    ).toEqual({ step: "Write b.txt", completedSteps: 1, totalSteps: 3 });
-  });
-
-  it("keeps a finished list visible with its last step and a full count", () => {
-    expect(
-      deriveComposerTasksProgress(
-        plan([
-          { step: "Write a.txt", status: "completed" },
-          { step: "Write b.txt", status: "completed" },
-        ]),
-        latestTurnId,
-      ),
-    ).toEqual({ step: "Write b.txt", completedSteps: 2, totalSteps: 2 });
-  });
-
-  it("hides lists from earlier turns once a newer turn exists", () => {
-    const steps = [
-      { step: "Write a.txt", status: "completed" as const },
-      { step: "Write b.txt", status: "pending" as const },
-    ];
-    expect(deriveComposerTasksProgress(plan(steps), TurnId.make("turn-2"))).toBeNull();
-    expect(deriveComposerTasksProgress(plan(steps, null), latestTurnId)).toBeNull();
-  });
-
-  it("returns null without a plan, a turn, or steps", () => {
-    expect(deriveComposerTasksProgress(null, latestTurnId)).toBeNull();
-    expect(deriveComposerTasksProgress(plan([]), latestTurnId)).toBeNull();
-    expect(deriveComposerTasksProgress(plan([{ step: "a", status: "pending" }]), null)).toBeNull();
-  });
-});
-
 describe("shouldRefocusComposerOnWindowFocus", () => {
   function element(
     tagName: string,
@@ -2257,6 +2210,10 @@ describe("shouldRefocusComposerOnWindowFocus", () => {
     expect(shouldRefocusComposerOnWindowFocus(element("TEXTAREA"))).toBe(false);
     expect(shouldRefocusComposerOnWindowFocus(element("DIV", { editable: true }))).toBe(false);
     expect(shouldRefocusComposerOnWindowFocus(element("DIV", { role: "textbox" }))).toBe(false);
+  });
+
+  it.each(["IFRAME", "WEBVIEW"])("leaves a focused %s preview alone", (tagName) => {
+    expect(shouldRefocusComposerOnWindowFocus(element(tagName))).toBe(false);
   });
 
   it("leaves a focused terminal alone in the drawer and the right panel", () => {
@@ -2327,5 +2284,199 @@ describe("threadShellHasStarted", () => {
       threadShellHasStarted({ latestTurn: null, latestUserMessageAt: null, session: null }),
     ).toBe(false);
     expect(threadShellHasStarted(null)).toBe(false);
+  });
+});
+
+describe("rewind draft recovery", () => {
+  const message = {
+    id: MessageId.make("rewound-message"),
+    role: "user" as const,
+    text: "edit this question",
+    turnId: TurnId.make("rewound-turn"),
+    createdAt: now,
+    updatedAt: now,
+    streaming: false,
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("waits past command acceptance until the exact message disappears", async () => {
+    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
+    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
+    let accepted = false;
+    const result = waitForRevertedMessage({ environmentId, threadId }, message.id, 0, async () => {
+      accepted = true;
+    });
+    let completed = false;
+    void result.then(() => {
+      completed = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(accepted).toBe(true);
+    expect(completed).toBe(false);
+    appAtomRegistry.set(
+      atom,
+      makeThread({
+        messages: [],
+        latestTurn: completedTurn,
+        checkpoints: [
+          {
+            turnId: completedTurn.turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("refs/t3/checkpoints/1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: now,
+          },
+        ],
+      }),
+    );
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    appAtomRegistry.set(atom, makeThread({ messages: [] }));
+    await result;
+  });
+
+  it("rejects a new provider rewind failure without restoring a draft", async () => {
+    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
+    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
+    const result = waitForRevertedMessage({ environmentId, threadId }, message.id, 0, async () => {
+      appAtomRegistry.set(
+        atom,
+        makeThread({
+          messages: [message],
+          activities: [
+            {
+              id: EventId.make("rewind-failed"),
+              kind: "checkpoint.revert.failed",
+              tone: "error",
+              summary: "Checkpoint revert failed",
+              payload: { detail: "Native history unavailable", turnCount: 0 },
+              turnId: null,
+              createdAt: now,
+            },
+          ],
+        }),
+      );
+    });
+    await expect(result).rejects.toThrow("Native history unavailable");
+  });
+
+  it("bounds waits when a provider never finishes", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
+    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
+    const result = waitForRevertedMessage(
+      { environmentId, threadId },
+      message.id,
+      0,
+      async () => {},
+      20,
+    );
+    const timeoutIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 20);
+    const rewindTimeout = setTimeoutSpy.mock.results[timeoutIndex]?.value;
+    expect(rewindTimeout).toBeDefined();
+    const rejection = expect(result).rejects.toThrow("Timed out waiting");
+    await vi.advanceTimersByTimeAsync(20);
+    await rejection;
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(rewindTimeout);
+  });
+
+  it("copies attachment bytes before rewind into a fresh file", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("original bytes"));
+    vi.stubGlobal("fetch", fetchMock);
+    const files = await prepareRevertedMessageAttachments({
+      message: {
+        ...message,
+        attachments: [
+          {
+            type: "file",
+            id: "old-attachment",
+            name: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 14,
+          },
+        ],
+      },
+      environmentId,
+      httpBaseUrl: "https://server.test",
+      createAssetUrl: async () =>
+        AsyncResult.success({ relativeUrl: "/asset/signed", expiresAt: Date.now() + 60_000 }),
+    });
+    expect(files[0]).toBeInstanceOf(File);
+    expect(files[0]?.name).toBe("notes.txt");
+    expect(await files[0]?.text()).toBe("original bytes");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://server.test/asset/signed");
+  });
+});
+
+describe("restorePlanFollowUpComposer", () => {
+  it("writes back every field a cleared plan follow-up composer held", () => {
+    const snapshot = {
+      prompt: "Follow up on the plan",
+      terminalContexts: [
+        {
+          id: "terminal-1",
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-09-11T00:00:00.000Z",
+          terminalId: "main",
+          terminalLabel: "Main",
+          lineStart: 1,
+          lineEnd: 2,
+          text: "output",
+        },
+      ],
+      reviewComments: [
+        {
+          id: "review-1",
+          sectionId: "file:a.ts",
+          sectionTitle: "File comment",
+          filePath: "a.ts",
+          startIndex: 0,
+          endIndex: 0,
+          rangeLabel: "L1",
+          text: "look here",
+          diff: "",
+        },
+      ],
+      previewAnnotations: [],
+    };
+    const writePrompt = vi.fn();
+    const writeTerminalContexts = vi.fn();
+    const writeReviewComments = vi.fn();
+    const writePreviewAnnotations = vi.fn();
+    const resetCursor = vi.fn();
+
+    restorePlanFollowUpComposer({
+      snapshot,
+      writePrompt,
+      writeTerminalContexts,
+      writeReviewComments,
+      writePreviewAnnotations,
+      resetCursor,
+    });
+
+    expect(writePrompt).toHaveBeenCalledTimes(1);
+    expect(writePrompt).toHaveBeenCalledWith("Follow up on the plan");
+    expect(writeTerminalContexts).toHaveBeenCalledTimes(1);
+    expect(writeTerminalContexts).toHaveBeenCalledWith(snapshot.terminalContexts);
+    expect(writeReviewComments).toHaveBeenCalledTimes(1);
+    expect(writeReviewComments).toHaveBeenCalledWith(snapshot.reviewComments);
+    expect(writePreviewAnnotations).toHaveBeenCalledTimes(1);
+    expect(writePreviewAnnotations).toHaveBeenCalledWith(snapshot.previewAnnotations);
+    expect(resetCursor).toHaveBeenCalledTimes(1);
+    expect(resetCursor).toHaveBeenCalledWith({
+      cursor: expect.any(Number),
+      prompt: "Follow up on the plan",
+      detectTrigger: true,
+    });
   });
 });

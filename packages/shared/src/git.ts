@@ -1,6 +1,4 @@
 import type {
-  CheckpointRef,
-  ThreadId,
   VcsRef,
   SourceControlProviderInfo,
   VcsStatusLocalResult,
@@ -8,26 +6,17 @@ import type {
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "@t3tools/contracts";
-import { CheckpointRef as CheckpointRefSchema } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
-import * as Encoding from "effect/Encoding";
 import * as Result from "effect/Result";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "t3code";
-export const CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
-
-export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
-  return CheckpointRefSchema.make(
-    `${CHECKPOINT_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/turn/${turnCount}`,
-  );
-}
-// Canonical form is `<8 hex>`. Older clients generated `t3code/<8 hex>` and some
-// mobile builds generated `t3code/<uuid>` via Crypto.randomUUID() (always RFC 4122
-// v4), so the matcher accepts those exact legacy shapes to keep existing threads
-// eligible for branch regeneration.
+// Canonical form is `t3code/<8 hex>`. Older mobile builds generated `t3code/<uuid>`
+// via Crypto.randomUUID() (always RFC 4122 v4), so the matcher also accepts exactly
+// that shape — version nibble `4`, variant nibble `[89ab]` — to keep those threads
+// eligible for branch regeneration without loosening beyond what was ever generated.
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
-  `^(?:[0-9a-f]{8}|${WORKTREE_BRANCH_PREFIX}\\/(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}))$`,
+  `^${WORKTREE_BRANCH_PREFIX}\\/(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$`,
 );
 
 /**
@@ -112,7 +101,7 @@ export function buildTemporaryWorktreeBranchName(
     .toLowerCase()
     .replace(/[^0-9a-f]/g, "")
     .slice(0, 8);
-  return token;
+  return `${WORKTREE_BRANCH_PREFIX}/${token}`;
 }
 
 export function isTemporaryWorktreeBranch(refName: string): boolean {

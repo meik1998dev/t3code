@@ -20,15 +20,6 @@ import {
   AgentPortStopResult,
 } from "./agentPorts.ts";
 import {
-  LinearGetIssueInput,
-  LinearIssueDetail,
-  LinearListMyIssuesResult,
-  LinearNotConfiguredError,
-  LinearRequestError,
-  LinearSetApiKeyInput,
-  LinearStatus,
-} from "./linear.ts";
-import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -130,6 +121,9 @@ import {
   PullRequestOperationError,
   PullRequestReactionInput,
   PullRequestRef,
+  PullRequestRoutingResult,
+  PullRequestRoutingIdentityInput,
+  PullRequestRoutingIdentityResult,
   PullRequestStack,
   PullRequestLinkedThreadsResult,
   PullRequestSummary,
@@ -386,6 +380,8 @@ export const WS_METHODS = {
   pullRequestsList: "pullRequests.list",
   pullRequestsListStats: "pullRequests.listStats",
   pullRequestsSummary: "pullRequests.summary",
+  pullRequestsRouting: "pullRequests.routing",
+  pullRequestsRoutingIdentity: "pullRequests.routingIdentity",
   pullRequestsStack: "pullRequests.stack",
   pullRequestsLinkedThreads: "pullRequests.linkedThreads",
   pullRequestsDetail: "pullRequests.detail",
@@ -406,12 +402,6 @@ export const WS_METHODS = {
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
   pullRequestsLabelCandidates: "pullRequests.labelCandidates",
   pullRequestsSetLabels: "pullRequests.setLabels",
-
-  // Linear methods
-  linearGetStatus: "linear.getStatus",
-  linearSetApiKey: "linear.setApiKey",
-  linearListMyIssues: "linear.listMyIssues",
-  linearGetIssue: "linear.getIssue",
 
   // Agent ports (fork)
   agentPortsList: "agentPorts.list",
@@ -697,6 +687,18 @@ const WsPullRequestsListStatsRpc = Rpc.make(WS_METHODS.pullRequestsListStats, {
   error: PullRequestRpcError,
 });
 
+const WsPullRequestsRoutingRpc = Rpc.make(WS_METHODS.pullRequestsRouting, {
+  payload: PullRequestRef,
+  success: PullRequestRoutingResult,
+  error: PullRequestRpcError,
+});
+
+const WsPullRequestsRoutingIdentityRpc = Rpc.make(WS_METHODS.pullRequestsRoutingIdentity, {
+  payload: PullRequestRoutingIdentityInput,
+  success: PullRequestRoutingIdentityResult,
+  error: PullRequestRpcError,
+});
+
 const WsPullRequestsSummaryRpc = Rpc.make(WS_METHODS.pullRequestsSummary, {
   payload: PullRequestRef,
   success: PullRequestSummary,
@@ -828,36 +830,6 @@ const WsPullRequestsSetLabelsRpc = Rpc.make(WS_METHODS.pullRequestsSetLabels, {
   payload: PullRequestLabelChangeInput,
   success: Schema.Void,
   error: PullRequestRpcError,
-});
-
-const LinearRpcErrorUnion = Schema.Union([
-  LinearNotConfiguredError,
-  LinearRequestError,
-  EnvironmentAuthorizationError,
-]);
-
-export const WsLinearGetStatusRpc = Rpc.make(WS_METHODS.linearGetStatus, {
-  payload: Schema.Struct({}),
-  success: LinearStatus,
-  error: LinearRpcErrorUnion,
-});
-
-export const WsLinearSetApiKeyRpc = Rpc.make(WS_METHODS.linearSetApiKey, {
-  payload: LinearSetApiKeyInput,
-  success: LinearStatus,
-  error: LinearRpcErrorUnion,
-});
-
-export const WsLinearListMyIssuesRpc = Rpc.make(WS_METHODS.linearListMyIssues, {
-  payload: Schema.Struct({}),
-  success: LinearListMyIssuesResult,
-  error: LinearRpcErrorUnion,
-});
-
-export const WsLinearGetIssueRpc = Rpc.make(WS_METHODS.linearGetIssue, {
-  payload: LinearGetIssueInput,
-  success: LinearIssueDetail,
-  error: LinearRpcErrorUnion,
 });
 
 export const WsAgentPortsListRpc = Rpc.make(WS_METHODS.agentPortsList, {
@@ -1383,6 +1355,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsListRpc,
   WsPullRequestsListStatsRpc,
   WsPullRequestsSummaryRpc,
+  WsPullRequestsRoutingRpc,
+  WsPullRequestsRoutingIdentityRpc,
   WsPullRequestsStackRpc,
   WsPullRequestsLinkedThreadsRpc,
   WsPullRequestsDetailRpc,
@@ -1403,10 +1377,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsRequestReviewersRpc,
   WsPullRequestsLabelCandidatesRpc,
   WsPullRequestsSetLabelsRpc,
-  WsLinearGetStatusRpc,
-  WsLinearSetApiKeyRpc,
-  WsLinearListMyIssuesRpc,
-  WsLinearGetIssueRpc,
   WsAgentPortsListRpc,
   WsAgentPortsStopRpc,
   WsSourceControlLookupRepositoryRpc,

@@ -29,8 +29,6 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
-import { OrchestrationToolkitHandlersLive } from "./toolkits/orchestration/handlers.ts";
-import { OrchestrationToolkit } from "./toolkits/orchestration/tools.ts";
 import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import {
@@ -606,10 +604,6 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
-export const OrchestrationToolkitRegistrationLive = McpServer.toolkit(OrchestrationToolkit).pipe(
-  Layer.provide(OrchestrationToolkitHandlersLive),
-);
-
 export const PullRequestsToolkitRegistrationLive = McpServer.toolkit(PullRequestsToolkit).pipe(
   Layer.provide(PullRequestsToolkitHandlersLive),
 );
@@ -628,7 +622,7 @@ export const DeviceToolkitRegistrationLive = Layer.mergeAll(
 );
 
 const McpTransportLive = McpServer.layerHttp({
-  name: "Spindle",
+  name: "T3 Code",
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
@@ -636,7 +630,6 @@ const McpTransportLive = McpServer.layerHttp({
 
 export const layer = Layer.mergeAll(
   PreviewToolkitRegistrationLive,
-  OrchestrationToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

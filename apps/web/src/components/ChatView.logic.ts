@@ -8,6 +8,7 @@ import {
   ProjectId,
   type MessageId,
   type ModelSelection,
+  type PreviewAnnotationPayload,
   type ProviderInteractionMode,
   ProviderDriverKind,
   type ProviderInstanceId,
@@ -42,14 +43,11 @@ import { type ComposerImageAttachment, type DraftThreadState } from "../composer
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
-import { stripPastedTextMarkers } from "../lib/pastedText";
-import {
-  filterTerminalContextsWithText,
-  stripInlineTerminalContextPlaceholders,
-  type TerminalContextDraft,
-} from "../lib/terminalContext";
+import { stripInlineContextReferences } from "~/lib/composerContextReferences";
+import { filterTerminalContextsWithText, type TerminalContextDraft } from "../lib/terminalContext";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
-import type { ComposerSubmissionIntent } from "../composer-logic";
+import { collapseExpandedComposerCursor, type ComposerSubmissionIntent } from "../composer-logic";
+import type { ReviewCommentContext } from "../reviewCommentContext";
 import type { ActivePlanState, TimelineEntry } from "../session-logic";
 import type { PreviewMiniPlayerSource } from "../previewMiniPlayerStore";
 import type { DesktopPreviewOverlay } from "../previewStateStore";
@@ -66,19 +64,6 @@ export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
-
-export function deriveAssistantRevertTurnCounts(
-  checkpoints: ReadonlyArray<
-    Pick<Thread["checkpoints"][number], "assistantMessageId" | "checkpointTurnCount" | "status">
-  >,
-): ReadonlyMap<MessageId, number> {
-  const turnCounts = new Map<MessageId, number>();
-  for (const checkpoint of checkpoints) {
-    if (checkpoint.status !== "ready" || checkpoint.assistantMessageId === null) continue;
-    turnCounts.set(checkpoint.assistantMessageId, checkpoint.checkpointTurnCount);
-  }
-  return turnCounts;
-}
 
 export function agentControlledBrowserCloseConfirmation(
   surfaces: readonly RightPanelSurface[],
@@ -751,6 +736,38 @@ export async function resolveFileAttachmentUrl(input: {
   return url;
 }
 
+export async function prepareRevertedMessageAttachments(input: {
+  message: ChatMessage;
+  environmentId: EnvironmentId;
+  httpBaseUrl: string;
+  createAssetUrl: Parameters<typeof resolveFileAttachmentUrl>[0]["createAssetUrl"];
+}): Promise<File[]> {
+  return Promise.all(
+    (input.message.attachments ?? []).map(async (attachment) => {
+      if (attachment.type !== "image" && attachment.type !== "file") {
+        throw new Error("This message has an attachment that cannot be restored.");
+      }
+      const result = await input.createAssetUrl({
+        environmentId: input.environmentId,
+        input: {
+          resource: {
+            _tag: "attachment",
+            attachmentId: attachment.id,
+            fileName: attachment.name,
+            mimeType: attachment.mimeType,
+          },
+        },
+      });
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      const url = resolveAssetUrl(input.httpBaseUrl, result.value.relativeUrl);
+      if (url === null) throw new Error("The environment returned an invalid attachment URL.");
+      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (!response.ok) throw new Error(`Could not restore attachment: ${attachment.name}`);
+      return new File([await response.blob()], attachment.name, { type: attachment.mimeType });
+    }),
+  );
+}
+
 export function revokeUserMessagePreviewUrls(message: ChatMessage): void {
   if (message.role !== "user" || !message.attachments) {
     return;
@@ -866,9 +883,7 @@ export function deriveComposerSendState(options: {
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
 } {
-  const trimmedPrompt = stripPastedTextMarkers(
-    stripInlineTerminalContextPlaceholders(options.prompt),
-  ).trim();
+  const trimmedPrompt = stripInlineContextReferences(options.prompt).trim();
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
     options.terminalContexts.length - sendableTerminalContexts.length;
@@ -1121,6 +1136,81 @@ export async function waitForStartedServerThread(
   });
 }
 
+export async function waitForRevertedMessage(
+  threadRef: ScopedThreadRef,
+  messageId: MessageId,
+  turnCount: number,
+  revert: () => Promise<void>,
+  timeoutMs = 120_000,
+): Promise<void> {
+  const threadAtom = environmentThreadDetails.detailAtom(threadRef);
+  const initial = appAtomRegistry.get(threadAtom);
+  if (!initial?.messages.some((message) => message.id === messageId)) {
+    throw new Error("The message to rewind is no longer available.");
+  }
+  const previousFailures = new Set(
+    initial.activities
+      .filter((activity) => activity.kind === "checkpoint.revert.failed")
+      .map((activity) => activity.id),
+  );
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let accepted = false;
+    let unsubscribe = () => {};
+    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const finish = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== undefined) globalThis.clearTimeout(timeout);
+      unsubscribe();
+      if (error !== undefined) reject(error);
+      else resolve();
+    };
+    const inspect = () => {
+      const thread = appAtomRegistry.get(threadAtom);
+      if (!thread) return;
+      const failure = thread.activities.findLast(
+        (activity) =>
+          activity.kind === "checkpoint.revert.failed" && !previousFailures.has(activity.id),
+      );
+      if (failure) {
+        const payload = failure.payload;
+        finish(
+          new Error(
+            typeof payload === "object" &&
+              payload !== null &&
+              "detail" in payload &&
+              typeof payload.detail === "string"
+              ? payload.detail
+              : failure.summary,
+          ),
+        );
+      } else if (
+        accepted &&
+        !thread.messages.some((message) => message.id === messageId) &&
+        thread.checkpoints.every((checkpoint) => checkpoint.checkpointTurnCount <= turnCount) &&
+        (turnCount === 0
+          ? thread.latestTurn === null
+          : thread.checkpoints.some(
+              (checkpoint) => checkpoint.turnId === thread.latestTurn?.turnId,
+            ))
+      ) {
+        finish();
+      }
+    };
+    unsubscribe = appAtomRegistry.subscribe(threadAtom, inspect);
+    timeout = globalThis.setTimeout(() => {
+      finish(new Error("Timed out waiting for the thread to rewind."));
+    }, timeoutMs);
+    Promise.resolve()
+      .then(revert)
+      .then(() => {
+        accepted = true;
+        inspect();
+      }, finish);
+  });
+}
+
 export interface LocalDispatchSnapshot {
   startedAt: string;
   preparingWorktree: boolean;
@@ -1246,13 +1336,70 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   );
 }
 
+// Returning to the window should land the caret in the composer, so the reader can type right
+// away. The exceptions are places where focus is deliberate: another text field, a terminal in
+// the drawer or the right panel, or an open dialog or popup. A focused button outside those is
+// not one of them, so it yields to the composer.
+export function shouldRefocusComposerOnWindowFocus(
+  activeElement:
+    | (Pick<Element, "tagName" | "closest" | "getAttribute"> & { isContentEditable?: boolean })
+    | null,
+): boolean {
+  if (activeElement === null || activeElement.tagName === "BODY") return true;
+  if (
+    activeElement.tagName === "INPUT" ||
+    activeElement.tagName === "TEXTAREA" ||
+    activeElement.tagName === "SELECT" ||
+    activeElement.tagName === "IFRAME" ||
+    activeElement.tagName === "WEBVIEW" ||
+    activeElement.isContentEditable === true ||
+    activeElement.getAttribute("role") === "textbox"
+  ) {
+    return false;
+  }
+  return (
+    activeElement.closest(
+      '[role="dialog"], [role="alertdialog"], [data-slot$="-popup"], [data-terminal-owner]',
+    ) === null
+  );
+}
+
+export interface PlanFollowUpComposerSnapshot {
+  readonly prompt: string;
+  readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
+  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+}
+
 /**
- * Summarizes the latest turn's task list for the composer badge. The badge
- * stays visible after that turn settles so the user can still see what got
- * done; a finished list reports its last step with a full count. Lists from
- * earlier turns are left out so the next turn starts clean and an old
- * interrupted list never poses as current work.
+ * Puts back everything a plan follow-up send cleared when the send fails. The
+ * caller clears the composer before awaiting the send, so every field it held
+ * has to be written back here: a dropped field silently discards user context.
  */
+export function restorePlanFollowUpComposer(input: {
+  readonly snapshot: PlanFollowUpComposerSnapshot;
+  readonly writePrompt: (prompt: string) => void;
+  readonly writeTerminalContexts: (contexts: ReadonlyArray<TerminalContextDraft>) => void;
+  readonly writeReviewComments: (comments: ReadonlyArray<ReviewCommentContext>) => void;
+  readonly writePreviewAnnotations: (annotations: ReadonlyArray<PreviewAnnotationPayload>) => void;
+  readonly resetCursor: (options: {
+    cursor: number;
+    prompt: string;
+    detectTrigger: boolean;
+  }) => void;
+}): void {
+  input.writePrompt(input.snapshot.prompt);
+  input.writeTerminalContexts(input.snapshot.terminalContexts);
+  input.writeReviewComments(input.snapshot.reviewComments);
+  input.writePreviewAnnotations(input.snapshot.previewAnnotations);
+  input.resetCursor({
+    cursor: collapseExpandedComposerCursor(input.snapshot.prompt, input.snapshot.prompt.length),
+    prompt: input.snapshot.prompt,
+    detectTrigger: true,
+  });
+}
+
+/** Keeps the latest turn's task list visible after that turn settles. */
 export function deriveComposerTasksProgress(
   plan: ActivePlanState | null,
   latestTurnId: TurnId | null | undefined,
@@ -1274,30 +1421,4 @@ export function deriveComposerTasksProgress(
     completedSteps: plan.steps.filter((step) => step.status === "completed").length,
     totalSteps: plan.steps.length,
   };
-}
-
-// Returning to the window should land the caret in the composer, so the reader can type right
-// away. The exceptions are places where focus is deliberate: another text field, a terminal in
-// the drawer or the right panel, or an open dialog or popup. A focused button outside those is
-// not one of them, so it yields to the composer.
-export function shouldRefocusComposerOnWindowFocus(
-  activeElement:
-    | (Pick<Element, "tagName" | "closest" | "getAttribute"> & { isContentEditable?: boolean })
-    | null,
-): boolean {
-  if (activeElement === null || activeElement.tagName === "BODY") return true;
-  if (
-    activeElement.tagName === "INPUT" ||
-    activeElement.tagName === "TEXTAREA" ||
-    activeElement.tagName === "SELECT" ||
-    activeElement.isContentEditable === true ||
-    activeElement.getAttribute("role") === "textbox"
-  ) {
-    return false;
-  }
-  return (
-    activeElement.closest(
-      '[role="dialog"], [role="alertdialog"], [data-slot$="-popup"], [data-terminal-owner]',
-    ) === null
-  );
 }

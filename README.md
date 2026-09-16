@@ -8,7 +8,7 @@ and follow their progress across desktop, web, and mobile.
 
 Spindle is a fork of [T3 Code](https://github.com/pingdotgg/t3code), with additions
 for agent-to-agent thread orchestration, checkpoint and compaction forks, task
-visibility, Linear-driven worktrees, and multi-project workflows.
+visibility and multi-project workflows.
 
 Works with your existing Claude Code, Codex, Cursor, Grok Build, OpenCode, and
 Antigravity subscriptions. Install and authenticate a provider before starting work.
@@ -42,7 +42,6 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Remote access from a phone or another machine](./docs/user/remote-access.md)
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
-- [Linear](./docs/user/linear.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
 - [Run Spindle as a background service](./docs/user/background-service.md)
 

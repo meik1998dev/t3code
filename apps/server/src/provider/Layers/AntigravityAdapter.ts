@@ -1085,14 +1085,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                   ...prompt,
                   {
                     type: "text",
-                    text: buildRuntimeInstructions({
-                      harness: "Antigravity",
-                      model,
-                      threadTools: McpProviderSession.mcpProviderSessionGrants(
-                        input.threadId,
-                        "orchestration",
-                      ),
-                    }),
+                    text: buildRuntimeInstructions({ harness: "Antigravity", model }),
                   },
                 ],
               },

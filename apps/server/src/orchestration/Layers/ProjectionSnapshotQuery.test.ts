@@ -1,6 +1,7 @@
 import {
   type AgentSessionImportSource,
   ChatAttachment,
+  ComposerContextId,
   CheckpointRef,
   EventId,
   MessageId,
@@ -10,6 +11,7 @@ import {
   ThreadLinkedPullRequest,
   TurnId,
   ProviderInstanceId,
+  OrchestrationMessageContext,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -41,6 +43,61 @@ const encodeChatAttachments = Schema.encodeEffect(
 const encodeThreadLinkedPullRequest = Schema.encodeSync(
   Schema.fromJsonString(ThreadLinkedPullRequest),
 );
+const encodeMessageContext = Schema.encodeEffect(
+  Schema.fromJsonString(OrchestrationMessageContext),
+);
+
+it.effect("reads project shells without loading threads or resolving excluded projects", () => {
+  const resolved: string[] = [];
+  const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
+    Layer.provide(ThreadBackgroundLiveness.layer),
+    Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(
+      Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolve: (root) =>
+          Effect.sync(() => {
+            resolved.push(root);
+            return null;
+          }),
+      }),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  );
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const query = yield* ProjectionSnapshotQuery;
+    yield* sql`INSERT INTO projection_projects
+      (project_id, title, workspace_root, scripts_json, created_at, updated_at, deleted_at)
+      VALUES
+      ('p1', 'First', '/first', '[]', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z', NULL),
+      ('p2', 'Second', '/second', '[]', '2026-09-02T00:00:00Z', '2026-09-02T00:00:00Z', NULL),
+      ('p3', 'Deleted', '/deleted', '[]', '2026-09-03T00:00:00Z', '2026-09-03T00:00:00Z', '2026-09-04T00:00:00Z')`;
+    const expected = (yield* query.getShellSnapshot()).projects;
+    resolved.length = 0;
+    yield* sql`INSERT INTO projection_threads
+      (thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode, created_at, updated_at)
+      VALUES ('t1', 'p1', 'Thread', 'invalid-json', 'full-access', 'default', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')`;
+
+    const counter = makeSqlStatementCounter();
+    const projects = yield* query.getProjectShells().pipe(Effect.withTracer(counter.tracer));
+    assert.deepStrictEqual(projects, expected);
+    assert.strictEqual(counter.count(), 1);
+    assert.deepStrictEqual(resolved.toSorted(), ["/first", "/second"]);
+    resolved.length = 0;
+    yield* sql`UPDATE projection_projects SET scripts_json = 'invalid-json' WHERE project_id IN ('p1', 'p3')`;
+    assert.deepStrictEqual(yield* query.getProjectShells([asProjectId("p2")]), [expected[1]!]);
+    assert.deepStrictEqual(resolved, ["/second"]);
+    resolved.length = 0;
+    const beforeEmpty = counter.count();
+    assert.deepStrictEqual(
+      yield* query.getProjectShells([]).pipe(Effect.withTracer(counter.tracer)),
+      [],
+    );
+    assert.strictEqual(counter.count(), beforeEmpty);
+    assert.deepStrictEqual(yield* query.getProjectShells([asProjectId("p3")]), []);
+    assert.deepStrictEqual(resolved, []);
+  }).pipe(Effect.provide(layer));
+});
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -403,7 +460,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
-          parentThreadId: null,
           pullRequests: expectedPullRequests,
           branchPullRequest,
           latestTurn: {
@@ -529,7 +585,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
-          parentThreadId: null,
           pullRequests: expectedPullRequests,
           branchPullRequest,
           latestTurn: {
@@ -728,23 +783,39 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         },
       ];
       const attachmentsJson = yield* encodeChatAttachments(attachments);
+      const messageContext: OrchestrationMessageContext = {
+        version: 1,
+        records: [
+          {
+            version: 1,
+            contextId: ComposerContextId.make("notes-context"),
+            kind: "file",
+            label: "notes.txt",
+            attachmentId: "notes",
+            name: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 8,
+          },
+        ],
+      };
+      const contextJson = yield* encodeMessageContext(messageContext);
       yield* sql`
         WITH RECURSIVE history(n) AS (
           VALUES (1) UNION ALL SELECT n + 1 FROM history WHERE n < 2000
         )
         INSERT INTO projection_thread_messages (
-          message_id, thread_id, turn_id, role, text, attachments_json,
+          message_id, thread_id, turn_id, role, text, attachments_json, context_json,
           is_streaming, created_at, updated_at
         )
         SELECT 'turn-start-history:' || n, ${threadId}, 'old-turn:' || n, 'assistant',
-          'Unrelated assistant output', 'not-json', 0, ${createdAt}, ${createdAt}
+          'Unrelated assistant output', 'not-json', 'not-json', 0, ${createdAt}, ${createdAt}
         FROM history
       `;
       yield* sql`
         INSERT INTO projection_thread_messages (
-          message_id, thread_id, role, text, attachments_json, is_streaming, created_at, updated_at
+          message_id, thread_id, role, text, attachments_json, context_json, is_streaming, created_at, updated_at
         ) VALUES (${messageId}, ${threadId}, 'user', 'Read these notes',
-          ${attachmentsJson}, 0, ${createdAt}, ${createdAt})
+          ${attachmentsJson}, ${contextJson}, 0, ${createdAt}, ${createdAt})
       `;
       yield* sql`
         INSERT INTO projection_thread_messages (
@@ -770,6 +841,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             createdAt,
             updatedAt: createdAt,
             attachments,
+            context: messageContext,
           },
           hasOtherUserMessages: false,
         }),
@@ -2529,13 +2601,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         ) VALUES ('current-plan', 'thread-w', 'turn-5', 'info', 'turn.plan.updated', 'Plan',
           '{"plan":[{"step":"First","status":"completed"},{"step":"Second","status":"inProgress"},{"step":"Third","status":"pending"}]}' , 1, '2026-03-01T00:04:00.000Z')
       `;
-      // A newer stale-turn update cannot replace the current turn's list.
-      yield* sql`
-        INSERT INTO projection_thread_activities (
-          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
-        ) VALUES ('old-plan', 'thread-w', 'turn-4', 'info', 'turn.plan.updated', 'Old plan',
-          '{"plan":[{"step":"Stale","status":"pending"}]}', 2, '2026-03-01T00:04:01.000Z')
-      `;
       const expected = {
         turnId: asTurnId("turn-5"),
         step: "Second",
@@ -2548,7 +2613,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
       const single = yield* query.getThreadShellById(threadW);
       assert.equal(single._tag, "Some");
       if (single._tag === "Some") assert.deepEqual(single.value.taskProgress, expected);
-      // The plan remains available after it falls outside the 500-activity window.
       yield* sql`
         WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 501)
         INSERT INTO projection_thread_activities (activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at)
@@ -2558,19 +2622,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
       assert.equal(detail._tag, "Some");
       if (detail._tag === "Some")
         assert.isTrue(detail.value.activities.some((activity) => activity.id === "current-plan"));
-      yield* sql`UPDATE projection_thread_activities SET payload_json = '{"plan":[{"step":"First","status":"completed"},{"step":"Second","status":"completed"},{"step":"Third","status":"completed"}]}'  WHERE activity_id = 'current-plan'`;
-      const completed = yield* query.getShellSnapshot();
-      assert.equal(completed.threads[0]?.taskProgress?.completedSteps, 3);
-      yield* sql`UPDATE projection_threads SET archived_at = '2026-03-01T00:05:00.000Z' WHERE thread_id = 'thread-w'`;
-      const archived = yield* query.getArchivedShellSnapshot();
-      assert.equal(archived.threads[0]?.taskProgress?.completedSteps, 3);
-      yield* sql`UPDATE projection_threads SET archived_at = NULL, latest_turn_id = 'new-turn' WHERE thread_id = 'thread-w'`;
-      const next = yield* query.getShellSnapshot();
-      assert.isNull(next.threads[0]?.taskProgress);
-      yield* sql`UPDATE projection_threads SET latest_turn_id = 'turn-5' WHERE thread_id = 'thread-w'`;
-      yield* sql`UPDATE projection_thread_activities SET payload_json = '{"plan":[]}' WHERE activity_id = 'current-plan'`;
-      const cleared = yield* query.getShellSnapshot();
-      assert.isNull(cleared.threads[0]?.taskProgress);
     }),
   );
 
@@ -2617,30 +2668,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         assert.equal(snapshot.value.page?.hasMore, true);
         assert.notEqual(snapshot.value.page?.beforeCursor, null);
         assert.equal(snapshot.value.page?.snapshotSequence, 42);
-      }
-    }),
-  );
-
-  it.effect("keeps old context compaction markers in a paginated detail window", () =>
-    Effect.gen(function* () {
-      yield* seedFanOutThread();
-      const sql = yield* SqlClient.SqlClient;
-      const snapshotQuery = yield* ProjectionSnapshotQuery;
-      yield* sql`
-        INSERT INTO projection_thread_activities (
-          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, created_at
-        ) VALUES (
-          'old-compaction', 'thread-w', NULL, 'info', 'context-compaction',
-          'Context compacted', '{"state":"compacted"}', '2026-02-28T00:00:00.000Z'
-        )
-      `;
-
-      const snapshot = yield* snapshotQuery.getThreadDetailSnapshot(threadW, { turnLimit: 2 });
-      assert.equal(snapshot._tag, "Some");
-      if (snapshot._tag === "Some") {
-        assert.isTrue(
-          snapshot.value.thread.activities.some((activity) => activity.id === "old-compaction"),
-        );
       }
     }),
   );

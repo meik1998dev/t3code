@@ -1,6 +1,6 @@
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
 /**
- * Integrations settings - preferences for surfaces Spindle embeds rather than
+ * Integrations settings - preferences for surfaces T3 Code embeds rather than
  * owns. Browser is the first section: the defaults a preview tab opens at,
  * applied to both hand-opened tabs and agent `preview_open` calls that don't
  * state their own size.
@@ -36,26 +36,15 @@ import {
   type PreviewViewportSetting,
 } from "@t3tools/contracts";
 import { PREVIEW_VIEWPORT_PRESETS } from "@t3tools/shared/previewViewport";
-import { Link } from "@tanstack/react-router";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
 import { MoreVertical, Plus as PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { AnimatedHeight } from "~/components/AnimatedHeight";
 import { resolveEnvironmentOptionLabel } from "~/components/BranchToolbar.logic";
 import { previewBridge } from "~/components/preview/previewBridge";
 import { cn, randomUUID } from "~/lib/utils";
-import {
-  useEnvironments,
-  usePrimaryEnvironment,
-  usePrimaryEnvironmentId,
-} from "~/state/environments";
-import { linearEnvironment } from "~/state/linear";
-import { useEnvironmentQuery } from "~/state/query";
+import { useEnvironments, usePrimaryEnvironment } from "~/state/environments";
 import { deviceEnvironment, useDeviceState } from "~/state/device";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -68,7 +57,6 @@ import {
 } from "~/components/device/DeviceSetup";
 import { isElectron } from "../../env";
 
-import { LinearIcon } from "../Icons";
 import { Badge } from "../ui/badge";
 import {
   Menu,
@@ -93,7 +81,6 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
-import { Input } from "../ui/input";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import {
   Select,
@@ -759,101 +746,6 @@ function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled
 }
 
 /**
-/**
- * One personal API key per environment, kept in that server's secret store.
- * The key never comes back to the client: the row only shows who it belongs to.
- */
-function LinearApiKeySetting() {
-  const environmentId = usePrimaryEnvironmentId();
-  const statusQuery = useEnvironmentQuery(
-    environmentId === null ? null : linearEnvironment.status({ environmentId, input: {} }),
-  );
-  const setApiKey = useAtomCommand(linearEnvironment.setApiKey, { reportFailure: false });
-  const [draftKey, setDraftKey] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, startSaving] = useTransition();
-
-  const submit = (apiKey: string | null) => {
-    if (environmentId === null) return;
-    setError(null);
-    startSaving(async () => {
-      const result = await setApiKey({ environmentId, input: { apiKey } });
-      if (result._tag === "Success") {
-        setDraftKey("");
-        return;
-      }
-      if (!isAtomCommandInterrupted(result)) {
-        const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Could not save the key.");
-      }
-    });
-  };
-
-  const status = statusQuery.data;
-  const statusText =
-    environmentId === null
-      ? "Connect to an environment to set up Linear."
-      : error
-        ? error
-        : statusQuery.error
-          ? statusQuery.error
-          : status?.configured
-            ? `Connected as ${status.viewer?.name ?? "unknown"}${status.viewer?.email ? ` (${status.viewer.email})` : ""}${status.managedByEnvironment ? ". Set by T3CODE_LINEAR_API_KEY on the server." : "."}`
-            : statusQuery.isPending
-              ? "Checking…"
-              : "Not connected.";
-  const managedByEnvironment = status?.managedByEnvironment === true;
-
-  return (
-    <SettingsRow
-      serverScoped
-      {...searchableSetting("linear-api-key")}
-      description="Paste a personal API key from Linear → Settings → Security & access. Lets the composer start a worktree from one of your issues. The key stays on the primary environment's server; other environments read T3CODE_LINEAR_API_KEY."
-      status={statusText}
-      control={
-        managedByEnvironment ? null : status?.configured ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isSaving || environmentId === null}
-            onClick={() => submit(null)}
-          >
-            Disconnect
-          </Button>
-        ) : (
-          <form
-            className="flex items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const trimmed = draftKey.trim();
-              if (trimmed.length > 0) submit(trimmed);
-            }}
-          >
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder="lin_api_…"
-              aria-label="Linear API key"
-              className="w-56"
-              value={draftKey}
-              disabled={isSaving || environmentId === null}
-              onChange={(event) => setDraftKey(event.target.value)}
-            />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isSaving || environmentId === null || draftKey.trim().length === 0}
-            >
-              {isSaving ? "Checking…" : "Connect"}
-            </Button>
-          </form>
-        )
-      }
-    />
-  );
-}
-
-/**
  * Profile list, its header menu, and the import flow.
  *
  * One menu creates profiles and imports into them, because the two are the
@@ -1413,9 +1305,6 @@ export function IntegrationsSettingsPanel() {
       {/* Server-authoritative agent access is scoped by the header selection;
           the preview defaults below are device-local and ignore it. */}
       <ProjectDefaultsSettings category="integrations" />
-      <SettingsSection id="linear" title="Linear" icon={<LinearIcon className="size-4" />}>
-        <LinearApiKeySetting />
-      </SettingsSection>
       <SettingsSection id="browser" title="Browser">
         {previewDefaultsDisabled ? (
           <SettingsUnavailableGroup message="Only available in the desktop app.">

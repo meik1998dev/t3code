@@ -1,4 +1,5 @@
 import { Spinner } from "~/components/ui/spinner";
+import { NotificationSettings } from "./NotificationSettings";
 import { ArchiveIcon, ArchiveX, ChevronRightIcon, SettingsIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
@@ -39,7 +40,6 @@ import {
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_TERMINAL_FONT_SIZE,
   type QuitConfirmationMode,
-  THREAD_ROUTING_NOTES_MAX_LENGTH,
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -107,8 +107,6 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
-import { Textarea } from "../ui/textarea";
-import { useCommitOnBlur } from "../../hooks/useCommitOnBlur";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -162,6 +160,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { CompactSidebarPreview } from "./CompactSidebarPreview";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -503,6 +502,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(theme !== "system" ? ["Theme"] : []),
       ...(!followSystem ? ["Follow system"] : []),
       ...(themeHalves !== null ? ["Theme mix"] : []),
+      ...(settings.compactSidebarEnabled !== DEFAULT_UNIFIED_SETTINGS.compactSidebarEnabled
+        ? ["Compact sidebar"]
+        : []),
       ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
         ? ["Contrast"]
         : []),
@@ -520,6 +522,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
+      ...(settings.notificationMode !== DEFAULT_UNIFIED_SETTINGS.notificationMode
+        ? ["Thread notifications"]
+        : []),
+      ...(settings.inAppNotificationsEnabled !== DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled
+        ? ["In-app notifications"]
+        : []),
       ...(settings.sidebarThreadPreviewCount !== DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount
         ? ["Visible threads"]
         : []),
@@ -536,6 +544,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
       ...getChangedTypographySettingLabels(settings),
+      ...(settings.diffFilesCollapsed !== DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed
+        ? ["Default diff file state"]
+        : []),
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
@@ -575,9 +586,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
-      ...(settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes
-        ? ["Thread routing notes"]
-        : []),
       ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
         ? ["Unpin confirmation"]
         : []),
@@ -604,6 +612,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.browserLinkTarget,
       settings.browserAutoShowFloatingPreview,
       settings.appearanceContrast,
+      settings.compactSidebarEnabled,
       settings.diffColorScheme,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
@@ -612,9 +621,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadUnpin,
       settings.composerCollapseOnScroll,
       settings.addProjectBaseDirectory,
-      settings.threadRoutingNotes,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
+      settings.diffFilesCollapsed,
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
       settings.proactivePanelsEnabled,
@@ -639,6 +648,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
+      settings.notificationMode,
+      settings.inAppNotificationsEnabled,
       settings.wordWrap,
       followSystem,
       theme,
@@ -710,9 +721,13 @@ export function useSettingsRestore(onRestored?: () => void) {
     }
     updateSettings({
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
+      compactSidebarEnabled: DEFAULT_UNIFIED_SETTINGS.compactSidebarEnabled,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
+      notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
+      inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
+      diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
@@ -736,7 +751,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
-      threadRoutingNotes: DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
@@ -1349,6 +1363,27 @@ export function AppearanceSettingsPanel() {
                 }
               />
             ) : null
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection id="appearance-sidebar" title="Sidebar">
+        <SettingsRow
+          {...searchableSetting("compact-sidebar")}
+          description="Keep an icon rail when the sidebar is collapsed. Click the preview to try it."
+          control={
+            <div className="grid w-full grid-cols-[5rem_auto] items-center justify-end gap-3 sm:w-auto sm:grid-cols-[7rem_auto] sm:gap-4">
+              <CompactSidebarPreview />
+              <div className="flex justify-end">
+                <Switch
+                  checked={settings.compactSidebarEnabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ compactSidebarEnabled: Boolean(checked) })
+                  }
+                  aria-label="Compact sidebar"
+                />
+              </div>
+            </div>
           }
         />
       </SettingsSection>
@@ -2055,11 +2090,6 @@ export function GeneralSettingsPanel() {
   const environmentId = environment?.environmentId ?? null;
   const isEnvironmentScope = scope.environmentIds.length === 1 && environmentId !== null;
   const hasServerTargets = connectedEnvironments.length > 0;
-  const threadRoutingNotesDraft = useCommitOnBlur(
-    settings.threadRoutingNotes,
-    (next) => updateSettings({ threadRoutingNotes: next }),
-    { multiline: true },
-  );
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
@@ -2251,6 +2281,18 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="behavior" title="Behavior">
+        <NotificationSettings />
+        <SettingsRow
+          {...searchableSetting("in-app-notifications")}
+          description="Show a toast when another thread finishes, fails, or needs input or approval while this app has focus."
+          control={
+            <Switch
+              checked={settings.inAppNotificationsEnabled}
+              onCheckedChange={(checked) => updateSettings({ inAppNotificationsEnabled: checked })}
+              aria-label="In-app notifications"
+            />
+          }
+        />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."
@@ -2315,6 +2357,48 @@ export function GeneralSettingsPanel() {
               }
               aria-label="Hide whitespace changes by default"
             />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("default-diff-file-state")}
+          description="Start with files expanded or collapsed when opening diffs or a pull request's Code tab."
+          resetAction={
+            settings.diffFilesCollapsed !== DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed ? (
+              <SettingResetButton
+                label="default diff file state"
+                onClick={() =>
+                  updateSettings({
+                    diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.diffFilesCollapsed ? "collapsed" : "expanded"}
+              onValueChange={(value) => {
+                if (value === "expanded" || value === "collapsed") {
+                  updateSettings({ diffFilesCollapsed: value === "collapsed" });
+                }
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-40"
+                aria-label="Default diff file state"
+              >
+                <SelectValue>{settings.diffFilesCollapsed ? "Collapsed" : "Expanded"}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="expanded">
+                  Expanded
+                </SelectItem>
+                <SelectItem hideIndicator value="collapsed">
+                  Collapsed
+                </SelectItem>
+              </SelectPopup>
+            </Select>
           }
         />
         <SettingsRow
@@ -2654,33 +2738,6 @@ export function GeneralSettingsPanel() {
             />
           }
         />
-        <SettingsRow
-          serverScoped
-          {...searchableSetting("thread-routing-notes")}
-          description="Tell agents which model and effort to use when they start threads. When empty, new threads use the project's default model, or the agent's own."
-          resetAction={
-            settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes ? (
-              <SettingResetButton
-                label="thread routing notes"
-                onClick={() =>
-                  updateSettings({
-                    threadRoutingNotes: DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes,
-                  })
-                }
-              />
-            ) : null
-          }
-        >
-          <div className="pt-2 pb-2">
-            <Textarea
-              size="sm"
-              {...threadRoutingNotesDraft}
-              maxLength={THREAD_ROUTING_NOTES_MAX_LENGTH}
-              placeholder="Fable: architecture, hard bugs. Soul: default. Flash: renames, docs."
-              aria-label="Thread routing notes"
-            />
-          </div>
-        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection id="confirmations" title="Confirmations">
@@ -2944,6 +3001,19 @@ export function GeneralSettingsPanel() {
               variant="outline"
             >
               View diagnostics
+            </Button>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("open-source-licenses")}
+          description="Notices for dependencies, assets, and optional tools used by T3 Code."
+          control={
+            <Button
+              render={<Link to="/settings/open-source-licenses" />}
+              size="xs"
+              variant="outline"
+            >
+              View licenses
             </Button>
           }
         />

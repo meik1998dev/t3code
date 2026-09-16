@@ -1064,14 +1064,7 @@ export function makeCursorAdapter(
                 ...promptParts,
                 {
                   type: "text",
-                  text: buildRuntimeInstructions({
-                    harness: "Cursor",
-                    model: resolvedModel,
-                    threadTools: McpProviderSession.mcpProviderSessionGrants(
-                      input.threadId,
-                      "orchestration",
-                    ),
-                  }),
+                  text: buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
                 },
               ],
             })
@@ -1194,7 +1187,7 @@ export function makeCursorAdapter(
 
     const rollbackThread: CursorAdapterShape["rollbackThread"] = (threadId, numTurns) =>
       Effect.gen(function* () {
-        const ctx = yield* requireSession(threadId);
+        yield* requireSession(threadId);
         if (!Number.isInteger(numTurns) || numTurns < 1) {
           return yield* new ProviderAdapterValidationError({
             provider: PROVIDER,
@@ -1202,9 +1195,11 @@ export function makeCursorAdapter(
             issue: "numTurns must be an integer >= 1.",
           });
         }
-        const nextLength = Math.max(0, ctx.turns.length - numTurns);
-        ctx.turns.splice(nextLength);
-        return { threadId, turns: ctx.turns };
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "thread/rollback",
+          detail: "Cursor ACP sessions do not support provider-side rollback.",
+        });
       });
 
     const stopSession: CursorAdapterShape["stopSession"] = (threadId) =>
@@ -1242,7 +1237,7 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,
       sendTurn,

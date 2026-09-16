@@ -11,7 +11,6 @@ import {
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
-  CheckpointRef,
   DEFAULT_SERVER_SETTINGS,
   type DpopFailureReason,
   EnvironmentId,
@@ -177,8 +176,6 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
-import * as LinearService from "./linear/LinearService.ts";
-import * as AgentPortsService from "./ports/AgentPortsService.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as Data from "effect/Data";
 
@@ -1038,7 +1035,6 @@ const buildAppUnderTest = (options?: {
     const appLayer = servedRoutesLayer.pipe(
       Layer.provide(resourceTelemetryLayer),
       Layer.provide(UsageService.layerTest),
-      Layer.provide(Layer.mergeAll(LinearService.layerTest, AgentPortsService.layerTest)),
       Layer.provide(
         Layer.mock(AnalyticsService.AnalyticsService)({
           record: () => Effect.void,
@@ -2401,7 +2397,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         },
         scope: "orchestration:read orchestration:operate terminal:operate review:write",
         clientMetadata: {
-          label: "Spindle Mobile",
+          label: "T3 Code Mobile",
           deviceType: "mobile",
           os: "iOS",
         },
@@ -2428,7 +2424,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 200);
       assert.equal(clientsResponse.status, 200);
       assert.deepInclude(mobileClient?.client, {
-        label: "Spindle Mobile",
+        label: "T3 Code Mobile",
         deviceType: "mobile",
         os: "iOS",
         ipAddress: "127.0.0.1",
@@ -5535,6 +5531,31 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               }).pipe(Effect.flip);
               assert.equal(error._tag, "AssetWorkspaceContextNotFoundError");
             }
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves draft workspace files without a thread", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-draft-media-" });
+      yield* fileSystem.writeFileString(path.join(directory, "note.html"), "<p>draft</p>");
+
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const issued = yield* client[WS_METHODS.assetsCreateUrl]({
+              resource: { _tag: "draft-workspace-file", cwd: directory, path: "note.html" },
+            });
+            const response = yield* HttpClient.get(issued.relativeUrl);
+            assert.equal(response.status, 200);
+            assert.equal(response.headers["content-type"], "text/html; charset=utf-8");
+            assert.equal(yield* response.text, "<p>draft</p>");
           }),
         ),
       );
@@ -10666,14 +10687,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect.each([
-    { caseName: "the origin remote is missing", hasOrigin: false, startRef: null },
-    { caseName: "the base branch exists only locally", hasOrigin: true, startRef: null },
-    {
-      caseName: "a checkpoint start ref is supplied",
-      hasOrigin: true,
-      startRef: CheckpointRef.make("refs/t3/checkpoints/thread-bootstrap/turn/2"),
-    },
-  ])("chooses the requested worktree base when $caseName", ({ hasOrigin, startRef }) =>
+    { caseName: "the origin remote is missing", hasOrigin: false },
+    { caseName: "the base branch exists only locally", hasOrigin: true },
+  ])("falls back to the local base branch when $caseName", ({ hasOrigin }) =>
     Effect.gen(function* () {
       const dispatchedCommands: Array<OrchestrationCommand> = [];
       const remoteExists = vi.fn(
@@ -10755,7 +10771,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               prepareWorktree: {
                 projectCwd: "/tmp/project",
                 baseBranch: "main",
-                ...(startRef ? { startRef } : {}),
                 branch: "t3code/bootstrap-refName",
                 startFromOrigin: true,
               },
@@ -10765,16 +10780,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
 
-      assert.equal(remoteExists.mock.calls.length, startRef ? 0 : 1);
-      if (!startRef) {
-        assert.deepEqual(remoteExists.mock.calls[0]?.[0], {
-          cwd: "/tmp/project",
-          remoteName: "origin",
-        });
-      }
-      assert.equal(fetchRemote.mock.calls.length, !startRef && hasOrigin ? 1 : 0);
-      assert.equal(remoteBranchExists.mock.calls.length, !startRef && hasOrigin ? 1 : 0);
-      if (!startRef && hasOrigin) {
+      assert.deepEqual(remoteExists.mock.calls[0]?.[0], {
+        cwd: "/tmp/project",
+        remoteName: "origin",
+      });
+      assert.equal(fetchRemote.mock.calls.length, hasOrigin ? 1 : 0);
+      assert.equal(remoteBranchExists.mock.calls.length, hasOrigin ? 1 : 0);
+      if (hasOrigin) {
         assert.deepEqual(remoteBranchExists.mock.calls[0]?.[0], {
           cwd: "/tmp/project",
           remoteName: "origin",
@@ -10784,7 +10796,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(resolveRemoteTrackingCommit.mock.calls.length, 0);
       assert.deepEqual(createWorktree.mock.calls[0]?.[0], {
         cwd: "/tmp/project",
-        refName: startRef ?? "main",
+        refName: "main",
         newRefName: "t3code/bootstrap-refName",
         baseRefName: "main",
         path: null,

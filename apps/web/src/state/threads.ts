@@ -6,22 +6,14 @@ import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
   type EnvironmentThreadState,
   createThreadEnvironmentAtoms,
-  createFullThreadHistoryCommand,
 } from "@t3tools/client-runtime/state/threads";
-import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import type {
-  EnvironmentId,
-  OrchestrationThread,
-  ScopedThreadRef,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
-import { appAtomRegistry } from "../rpc/atomRegistry";
 
 export const threadEnvironment = createThreadEnvironmentAtoms(connectionAtomRuntime);
 const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
@@ -50,25 +42,4 @@ export function useEnvironmentThread(
     AsyncResult.value(result),
     () => EMPTY_ENVIRONMENT_THREAD_STATE,
   ) as EnvironmentThreadState;
-}
-
-const fullThreadSnapshotCommand = createFullThreadHistoryCommand(connectionAtomRuntime);
-
-/**
- * Fetches the complete thread over HTTP with no turn window. Fork and "copy
- * transcript" need every message once, so this bypasses the paged thread store.
- */
-export async function loadFullThreadHistory(
-  threadRef: ScopedThreadRef,
-): Promise<OrchestrationThread> {
-  const result = await runAtomCommand(
-    appAtomRegistry,
-    fullThreadSnapshotCommand,
-    { environmentId: threadRef.environmentId, input: threadRef.threadId },
-    { reportFailure: false },
-  );
-  if (result._tag === "Failure") {
-    throw squashAtomCommandFailure(result);
-  }
-  return result.value;
 }

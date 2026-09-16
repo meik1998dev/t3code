@@ -856,7 +856,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     });
     yield* recordCompletedTurnProperties(properties);
   });
-  /** Resolve the browser and device capabilities for the thread's project. */
+  /**
+   * Whether the credential minted below may drive the user's browser.
+   *
+   * Deny on an unreadable settings file rather than letting the read failure
+   * escape: adding `ServerSettingsError` to `ProviderServiceError` would widen
+   * a union every caller handles, for a branch that only decides whether one
+   * optional toolset is attached. Denying is the safe direction — an explicit
+   * "off" silently becoming "on" would violate the user's stated choice,
+   * whereas the reverse costs an agent one toolset and is visible immediately.
+   */
   const agentAccessSettings = Effect.fn("ProviderService.agentAccessSettings")(
     function* (threadId: ThreadId) {
       const settings = yield* serverSettings.getSettings;
@@ -894,24 +903,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
-  /**
-   * Only threads a person started may start threads. A thread with a parent
-   * was started by an agent, so it gets no orchestration tools: that keeps
-   * agent-started work one level deep. Unknown threads are denied.
-   */
-  const mayStartThreads = Effect.fn("ProviderService.mayStartThreads")(
-    function* (threadId: ThreadId) {
-      if (Option.isNone(projectionQuery)) return false;
-      const thread = yield* projectionQuery.value.getThreadShellById(threadId);
-      return Option.isSome(thread) && (thread.value.parentThreadId ?? null) === null;
-    },
-    Effect.catch((cause) =>
-      Effect.logWarning("Could not read the thread; withholding thread orchestration tools.", {
-        cause,
-      }).pipe(Effect.as(false)),
-    ),
-  );
-
   const agentAccessCapabilities = Effect.fn("ProviderService.agentAccessCapabilities")(function* (
     threadId: ThreadId,
   ) {
@@ -919,7 +910,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     const access = yield* agentAccessSettings(threadId);
     if (access.browser) capabilities.add("preview");
     if (access.device) capabilities.add("device");
-    if (yield* mayStartThreads(threadId)) capabilities.add("orchestration");
     return capabilities;
   });
 
@@ -1110,6 +1100,35 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         canonicalEvent.type === "turn.aborted"
       ) {
         yield* recordTurnCompletedAnalytics(source, canonicalEvent);
+        if (source.provider === "claudeAgent") {
+          // Background Claude turns have no sendTurn response to persist their
+          // new native boundary. Save it before clients can checkpoint the turn.
+          yield* Effect.gen(function* () {
+            const adapter = yield* registry.getByInstance(source.instanceId);
+            const session = (yield* adapter.listSessions()).find(
+              (session) => session.threadId === canonicalEvent.threadId,
+            );
+            if (session?.resumeCursor !== undefined) {
+              const binding = yield* directory.getBinding(session.threadId);
+              if (
+                Option.isNone(binding) ||
+                binding.value.providerInstanceId !== source.instanceId
+              ) {
+                return;
+              }
+              yield* directory.upsert({
+                threadId: session.threadId,
+                provider: source.provider,
+                providerInstanceId: source.instanceId,
+                resumeCursor: session.resumeCursor,
+              });
+            }
+          }).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("failed to persist Claude turn resume state", { cause }),
+            ),
+          );
+        }
       } else if (canonicalEvent.type === "session.exited") {
         yield* clearTurnAnalyticsSession(source.instanceId, canonicalEvent.threadId);
       }
@@ -1574,30 +1593,45 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
     // Every attachment gets an on-disk path in the prompt so the model's tools
     // can dereference the actual file. All attachments then go to the adapter,
-    // and each adapter decides what its provider ingests natively: OpenCode
-    // sends generic files as file parts, the others send images only and rely
-    // on the path line for everything else. Unresolvable ids are skipped here
-    // and surface as adapter errors when the file is read.
+    // and each adapter decides what its provider ingests natively. Folded
+    // clipboard text remains path-only everywhere: eagerly embedding it would
+    // spend the same context the client deliberately preserved by folding it.
+    // Unresolvable ids are skipped here and surface as adapter errors when the
+    // file is read.
     let inputTextWithAttachmentContext = inputTextWithCitations;
     const appendAttachmentContext = (context: string | undefined) => {
-      if (context === undefined) return;
+      if (context === undefined) return true;
       const candidate = inputTextWithAttachmentContext
         ? `${inputTextWithAttachmentContext}\n\n${context}`
         : context;
       if (candidate.length <= PROVIDER_SEND_TURN_MAX_INPUT_CHARS) {
         inputTextWithAttachmentContext = candidate;
+        return true;
       }
+      return false;
     };
     for (const attachment of attachments) {
       const attachmentPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
         attachment,
       });
-      appendAttachmentContext(
+      const isPastedText =
+        attachment.type === "file" &&
+        "source" in attachment &&
+        attachment.source?._tag === "pasted-text";
+      const appended = appendAttachmentContext(
         attachmentPath === null
           ? undefined
-          : `[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`,
+          : isPastedText
+            ? `[Pasted text "${attachment.name}" is saved at: ${attachmentPath}. Inspect it as needed.]`
+            : `[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`,
       );
+      if (isPastedText && !appended) {
+        return yield* toValidationError(
+          "ProviderService.sendTurn",
+          `Input plus pasted-text attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
+        );
+      }
     }
     for (const attachment of attachments) {
       const source =
@@ -2016,6 +2050,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "provider.thread_id": input.threadId,
         });
         if (routed.isActive) {
+          const session = (yield* routed.adapter.listSessions()).find(
+            (session) => session.threadId === routed.threadId,
+          );
+          if (session) {
+            yield* upsertSessionBinding(
+              { ...session, providerInstanceId: routed.instanceId },
+              input.threadId,
+            );
+          }
           yield* routed.adapter.stopSession(routed.threadId);
         }
         const pendingCompaction = pendingCompactions.get(input.threadId);
@@ -2185,31 +2228,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "provider.thread_id": input.threadId,
         "provider.rollback_turns": input.numTurns,
       });
-      const snapshot = yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
-      // Persist the rolled-back cursor right away: nothing else writes it
-      // before the next turn, and a restart in between would otherwise resume
-      // the discarded turns.
-      const sessions = yield* routed.adapter.listSessions();
-      const session = sessions.find((entry) => entry.threadId === input.threadId);
+      yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
+      const session = (yield* routed.adapter.listSessions()).find(
+        (session) => session.threadId === routed.threadId,
+      );
       if (session) {
         yield* upsertSessionBinding(
           { ...session, providerInstanceId: routed.instanceId },
           input.threadId,
         );
-      }
-      if (snapshot.restartRequired) {
-        yield* routed.adapter.stopSession(routed.threadId);
-        yield* clearMcpSession(input.threadId);
-        yield* directory.upsert({
-          threadId: input.threadId,
-          provider: routed.adapter.provider,
-          providerInstanceId: routed.instanceId,
-          status: "stopped",
-          ...(session?.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
-          runtimePayload: {
-            activeTurnId: null,
-          },
-        });
       }
       yield* analytics.record("provider.conversation.rolled_back", {
         provider: routed.adapter.provider,

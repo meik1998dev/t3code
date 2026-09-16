@@ -55,33 +55,31 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
   }),
 );
 
-it.effect("always grants pull-requests and gates optional capabilities independently", () =>
+it.effect("always grants pull-requests and gates browser and device access independently", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry(() => 1_000);
-    const issue = (threadId: string, capabilities: ReadonlyArray<"preview" | "device" | "orchestration">) =>
-      registry.issue({
-        threadId: ThreadId.make(threadId),
-        providerInstanceId: ProviderInstanceId.make("codex"),
-        capabilities: new Set(capabilities),
-      });
-    const capabilitiesOf = (issued: { readonly config: { readonly authorizationHeader: string } }) =>
+    const withPreview = yield* registry.issue({
+      threadId: ThreadId.make("thread-preview"),
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      capabilities: new Set(["preview"]),
+    });
+    const withoutPreview = yield* registry.issue({
+      threadId: ThreadId.make("thread-no-preview"),
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      capabilities: new Set(),
+    });
+    const withDevice = yield* registry.issue({
+      threadId: ThreadId.make("thread-device"),
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      capabilities: new Set(["device"]),
+    });
+    const capabilitiesOf = (issued: typeof withPreview) =>
       registry
         .resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, ""))
         .pipe(Effect.map((scope) => [...(scope?.capabilities ?? [])].sort()));
 
-    const parent = yield* issue("thread-parent", ["preview", "orchestration"]);
-    const withoutPreview = yield* issue("thread-no-preview", ["orchestration"]);
-    const child = yield* issue("thread-child", ["preview"]);
-    const withDevice = yield* issue("thread-device", ["device"]);
-
-    expect([...parent.config.capabilities].sort()).toEqual([
-      "orchestration",
-      "preview",
-      "pull-requests",
-    ]);
-    expect(yield* capabilitiesOf(parent)).toEqual(["orchestration", "preview", "pull-requests"]);
-    expect(yield* capabilitiesOf(withoutPreview)).toEqual(["orchestration", "pull-requests"]);
-    expect(yield* capabilitiesOf(child)).toEqual(["preview", "pull-requests"]);
+    expect(yield* capabilitiesOf(withPreview)).toEqual(["preview", "pull-requests"]);
+    expect(yield* capabilitiesOf(withoutPreview)).toEqual(["pull-requests"]);
     expect(yield* capabilitiesOf(withDevice)).toEqual(["device", "pull-requests"]);
   }),
 );

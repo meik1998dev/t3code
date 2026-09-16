@@ -1,4 +1,8 @@
-import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  EnvironmentHttpApi,
+  ProviderDriverKind,
+  type RepositoryIdentity,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -51,11 +55,11 @@ import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
+import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
-import * as ThreadBootstrap from "./orchestration/ThreadBootstrap.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -131,7 +135,6 @@ import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinar
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as UsageService from "./usage/UsageService.ts";
-import * as LinearService from "./linear/LinearService.ts";
 import * as AgentPortsService from "./ports/AgentPortsService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import {
@@ -206,7 +209,6 @@ const BackgroundLayerLive = BackgroundPolicy.layer.pipe(
 );
 
 const UsageLayerLive = UsageService.layer.pipe(Layer.provide(ServerSettingsLayerLive));
-const LinearLayerLive = LinearService.layer.pipe(Layer.provide(ServerSecretStore.layer));
 const AgentPortsLayerLive = AgentPortsService.layer.pipe(Layer.provide(ProcessRunner.layer));
 
 const ResourceDiagnosticsLayerLive = Layer.mergeAll(
@@ -318,11 +320,53 @@ const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
 
 const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(AzureDevOpsCli.layer, BitbucketApi.layer, GitHubCli.layerLive, GitLabCli.layer),
+    Layer.mergeAll(
+      AzureDevOpsCli.layer,
+      BitbucketApi.layer,
+      GitHubCli.layerLive,
+      GitLabCli.layer,
+      ForgejoCli.layer,
+    ),
   ),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(VcsDriverRegistryLayerLive),
 );
+
+const RepositoryIdentityResolverLayerLive = Layer.effect(
+  RepositoryIdentityResolver.RepositoryIdentityResolver,
+  Effect.gen(function* () {
+    const registry = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
+    return yield* RepositoryIdentityResolver.make({
+      refine: Effect.fn(function* (identity: RepositoryIdentity) {
+        const remote = ForgejoCli.parseForgejoRemote(identity.locator.remoteUrl);
+        if (
+          !remote ||
+          !identity.rootPath ||
+          (identity.provider !== undefined &&
+            identity.provider !== "unknown" &&
+            identity.provider !== "forgejo")
+        )
+          return identity;
+        const handle = yield* registry.resolveHandle({
+          cwd: identity.rootPath,
+          context: {
+            provider: { kind: "unknown", name: "Unknown", baseUrl: "" },
+            remoteName: identity.locator.remoteName,
+            remoteUrl: identity.locator.remoteUrl,
+          },
+        });
+        if (handle.context?.provider.kind !== "forgejo") return identity;
+        const baseUrl = handle.context.provider.baseUrl.replace(/\/+$/, "");
+        const basePath = new URL(baseUrl).pathname.replace(/^\/+|\/+$/g, "");
+        const path =
+          !remote.ssh && basePath && remote.path.startsWith(`${basePath}/`)
+            ? remote.path.slice(basePath.length + 1)
+            : remote.path;
+        return { ...identity, provider: "forgejo", webUrl: `${baseUrl}/${path}` };
+      }),
+    });
+  }),
+).pipe(Layer.provide(SourceControlProviderRegistryLayerLive), Layer.provide(ProcessRunner.layer));
 
 const PullRequestServiceLive = PullRequestService.layer.pipe(
   Layer.provide(PullRequestProviderRegistry.layer),
@@ -517,7 +561,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(Layer.mergeAll(NativeAppIconResolver.layer, ProjectFaviconResolverLayerLive)),
-  Layer.provideMerge(RepositoryIdentityResolver.layer),
+  Layer.provideMerge(RepositoryIdentityResolverLayerLive),
   Layer.provideMerge(ServerEnvironmentLayerLive),
   Layer.provideMerge(AuthLayerLive),
   Layer.provideMerge(ServerSecretStore.layer),
@@ -537,7 +581,6 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
   Layer.provideMerge(UsageLayerLive),
-  Layer.provideMerge(LinearLayerLive),
   Layer.provideMerge(AgentPortsLayerLive),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(AnalyticsService.layer),
@@ -574,7 +617,6 @@ export const makeRoutesLayer = Layer.mergeAll(
   ),
   McpHttpServer.layer.pipe(Layer.provide(McpSessionRegistry.layer)),
 ).pipe(
-  Layer.provide(ThreadBootstrap.layer),
   // Both transports consume the same service instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(PullRequestServiceLive),

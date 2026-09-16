@@ -122,7 +122,6 @@ export function applyThreadDetailEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
-          parentThreadId: event.payload.parentThreadId ?? null,
           branchPullRequest: null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
@@ -381,6 +380,7 @@ export function applyThreadDetailEvent(
         ...(event.payload.attachments !== undefined
           ? { attachments: event.payload.attachments }
           : {}),
+        ...(event.payload.context !== undefined ? { context: event.payload.context } : {}),
         turnId: event.payload.turnId,
         streaming: event.payload.streaming,
         createdAt: event.payload.createdAt,
@@ -402,6 +402,7 @@ export function applyThreadDetailEvent(
           ...(message.turnId !== undefined ? { turnId: message.turnId } : {}),
           ...(message.streaming ? {} : { updatedAt: message.updatedAt }),
           ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+          ...(message.context !== undefined ? { context: message.context } : {}),
         };
       });
       if (!found) messages.push(message);
@@ -819,10 +820,6 @@ function retainMessagesAfterRevert(
   retainedTurnIds: ReadonlySet<string>,
   turnCount: number,
 ): OrchestrationMessage[] {
-  // Mirrors the server projector: keep system messages and messages bound to
-  // a retained turn. User messages are appended before their turn exists and
-  // carry no turn binding, so the earliest unbound ones fill the retained
-  // turn count; anything beyond that belongs to a reverted turn and goes.
   const retainedMessageIds = new Set<string>();
   for (const message of messages) {
     if (message.role === "system" || isImportedAgentSessionMessageId(message.id)) {
@@ -847,7 +844,9 @@ function retainMessagesAfterRevert(
           !retainedMessageIds.has(message.id) &&
           (message.turnId === null || retainedTurnIds.has(message.turnId)),
       )
-      .toSorted(
+      // `.sort()`, not `.toSorted()`: `.filter()` above already returned a fresh array, and
+      // this is shared with mobile, which runs on Hermes and has no ES2023 array methods.
+      .sort(
         (left, right) =>
           compareDateTimeStrings(left.createdAt, right.createdAt) ||
           left.id.localeCompare(right.id),

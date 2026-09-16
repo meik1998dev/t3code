@@ -8,7 +8,6 @@ import {
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
 } from "./pendingUserInput";
-import { serializePastedText } from "./lib/pastedText";
 
 const singleSelectQuestion = {
   id: "scope",
@@ -301,16 +300,6 @@ describe("pending user input question progress", () => {
       canAdvance: false,
       isComplete: false,
     });
-  });
-});
-
-describe("resolvePendingUserInputAnswer pasted text", () => {
-  it("strips pasted-text chip markers from a custom answer", () => {
-    expect(
-      resolvePendingUserInputAnswer(singleSelectQuestion, {
-        customAnswer: `Use this: ${serializePastedText("a\nb")}`,
-      }),
-    ).toBe("Use this: a\nb");
   });
 });
 

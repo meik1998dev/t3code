@@ -1,7 +1,5 @@
 import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 
-import type { McpCapability } from "./McpInvocationContext.ts";
-
 export interface McpProviderSessionConfig {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -9,8 +7,8 @@ export interface McpProviderSessionConfig {
   readonly providerInstanceId: ProviderInstanceId;
   readonly endpoint: string;
   readonly authorizationHeader: string;
-  /** What the credential grants, so adapters only describe tools that will work. */
-  readonly capabilities: ReadonlySet<McpCapability>;
+  /** Capabilities the credential grants ("preview", "device"). */
+  readonly capabilities: ReadonlySet<string>;
   /**
    * Set when the session may drive devices. Adapters spread this into the
    * provider subprocess environment so the `agent-device` CLI is on PATH and
@@ -44,11 +42,6 @@ export function setMcpProviderSession(config: McpProviderSessionConfig): void {
 
 export function readMcpProviderSession(threadId: ThreadId): McpProviderSessionConfig | undefined {
   return sessionsByThread.get(threadId);
-}
-
-/** Whether the thread's current MCP credential grants `capability`. */
-export function mcpProviderSessionGrants(threadId: ThreadId, capability: McpCapability): boolean {
-  return sessionsByThread.get(threadId)?.capabilities.has(capability) === true;
 }
 
 export function clearMcpProviderSession(threadId: ThreadId): void {

@@ -42,7 +42,6 @@ import {
   requireThread,
   requireThreadArchived,
   requireThreadAbsent,
-  requireParentThread,
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
@@ -376,14 +375,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      if (command.parentThreadId) {
-        yield* requireParentThread({
-          readModel,
-          command,
-          threadId: command.threadId,
-          parentThreadId: command.parentThreadId,
-        });
-      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -402,9 +393,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
-          ...(command.parentThreadId !== undefined
-            ? { parentThreadId: command.parentThreadId }
-            : {}),
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -1331,6 +1319,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           role: "user",
           text: command.message.text,
           attachments: command.message.attachments,
+          ...(command.message.context !== undefined ? { context: command.message.context } : {}),
           turnId: null,
           streaming: false,
           createdAt: command.createdAt,
@@ -1652,6 +1641,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.conversation.revert":
     case "thread.checkpoint.revert": {
       yield* requireThread({
         readModel,
@@ -1669,6 +1659,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           turnCount: command.turnCount,
+          ...(command.type === "thread.conversation.revert" ? { restoreFiles: false } : {}),
           createdAt: command.createdAt,
         },
       };
