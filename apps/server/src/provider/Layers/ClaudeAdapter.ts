@@ -96,7 +96,6 @@ import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "../RuntimeInstructions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
-  claudeCatalogModelSupportsThinkingDisplay,
   type ClaudeModelCatalog,
   getClaudeCatalogModelCapabilities,
   isClaudeCatalogUltracodeEffort,
@@ -4835,7 +4834,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const {
         "permission-mode": launchArgPermissionMode,
         "dangerously-skip-permissions": launchArgSkipPermissions,
-        ...launchExtraArgs
+        ...extraArgs
       } = parseCliArgs(claudeSettings.launchArgs).flags;
       const selectedModel =
         input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
@@ -4845,14 +4844,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             model: resolveClaudeModelSlug(modelCatalog, selectedModel.model),
           }
         : undefined;
-      const extraArgs = {
-        // Newer models default thinking to "omitted", leaving the live
-        // Thinking preview empty. A user launch arg still takes precedence.
-        ...(claudeCatalogModelSupportsThinkingDisplay(modelCatalog, modelSelection?.model)
-          ? { "thinking-display": "summarized" }
-          : {}),
-        ...launchExtraArgs,
-      };
       const caps = getClaudeCatalogModelCapabilities(modelCatalog, modelSelection?.model);
       const descriptors = getProviderOptionDescriptors({ caps });
       const apiModelId = modelSelection
@@ -4927,7 +4918,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           type: "preset",
           preset: "claude_code",
           // Model and effort can change after this session-level prompt is set.
-          append: `${buildRuntimeInstructions({ harness: "Claude Code" })}
+          append: `${buildRuntimeInstructions({
+            harness: "Claude Code",
+            threadTools: mcpSession?.capabilities.includes("orchestration") === true,
+          })}
 
 ${buildTaskTrackingInstructions({ create: "TaskCreate", update: "TaskUpdate" })}`,
         },

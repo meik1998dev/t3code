@@ -192,6 +192,19 @@ export function resolveProactiveTurnDiffAction(input: {
   return "open";
 }
 
+export function deriveAssistantRevertTurnCounts(
+  checkpoints: ReadonlyArray<
+    Pick<Thread["checkpoints"][number], "assistantMessageId" | "checkpointTurnCount" | "status">
+  >,
+): ReadonlyMap<MessageId, number> {
+  const turnCounts = new Map<MessageId, number>();
+  for (const checkpoint of checkpoints) {
+    if (checkpoint.status !== "ready" || checkpoint.assistantMessageId === null) continue;
+    turnCounts.set(checkpoint.assistantMessageId, checkpoint.checkpointTurnCount);
+  }
+  return turnCounts;
+}
+
 export function codexArtifactTemplatePromptToAppend(
   currentDraft: string,
   template: CodexArtifactTemplate,

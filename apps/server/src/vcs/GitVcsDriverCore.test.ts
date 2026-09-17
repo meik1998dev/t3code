@@ -2038,7 +2038,6 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.equal(yield* fileSystem.exists(worktreePath), false);
       }),
     );
-
     it.effect("removes the same worktree path twice without failing", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

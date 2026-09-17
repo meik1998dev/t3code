@@ -67,6 +67,7 @@ import Migration0052 from "./Migrations/052_ProjectionThreadTitleState.ts";
 import Migration0053 from "./Migrations/053_RepairThreadBranchPullRequestColumn.ts";
 import Migration0055 from "./Migrations/055_RepairUpstreamMigrationsAfterFork.ts";
 import Migration0056 from "./Migrations/056_RepairThreadTitleStateColumn.ts";
+import Migration0057 from "./Migrations/057_ProjectionThreadsParentThreadId.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -134,6 +135,7 @@ const migrationEntries = [
   [53, "RepairThreadBranchPullRequestColumn", Migration0053],
   [55, "RepairUpstreamMigrationsAfterFork", Migration0055],
   [56, "RepairThreadTitleStateColumn", Migration0056],
+  [57, "ProjectionThreadsParentThreadId", Migration0057],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

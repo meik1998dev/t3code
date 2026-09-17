@@ -379,6 +379,7 @@ export type MessagesTimelineRow =
       message: ChatMessage;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
+      revertTurnCount?: number | undefined;
     }
   | {
       kind: "proposed-plan";
@@ -852,6 +853,7 @@ function attachTrailingToolGroupsToAssistant(
       message: row.message,
       showAssistantCopyButton: row.showAssistantCopyButton,
       assistantCopyStreaming: row.assistantCopyStreaming,
+      revertTurnCount: row.revertTurnCount,
     });
   }
 
@@ -925,6 +927,7 @@ export function deriveMessagesTimelineRows(input: {
   worktreeSetup?: WorktreeSetupSnapshot | null;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  revertTurnCountByAssistantMessageId?: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -1311,7 +1314,7 @@ export function deriveMessagesTimelineRows(input: {
       revertTurnCount:
         timelineEntry.message.role === "user"
           ? revertTurnCountByUserMessageId.get(timelineEntry.message.id)
-          : undefined,
+          : input.revertTurnCountByAssistantMessageId?.get(timelineEntry.message.id),
     });
   }
 
@@ -1524,7 +1527,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.createdAt === bm.createdAt &&
         a.message === bm.message &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
-        a.assistantCopyStreaming === bm.assistantCopyStreaming
+        a.assistantCopyStreaming === bm.assistantCopyStreaming &&
+        a.revertTurnCount === bm.revertTurnCount
       );
     }
 

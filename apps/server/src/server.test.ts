@@ -11,6 +11,7 @@ import {
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
+  CheckpointRef,
   DEFAULT_SERVER_SETTINGS,
   type DpopFailureReason,
   EnvironmentId,
@@ -11069,9 +11070,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect.each([
-    { caseName: "the origin remote is missing", hasOrigin: false },
-    { caseName: "the base branch exists only locally", hasOrigin: true },
-  ])("falls back to the local base branch when $caseName", ({ hasOrigin }) =>
+    { caseName: "the origin remote is missing", hasOrigin: false, startRef: null },
+    { caseName: "the base branch exists only locally", hasOrigin: true, startRef: null },
+    {
+      caseName: "a checkpoint ref is requested",
+      hasOrigin: true,
+      startRef: CheckpointRef.make("refs/t3/checkpoints/source-thread/turn/2"),
+    },
+  ])("chooses the requested worktree base when $caseName", ({ hasOrigin, startRef }) =>
     Effect.gen(function* () {
       const dispatchedCommands: Array<OrchestrationCommand> = [];
       const remoteExists = vi.fn(
@@ -11159,6 +11165,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 baseBranch: "main",
                 branch: "t3code/bootstrap-refName",
                 startFromOrigin: true,
+                ...(startRef ? { startRef } : {}),
               },
             },
             createdAt,
@@ -11166,13 +11173,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
 
-      assert.deepEqual(remoteExists.mock.calls[0]?.[0], {
-        cwd: "/tmp/project",
-        remoteName: "origin",
-      });
-      assert.equal(fetchRemote.mock.calls.length, hasOrigin ? 1 : 0);
-      assert.equal(remoteBranchExists.mock.calls.length, hasOrigin ? 1 : 0);
-      if (hasOrigin) {
+      assert.equal(remoteExists.mock.calls.length, startRef ? 0 : 1);
+      if (!startRef) {
+        assert.deepEqual(remoteExists.mock.calls[0]?.[0], {
+          cwd: "/tmp/project",
+          remoteName: "origin",
+        });
+      }
+      assert.equal(fetchRemote.mock.calls.length, !startRef && hasOrigin ? 1 : 0);
+      assert.equal(remoteBranchExists.mock.calls.length, !startRef && hasOrigin ? 1 : 0);
+      if (!startRef && hasOrigin) {
         assert.deepEqual(remoteBranchExists.mock.calls[0]?.[0], {
           cwd: "/tmp/project",
           remoteName: "origin",
@@ -11182,7 +11192,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(resolveRemoteTrackingCommit.mock.calls.length, 0);
       assert.deepEqual(createWorktree.mock.calls[0]?.[0], {
         cwd: "/tmp/project",
-        refName: "main",
+        refName: startRef ?? "main",
         newRefName: "t3code/bootstrap-refName",
         baseRefName: "main",
         path: null,

@@ -7,6 +7,7 @@ import {
 import * as Schema from "effect/Schema";
 import {
   defaultInstanceIdForDriver,
+  CheckpointRef,
   EnvironmentId,
   MessageId,
   ProjectId,
@@ -1702,6 +1703,22 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(false);
   });
 
+  it("stores the checkpoint start ref with the draft thread", () => {
+    const store = useComposerDraftStore.getState();
+    const startRef = CheckpointRef.make("refs/t3/checkpoints/thread-1/turn/2");
+    store.setProjectDraftThreadId(projectRef, draftId, {
+      threadId,
+      envMode: "worktree",
+      startRef,
+    });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startRef).toBe(startRef);
+
+    store.setDraftThreadContext(draftId, { startRef: null });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startRef).toBeNull();
+  });
+
   it("preserves existing branch and worktree when setProjectDraftThreadId receives undefined", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {
@@ -1763,6 +1780,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: "/tmp/local-worktree",
       envMode: "worktree",
       startFromOrigin: true,
+      startRef: CheckpointRef.make("refs/t3/checkpoints/thread-1/turn/2"),
     });
 
     store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), remoteProjectRef, draftId, {
@@ -1776,6 +1794,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: null,
       envMode: "worktree",
       startFromOrigin: true,
+      startRef: null,
     });
   });
 
@@ -1868,6 +1887,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: "/tmp/local-worktree",
       envMode: "worktree",
       startFromOrigin: true,
+      startRef: CheckpointRef.make("refs/t3/checkpoints/thread-1/turn/2"),
     });
 
     store.setDraftThreadContext(draftId, {
@@ -1881,6 +1901,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       worktreePath: null,
       envMode: "worktree",
       startFromOrigin: true,
+      startRef: null,
     });
   });
 });

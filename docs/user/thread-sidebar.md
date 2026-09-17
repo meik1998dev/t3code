@@ -20,6 +20,23 @@ on Windows and Linux to start a new thread and immediately open another draft. T
 next draft keeps the workspace mode and base branch you selected. With **New
 worktree**, each background submission creates its own worktree.
 
+## Let agents run threads
+
+Ask an agent to split a task list into one thread per task, or to hand off work that needs
+its own branch, model, or project. It picks the project, workspace, model, and effort, and
+the new threads work like any other thread. This needs agent browser access, which is set
+in **Settings → Projects**.
+
+- **Model choice:** write your preferences in **Settings → General → Thread routing
+  notes**, for example `Fable: architecture, hard bugs. Soul: default. Flash: docs.` With
+  the box empty, new threads use the project's default model, or the agent's own.
+- **Reviews:** an agent can read another thread's details and changed files, including
+  changes that are not committed yet, and start a review thread for them.
+- **Follow-ups:** an agent can message a thread it started once that thread finishes its
+  turn. The message starts with "Message from thread". Agents cannot message your threads.
+- **Limits:** a thread an agent started cannot start threads, and a thread can have at
+  most five active threads it started. Settle or archive finished ones to start more.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

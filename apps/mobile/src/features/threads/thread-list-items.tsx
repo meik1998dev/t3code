@@ -26,6 +26,7 @@ import { useThreadPr, type ThreadPrPresentation } from "../../state/use-thread-p
 import type { HomeGroupDisplayAction } from "../home/homeListItems";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
+import { AgentStartedIcon } from "./agent-started-icon";
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { COPY_TRANSCRIPT_MENU_ACTION, useCopyThreadTranscript } from "./use-copy-thread-transcript";
 import { resolveThreadStatus } from "./threadPresentation";
@@ -717,6 +718,9 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
                 {thread.title}
               </Text>
               <View className="flex-row items-center gap-2">
+                {thread.parentThreadId ? (
+                  <AgentStartedIcon selected={visuallySelected && !materialYouStyleLayoutActive} />
+                ) : null}
                 {props.hasQueuedMessages ? (
                   <QueuedMessageIcon selected={visuallySelected && !materialYouStyleLayoutActive} />
                 ) : null}
@@ -796,6 +800,9 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
               {thread.title}
             </Text>
             <View className="flex-row items-center gap-2">
+              {thread.parentThreadId ? (
+                <AgentStartedIcon selected={visuallySelected && !materialYouStyleLayoutActive} />
+              ) : null}
               {props.hasQueuedMessages ? (
                 <QueuedMessageIcon selected={visuallySelected && !materialYouStyleLayoutActive} />
               ) : null}

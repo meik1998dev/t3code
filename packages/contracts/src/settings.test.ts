@@ -10,6 +10,7 @@ import {
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
+  THREAD_ROUTING_NOTES_MAX_LENGTH,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
@@ -46,6 +47,21 @@ describe("ServerSettings default permissions", () => {
         projectSettingsOverrides: { project: { defaultRuntimeMode: "unsupported" } },
       }),
     ).toThrow();
+  });
+});
+
+describe("ServerSettings thread routing notes", () => {
+  it("defaults to empty and trims at the patch boundary", () => {
+    expect(DEFAULT_SERVER_SETTINGS.threadRoutingNotes).toBe("");
+    expect(
+      decodeServerSettingsPatch({ threadRoutingNotes: "  Fable: hard bugs.  " }).threadRoutingNotes,
+    ).toBe("Fable: hard bugs.");
+  });
+
+  it("rejects notes over the cap in a patch but still loads a long saved value", () => {
+    const long = "x".repeat(THREAD_ROUTING_NOTES_MAX_LENGTH + 1);
+    expect(() => decodeServerSettingsPatch({ threadRoutingNotes: long })).toThrow();
+    expect(decodeServerSettings({ threadRoutingNotes: long }).threadRoutingNotes).toBe(long);
   });
 });
 

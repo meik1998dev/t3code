@@ -55,7 +55,7 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
   }),
 );
 
-it.effect("always grants pull-requests and gates browser and device access independently", () =>
+it.effect("always grants pull-requests and gates optional access independently", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry(() => 1_000);
     const withPreview = yield* registry.issue({
@@ -73,6 +73,11 @@ it.effect("always grants pull-requests and gates browser and device access indep
       providerInstanceId: ProviderInstanceId.make("codex"),
       capabilities: new Set(["device"]),
     });
+    const withOrchestration = yield* registry.issue({
+      threadId: ThreadId.make("thread-orchestration"),
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      capabilities: new Set(["orchestration"]),
+    });
     const capabilitiesOf = (issued: typeof withPreview) =>
       registry
         .resolve(issued.config.authorizationHeader.replace(/^Bearer\s+/, ""))
@@ -81,6 +86,7 @@ it.effect("always grants pull-requests and gates browser and device access indep
     expect(yield* capabilitiesOf(withPreview)).toEqual(["preview", "pull-requests"]);
     expect(yield* capabilitiesOf(withoutPreview)).toEqual(["pull-requests"]);
     expect(yield* capabilitiesOf(withDevice)).toEqual(["device", "pull-requests"]);
+    expect(yield* capabilitiesOf(withOrchestration)).toEqual(["orchestration", "pull-requests"]);
   }),
 );
 

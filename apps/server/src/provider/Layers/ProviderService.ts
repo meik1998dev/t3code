@@ -903,6 +903,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  /** Agent-started threads stay one level deep and cannot start more threads. */
+  const mayStartThreads = Effect.fn("ProviderService.mayStartThreads")(
+    function* (threadId: ThreadId) {
+      if (Option.isNone(projectionQuery)) return false;
+      const thread = yield* projectionQuery.value.getThreadShellById(threadId);
+      return Option.isSome(thread) && (thread.value.parentThreadId ?? null) === null;
+    },
+    Effect.catch((cause) =>
+      Effect.logWarning("Could not read the thread; withholding thread orchestration tools.", {
+        cause,
+      }).pipe(Effect.as(false)),
+    ),
+  );
+
   const agentAccessCapabilities = Effect.fn("ProviderService.agentAccessCapabilities")(function* (
     threadId: ThreadId,
   ) {
@@ -910,6 +924,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     const access = yield* agentAccessSettings(threadId);
     if (access.browser) capabilities.add("preview");
     if (access.device) capabilities.add("device");
+    if (yield* mayStartThreads(threadId)) capabilities.add("orchestration");
     return capabilities;
   });
 

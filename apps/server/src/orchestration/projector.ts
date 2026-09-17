@@ -431,6 +431,7 @@ export function projectEvent(
             branch: payload.branch,
             worktreePath: payload.worktreePath,
             pullRequests: [],
+            parentThreadId: payload.parentThreadId ?? null,
             branchPullRequest: null,
             latestTurn: null,
             createdAt: payload.createdAt,

@@ -113,6 +113,41 @@ export function requireThread(input: {
   );
 }
 
+/**
+ * A parent must be a live thread a person started. Threads are one level
+ * deep, so a thread an agent started can never become a parent.
+ */
+export function requireParentThread(input: {
+  readonly readModel: OrchestrationReadModel;
+  readonly command: OrchestrationCommand;
+  readonly threadId: ThreadId;
+  readonly parentThreadId: ThreadId;
+}): Effect.Effect<void, OrchestrationCommandInvariantError> {
+  if (input.parentThreadId === input.threadId) {
+    return Effect.fail(
+      invariantError(input.command.type, `Thread '${input.threadId}' cannot be its own parent.`),
+    );
+  }
+  const parent = findThreadById(input.readModel, input.parentThreadId);
+  if (!parent || parent.deletedAt !== null) {
+    return Effect.fail(
+      invariantError(
+        input.command.type,
+        `Parent thread '${input.parentThreadId}' does not exist for command '${input.command.type}'.`,
+      ),
+    );
+  }
+  if (parent.parentThreadId) {
+    return Effect.fail(
+      invariantError(
+        input.command.type,
+        `Parent thread '${input.parentThreadId}' was started by another thread and cannot start threads.`,
+      ),
+    );
+  }
+  return Effect.void;
+}
+
 export function requireThreadArchived(input: {
   readonly readModel: OrchestrationReadModel;
   readonly command: OrchestrationCommand;

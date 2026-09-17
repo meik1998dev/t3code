@@ -55,6 +55,7 @@ import {
   PlusIcon,
   SettingsIcon,
   ShieldQuestionIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -1549,6 +1550,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  // Threads another thread's agent started through the t3-code MCP tools.
+  const agentStartedIndicator = thread.parentThreadId ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label="Started by an agent"
+            className="inline-flex shrink-0 items-center text-muted-foreground/65"
+          />
+        }
+      >
+        <SparklesIcon aria-hidden className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">Started by an agent</TooltipPopup>
+    </Tooltip>
+  ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1619,6 +1637,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </span>
             {draftIndicator}
             {title}
+            {agentStartedIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1777,6 +1796,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {agentStartedIndicator}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping

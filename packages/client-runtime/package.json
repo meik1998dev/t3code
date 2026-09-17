@@ -51,6 +51,10 @@
       "types": "./src/mediaActions.ts",
       "default": "./src/mediaActions.ts"
     },
+    "./fork-transcript": {
+      "types": "./src/forkTranscript.ts",
+      "default": "./src/forkTranscript.ts"
+    },
     "./codex-file-citations": {
       "types": "./src/codexFileCitations.ts",
       "default": "./src/codexFileCitations.ts"

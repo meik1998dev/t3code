@@ -357,6 +357,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "thread-routing-notes",
+    title: "Thread routing notes",
+    to: "/settings/general",
+    searchTerms: ["agent start threads model effort orchestrator routing choose pick"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

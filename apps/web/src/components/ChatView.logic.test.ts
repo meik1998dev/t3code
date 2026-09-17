@@ -43,6 +43,7 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveLockedProvider,
+  deriveAssistantRevertTurnCounts,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getAntigravitySendBlockReason,
@@ -471,6 +472,26 @@ describe("proactive panels", () => {
         isGitRepo: undefined,
       }),
     ).toBe("defer");
+  });
+});
+
+describe("deriveAssistantRevertTurnCounts", () => {
+  it("maps ready assistant checkpoints, including the last turn", () => {
+    const assistantMessageId = MessageId.make("assistant-last");
+    expect(
+      deriveAssistantRevertTurnCounts([
+        { assistantMessageId, checkpointTurnCount: 4, status: "ready" },
+      ]).get(assistantMessageId),
+    ).toBe(4);
+  });
+
+  it("omits assistant turns without a ready checkpoint", () => {
+    const assistantMessageId = MessageId.make("assistant-missing");
+    const counts = deriveAssistantRevertTurnCounts([
+      { assistantMessageId, checkpointTurnCount: 3, status: "missing" },
+      { assistantMessageId: null, checkpointTurnCount: 4, status: "ready" },
+    ]);
+    expect(counts.has(assistantMessageId)).toBe(false);
   });
 });
 

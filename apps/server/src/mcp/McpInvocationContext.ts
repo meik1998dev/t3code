@@ -8,7 +8,12 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-export type McpCapability = "preview" | "device" | "pull-requests";
+/**
+ * `preview` drives the collaborative browser. `orchestration` lets the agent
+ * start other threads; it is only granted to threads a person started, so an
+ * agent-started thread cannot start more.
+ */
+export type McpCapability = "preview" | "device" | "pull-requests" | "orchestration";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;

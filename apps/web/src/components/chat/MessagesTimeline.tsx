@@ -14,6 +14,7 @@ import {
 import {
   COMPOSER_CONTEXT_KINDS,
   type AssistantCitation,
+  type CheckpointRef,
   type EnvironmentId,
   type MessageId,
   type ScopedThreadRef,
@@ -50,6 +51,13 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
+const NOOP_FORK_MESSAGE = (
+  _messageId: MessageId,
+  _destination: "chat" | "workspace",
+  _startRef?: CheckpointRef,
+) => {};
+const EMPTY_FORK_CHECKPOINT_REFS = new Map<MessageId, CheckpointRef>();
+const EMPTY_ASSISTANT_REVERT_TURN_COUNTS = new Map<MessageId, number>();
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -112,6 +120,7 @@ import {
   CircleAlertIcon,
   DownloadIcon,
   EyeIcon,
+  EllipsisIcon,
   GlobeIcon,
   HammerIcon,
   MessageCircleIcon,
@@ -136,6 +145,7 @@ import { Button } from "../ui/button";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import {
   buildAttachmentVideoAsset,
@@ -271,6 +281,12 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  forkCheckpointRefByMessageId: ReadonlyMap<MessageId, CheckpointRef>;
+  onForkMessage: (
+    messageId: MessageId,
+    destination: "chat" | "workspace",
+    startRef?: CheckpointRef,
+  ) => void;
   onUseArtifactTemplate: (template: CodexArtifactTemplate) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
@@ -297,6 +313,7 @@ interface TimelineRowSharedState {
 
 interface TimelineRowActivityState {
   isWorking: boolean;
+  isForkingMessage: boolean;
   isPreparingWorktree: boolean;
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
@@ -419,8 +436,16 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   supportsConversationRollback: boolean;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  revertTurnCountByAssistantMessageId?: ReadonlyMap<MessageId, number>;
+  forkCheckpointRefByMessageId?: ReadonlyMap<MessageId, CheckpointRef>;
+  onForkMessage?: (
+    messageId: MessageId,
+    destination: "chat" | "workspace",
+    startRef?: CheckpointRef,
+  ) => void;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   isRevertingCheckpoint: boolean;
+  isForkingMessage?: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen?: (attachment: ChatFileAttachment) => void;
   onFileDownload?: (attachment: ChatFileAttachment) => void;
@@ -487,8 +512,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   supportsConversationRollback,
   onRevertToTurnCount,
+  revertTurnCountByAssistantMessageId = EMPTY_ASSISTANT_REVERT_TURN_COUNTS,
+  forkCheckpointRefByMessageId = EMPTY_FORK_CHECKPOINT_REFS,
+  onForkMessage = NOOP_FORK_MESSAGE,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   isRevertingCheckpoint,
+  isForkingMessage = false,
   onImageExpand,
   onFileOpen = NOOP_OPEN_ATTACHMENT,
   onFileDownload = NOOP_OPEN_ATTACHMENT,
@@ -755,6 +784,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeTurnStartedAt,
         turnDiffSummaries,
         supportsConversationRollback,
+        revertTurnCountByAssistantMessageId,
         liveAgentTaskIds,
         worktreeSetup,
         queuedMessages,
@@ -959,6 +989,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      forkCheckpointRefByMessageId,
+      onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
       onFileOpen,
@@ -994,6 +1026,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertToTurnCount,
+      forkCheckpointRefByMessageId,
+      onForkMessage,
       onUseArtifactTemplate,
       onImageExpand,
       onFileOpen,
@@ -1028,6 +1062,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const activityState = useMemo<TimelineRowActivityState>(
     () => ({
       isWorking,
+      isForkingMessage,
       isPreparingWorktree,
       isCompacting,
       isRevertingCheckpoint,
@@ -1040,6 +1075,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       backgroundWorktreeSetup,
       isCompacting,
+      isForkingMessage,
       isRevertingCheckpoint,
       isWorking,
       isPreparingWorktree,
@@ -2044,6 +2080,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 variant="ghost"
               />
             )}
+            <MessageForkMenu messageId={row.message.id} />
           </div>
         </div>
       </div>
@@ -2073,6 +2110,41 @@ export function resolvePreviewAnnotationImage(input: {
   );
 }
 
+function MessageForkMenu({ messageId }: { messageId: MessageId }) {
+  const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
+  const checkpointRef = ctx.forkCheckpointRefByMessageId.get(messageId);
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={<Button type="button" size="xs" variant="ghost" aria-label="Message actions" />}
+      >
+        <EllipsisIcon aria-hidden="true" className="size-3" />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <MenuItem
+          disabled={activity.isWorking || activity.isForkingMessage}
+          onClick={() => ctx.onForkMessage(messageId, "chat")}
+        >
+          Fork to new chat
+        </MenuItem>
+        <MenuItem
+          disabled={activity.isWorking || activity.isForkingMessage || checkpointRef === undefined}
+          onClick={() => {
+            if (checkpointRef) ctx.onForkMessage(messageId, "workspace", checkpointRef);
+          }}
+        >
+          Fork to new workspace
+          {checkpointRef === undefined && (
+            <span className="ms-auto text-muted-foreground text-xs">No checkpoint</span>
+          )}
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
 function RevertUserMessageButton({
   turnCount,
   messageId,
@@ -2091,6 +2163,7 @@ function RevertUserMessageButton({
             type="button"
             size="xs"
             variant="ghost"
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
             onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
             aria-label="Edit from here"
@@ -2205,6 +2278,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             message={row.message}
             showCopyButton={row.showAssistantCopyButton}
             copyStreaming={row.assistantCopyStreaming}
+            {...(typeof row.revertTurnCount === "number"
+              ? { revertTurnCount: row.revertTurnCount }
+              : {})}
           />
         ) : null}
       </div>
@@ -2224,6 +2300,9 @@ function AssistantMetaTimelineRow({
         message={row.message}
         showCopyButton={row.showAssistantCopyButton}
         copyStreaming={row.assistantCopyStreaming}
+        {...(typeof row.revertTurnCount === "number"
+          ? { revertTurnCount: row.revertTurnCount }
+          : {})}
         alwaysVisible
       />
     </div>
@@ -2235,12 +2314,14 @@ function AssistantMessageMeta({
   message,
   showCopyButton,
   copyStreaming,
+  revertTurnCount,
   alwaysVisible = false,
 }: {
   className?: string;
   message: ChatMessage;
   showCopyButton: boolean;
   copyStreaming: boolean;
+  revertTurnCount?: number;
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
@@ -2255,11 +2336,15 @@ function AssistantMessageMeta({
         className,
       )}
     >
+      {typeof revertTurnCount === "number" ? (
+        <RevertUserMessageButton turnCount={revertTurnCount} messageId={message.id} />
+      ) : null}
       <AssistantCopyButton
         message={message}
         showCopyButton={showCopyButton}
         streaming={copyStreaming}
       />
+      <MessageForkMenu messageId={message.id} />
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>

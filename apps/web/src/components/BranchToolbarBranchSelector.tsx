@@ -200,6 +200,7 @@ export function BranchToolbarBranchSelector({
         worktreePath,
         envMode: nextDraftEnvMode,
         environmentSelection: automatic ? (draftThread?.environmentSelection ?? "auto") : "manual",
+        startRef: null,
         projectRef: scopeProjectRef(environmentId, activeProject.id),
       });
     },

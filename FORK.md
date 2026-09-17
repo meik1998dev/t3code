@@ -32,19 +32,20 @@ The repair migrations below make both upgrade paths safe.
 
 Fork migrations today:
 
-| Number | File                                         | From           |
-| ------ | -------------------------------------------- | -------------- |
-| 53     | `053_RepairThreadBranchPullRequestColumn.ts` | Sync repair    |
-| 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair    |
-| 56     | `056_RepairThreadTitleStateColumn.ts`        | Sync repair    |
+| Number | File                                         | From          |
+| ------ | -------------------------------------------- | ------------- |
+| 53     | `053_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 56     | `056_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 57     | `057_ProjectionThreadsParentThreadId.ts`     | Agent threads |
 
 Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`), and
 52 (`ProjectionThreadTitleState`). Migration 56 idempotently adds `title_state_json` for databases
 that had already recorded the fork's own 52.
 Migration 55 idempotently reapplies upstream 50–51 and fork 53 for databases that had already
 recorded the fork's old 50–54 sequence. The removed parent-thread migration remains only as a
-historical row in upgraded databases; the removed task-plan lookup may likewise remain as an
-unused index in upgraded databases. New databases create neither fork feature.
+historical row in upgraded databases; migration 57 idempotently restores that column for both
+new and already-upgraded databases. The removed task-plan lookup may remain as an unused index.
 
 On every sync where numbers clash:
 
@@ -60,15 +61,16 @@ On every sync where numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                              | Entries                                                                  |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/web/src/components/ChatView.tsx`                            | Tasks                                                                    |
-| `apps/web/src/components/Sidebar.tsx`                             | Sidebar filter, Sidebar style, Transcript                                |
-| `apps/web/src/index.css`                                          | Sidebar style, Radius, Mermaid                                           |
-| `apps/server/src/ws.ts`                                           | GitHub account, Agent ports                                              |
-| `apps/server/src/provider/Layers/ClaudeAdapter.ts`                | Task tracking                                                            |
-| `apps/server/src/provider/RuntimeInstructions.ts`                 | Task tracking                                                            |
-| `apps/server/src/persistence/Migrations.ts`                       | [Migrations](#migrations)                                                |
+| File                                               | Entries                                                  |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`             | Agent threads, Message fork, Tasks                       |
+| `apps/web/src/components/Sidebar.tsx`              | Agent threads, Sidebar filter, Sidebar style, Transcript |
+| `apps/web/src/index.css`                           | Sidebar style, Radius, Mermaid                           |
+| `apps/server/src/ws.ts`                            | Agent ports, GitHub account, Message fork                |
+| `apps/server/src/provider/Layers/ClaudeAdapter.ts` | Agent threads, Task tracking                             |
+| `apps/server/src/provider/RuntimeInstructions.ts`  | Agent threads, Task tracking                             |
+| `apps/server/src/persistence/Migrations.ts`        | [Migrations](#migrations)                                |
+| `packages/contracts/src/orchestration.ts`          | Agent threads, Message fork                              |
 
 ## Remote server (VPS) deploy
 
@@ -175,6 +177,27 @@ Host <hostname>.local
 - Drop when: upstream guards the runtime-state clear by pid and invalidates workspace
   snapshots on refresh.
 
+### Agent thread tools (#37, restored after v0.0.42 sync)
+
+- What: agents can list projects, models and threads; read another thread; and start or message
+  separate threads through the `t3-code` MCP toolkit. Threads retain their `parentThreadId`, and
+  web and mobile mark work started by another agent. Only person-started threads receive these
+  tools, so agent-created work stays one level deep. A server setting supplies live model-routing
+  notes to `list_models`.
+- Key files: `apps/server/src/mcp/toolkits/orchestration/{handlers,tools}.ts`,
+  `apps/server/src/orchestration/ThreadBootstrap.ts`, orchestration decider/projector and
+  projection persistence, migration 57, provider runtime instructions and adapters,
+  `packages/contracts/src/{orchestration,settings}.ts`, web settings/sidebar, and mobile thread rows.
+- Tests: `apps/server/src/mcp/toolkits/orchestration/handlers.test.ts`,
+  `apps/server/src/orchestration/decider.parentThread.test.ts`,
+  `apps/server/src/persistence/Migrations/057_ProjectionThreadsParentThreadId.test.ts`,
+  provider runtime/MCP tests, and contract settings tests.
+- Check: from a person-started Claude or Codex thread, ask it to start a separate thread. The child
+  appears with the agent-started indicator and can receive follow-up messages, but cannot create
+  another child. Change routing notes in Settings and confirm `list_models` returns the new text.
+- Drop when: upstream ships equivalent cross-thread orchestration with parent tracking, routing
+  guidance, and the one-level safety boundary.
+
 ### Task tracking rule (#28, #29, direct commits)
 
 - What: runtime instructions ask Claude and Codex to keep a task list for work with 3+ steps.
@@ -188,18 +211,28 @@ Host <hostname>.local
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
 - Drop when: upstream turns these tools on and adds its own instruction.
 
-### Claude summarized thinking (direct commit)
-
-- What: compatible Claude models receive `--thinking-display summarized`, so the live Thinking
-  preview has text. An explicit launch argument still wins, and older CLI/model combinations do
-  not receive the hidden flag.
-- Key files: `apps/server/src/provider/{ClaudeModelCatalog,ClaudeModelCatalog.testFixtures}.ts`,
-  `apps/server/src/provider/Layers/ClaudeAdapter.ts`.
-- Tests: `ClaudeModelCatalog.test.ts`, `ClaudeAdapter.test.ts`.
-- Check: start a thinking-capable Claude model and confirm its live Thinking row contains a summary.
-- Drop when: upstream requests summarized thinking or the Claude SDK exposes a stable equivalent.
-
 ## Transcripts
+
+### Fork from a message (#3; restored after v0.0.42 sync)
+
+- What: the message actions menu can fork the conversation through a selected user or terminal
+  assistant message. **Fork to new chat** opens a draft in the same checkout. **Fork to new
+  workspace** creates its worktree from that message's checkpoint. Both copy the full saved
+  user/assistant transcript through the fork point into the new draft and keep the source model.
+  The later **Fork after compaction** variants from #32/#34/#35 intentionally remain dropped.
+- Key files: `packages/client-runtime/src/forkTranscript.ts`,
+  `apps/web/src/components/{ChatView,ChatView.logic}.ts{x,}`,
+  `apps/web/src/components/chat/{MessagesTimeline,MessagesTimeline.logic}.ts{x,}`,
+  `apps/web/src/{composerDraftStore,state/threads}.ts`,
+  `apps/web/src/hooks/useHandleNewThread.ts`, `apps/server/src/checkpointing/Utils.ts`,
+  `apps/server/src/{ws,orchestration/ThreadBootstrap}.ts`, `packages/shared/src/git.ts`, and
+  `packages/contracts/src/orchestration.ts`.
+- Tests: `forkTranscript.test.ts`, `ChatView.logic.test.ts`, `MessagesTimeline.logic.test.ts`,
+  `composerDraftStore.test.ts`, `orchestration.test.ts`, and `GitVcsDriverCore.test.ts`.
+- Check: fork an earlier user message to a new chat and confirm the draft ends at that message;
+  fork a checkpointed message to a new workspace and confirm its first send creates files from
+  that checkpoint. Confirm the menu contains no compaction actions.
+- Drop when: upstream ships equivalent message-level chat and checkpoint-workspace forking.
 
 ### Copy full transcript (#24)
 

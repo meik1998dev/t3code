@@ -1304,12 +1304,13 @@ const makeWsRpcLayer = (
             let shouldPrepareWorktree = prepareWorktree
               ? yield* gitWorkflow.isRepository(prepareWorktree.projectCwd)
               : false;
-            let worktreeBaseRef = prepareWorktree?.baseBranch ?? null;
+            let worktreeBaseRef = prepareWorktree?.startRef ?? prepareWorktree?.baseBranch ?? null;
 
             if (prepareWorktree && shouldPrepareWorktree) {
               // "Start from origin" is a stored default; repos without the
               // requested remote branch fall back to the local base branch.
               const startFromOrigin =
+                prepareWorktree.startRef === undefined &&
                 prepareWorktree.startFromOrigin === true &&
                 (yield* gitWorkflow.remoteExists({
                   cwd: prepareWorktree.projectCwd,

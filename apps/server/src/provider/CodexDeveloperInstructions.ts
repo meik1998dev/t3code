@@ -206,6 +206,8 @@ export function buildCodexDeveloperInstructions(
    * setting, so the prompt cannot claim tools the turn doesn't have.
    */
   browserToolsAvailable: boolean | T3CodeToolAvailability = true,
+  /** Whether this turn's MCP credential lets the agent start T3 Code threads. */
+  threadToolsAvailable = false,
 ): string {
   const base =
     interactionMode === "plan"
@@ -218,5 +220,5 @@ export function buildCodexDeveloperInstructions(
       : `\n\n${buildTaskTrackingInstructions({ create: "update_plan", update: "update_plan" })}`;
   return `${base}
 
-${buildRuntimeInstructions({ harness: "Codex", ...runtime })}${taskTracking}`;
+${buildRuntimeInstructions({ harness: "Codex", ...runtime, threadTools: threadToolsAvailable })}${taskTracking}`;
 }
