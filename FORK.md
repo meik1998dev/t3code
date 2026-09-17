@@ -92,14 +92,18 @@ Move it into `scripts/` when it stabilises.
    (workspace devDependencies). `npm pack` works but copies `"catalog:"` specifiers as is,
    and npm on the server rejects them (`Unsupported URL Type "catalog:"`). Rewrite each one
    with the version from `pnpm-workspace.yaml` (`[catalog]`) and drop `devDependencies`.
-3. On the server: `cd ~/.t3/runtime/versions/<version> && npm install <tgz>`. The runtime
-   slot is what `~/.t3/runtime/service-launcher.mjs` starts:
-   `versions/<version>/node_modules/t3/dist/bin.mjs`, gated by `.install-complete`
-   containing `<version>`. `<version>` must equal `apps/server/package.json` and the desktop
-   app build (0.0.39 today), because the desktop matches remote runtimes by that number.
-4. `~/.t3/runtime/service-state.json` → `{"protocol": 2, "activeVersion": "<version>"}`,
-   then `systemctl --user restart t3code`. Keep the runtime's `node_modules` — `node-pty`
-   is compiled there, and the fork has the same 13 runtime dependencies as upstream.
+3. On the server: `cd ~/.t3/runtime/versions/<version> && npm install <tgz>`, then apply the
+   repo's `patches/*.patch` to the installed runtime packages with `patch -p1` (npm ignores pnpm
+   patches; without the `@ff-labs/fff-node` one the server dies at boot with
+   `ERR_PACKAGE_PATH_NOT_EXPORTED`). `<version>` must equal `apps/server/package.json` and the
+   desktop app build (0.0.42 today), because the desktop matches remote runtimes by that number.
+4. Point the systemd unit at the slot and restart: `ExecStart=/usr/local/bin/node
+~/.t3/runtime/versions/<version>/node_modules/t3/dist/bin.mjs serve`, then
+   `systemctl --user daemon-reload && systemctl --user restart t3code`. Since upstream 0.0.42 the
+   launcher (`t3 __service-launcher`, protocol 3) only starts a standalone `t3` executable, so the
+   old `~/.t3/runtime/service-launcher.mjs` and `service-state.json` are no longer used; the
+   server runs unmanaged (no self-update, which the rules below forbid anyway). Keep the runtime's
+   `node_modules` — `node-pty` is compiled there.
 
 ### Which side needs a rebuild
 
@@ -270,6 +274,9 @@ Host <hostname>.local
   `apps/web/src/routes/_chat.pull-requests.tsx`.
 - Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
 - Check: pick two projects in each filter. Only those threads and pull requests show.
+- Warning: the sidebar trigger is upstream's icon-only header button. Do not put a label or
+  chevron inside it; they get clipped next to Search. The selection shows as check marks in the
+  popup and in the button's tooltip.
 
 ### Agent ports popover (#44, #45, #46)
 
@@ -309,7 +316,8 @@ Host <hostname>.local
 ### Sidebar look (#6, #8, #22, #23)
 
 - What: bigger sidebar text and taller rows. The update pill shows only when an update needs
-  action. No working circle in statuses.
+  action. No working circle in statuses. No provider icon at the end of thread rows (the hover
+  tooltip still names the provider and model).
 - Key files: `apps/web/src/index.css`, `Sidebar.tsx`, `sidebar/SidebarUpdatePill.tsx`.
 - Check: compare row height and text size with the pre-sync build.
 
