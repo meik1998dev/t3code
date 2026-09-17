@@ -534,6 +534,10 @@ function withRateLimitBackoff(
           getReviewThreadComments: wrap("getReviewThreadComments", api.getReviewThreadComments),
         }),
     getViewerPermissions: interactive("getViewerPermissions", api.getViewerPermissions),
+    // A plain read of the repository's signed-in account; it is not an interactive action.
+    ...(api.getViewerAccountKey === undefined
+      ? {}
+      : { getViewerAccountKey: api.getViewerAccountKey }),
     getDiff: wrap("getDiff", api.getDiff),
     ...(api.getDiffFileContents === undefined
       ? {}
@@ -751,15 +755,8 @@ export const make = Effect.gen(function* () {
             const seen = new Set<string>();
             for (const candidate of candidates) {
               if (candidate === null) continue;
-              const {
-                api,
-                canonicalKey,
-                host,
-                kind,
-                project,
-                repository,
-                viewerAccountKey,
-              } = candidate;
+              const { api, canonicalKey, host, kind, project, repository, viewerAccountKey } =
+                candidate;
               // Recorded before the de-duplication below, so the viewer lookup keeps the
               // alternates the listing is about to drop.
               if (api !== null) {

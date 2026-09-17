@@ -18,7 +18,7 @@ const ENV_CACHE_CAPACITY = 256;
 const ENV_CACHE_TTL = Duration.seconds(30);
 
 /** The repository names an account, but `gh` holds no token for it. */
-export class GitHubAccountUnavailableError extends Schema.TaggedErrorClass<GitHubAccountUnavailableError>()(
+export class GitHubAccountUnavailableError extends Schema.TaggedError<GitHubAccountUnavailableError>()(
   "GitHubAccountUnavailableError",
   {
     command: Schema.Literal("gh"),

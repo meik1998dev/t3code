@@ -34,19 +34,22 @@ const quotaOutput = (remaining = 5000, resetAt = "2099-01-01T00:00:00Z") =>
 
 const mockRun = vi.fn<VcsProcess.VcsProcess["Service"]["run"]>();
 
-const layer = GitHubCli.layer.pipe(
+/** A repository that names no `gh.account`, so gh runs with the ambient environment. */
+const noAccount: GitHubAccount.GitHubAccount["Service"] = {
+  accountKeyFor: () => Effect.succeed(null),
+  envFor: () => Effect.succeedNone,
+};
+
+const layer = Layer.effect(GitHubCli.GitHubCli, GitHubCli.make).pipe(
+  Layer.provideMerge(GitHubGraphQlBudget.layer),
+  Layer.provideMerge(SourceControlRateLimit.layer),
   Layer.provide(
     Layer.mock(VcsProcess.VcsProcess)({
       run: (input) =>
         input.args[1] === "rate_limit" ? Effect.succeed(quotaOutput()) : mockRun(input),
     }),
   ),
-  Layer.provide(
-    Layer.succeed(GitHubAccount.GitHubAccount, {
-      accountKeyFor: () => Effect.succeed(null),
-      envFor: () => Effect.succeedNone,
-    }),
-  ),
+  Layer.provide(Layer.succeed(GitHubAccount.GitHubAccount, noAccount)),
 );
 
 afterEach(() => {
@@ -74,6 +77,7 @@ it.effect("shares quota checks, preserves the reserve, and resumes after reset",
             return processOutput("[]");
           }),
       }),
+      Effect.provideService(GitHubAccount.GitHubAccount, noAccount),
     );
     const read = (command: string) =>
       gh.execute({
@@ -129,6 +133,7 @@ describe("GitHubCli.layer", () => {
               return processOutput("[]");
             }),
         }),
+        Effect.provideService(GitHubAccount.GitHubAccount, noAccount),
       );
       const read = (token: string) =>
         gh.execute({ cwd: "/repo", args: ["pr", "list", "--repo", "github.com/acme/web"] }).pipe(
@@ -647,8 +652,15 @@ describe("GitHubCli.layer", () => {
 
 describe("GitHubCli.layer with GitHubAccount", () => {
   const envFor = vi.fn<GitHubAccount.GitHubAccount["Service"]["envFor"]>();
-  const layerWithAccount = GitHubCli.layer.pipe(
-    Layer.provide(Layer.mock(VcsProcess.VcsProcess)({ run: mockRun })),
+  const layerWithAccount = Layer.effect(GitHubCli.GitHubCli, GitHubCli.make).pipe(
+    Layer.provideMerge(GitHubGraphQlBudget.layer),
+    Layer.provideMerge(SourceControlRateLimit.layer),
+    Layer.provide(
+      Layer.mock(VcsProcess.VcsProcess)({
+        run: (input) =>
+          input.args[1] === "rate_limit" ? Effect.succeed(quotaOutput()) : mockRun(input),
+      }),
+    ),
     Layer.provide(Layer.mock(GitHubAccount.GitHubAccount)({ envFor })),
   );
 
@@ -658,21 +670,22 @@ describe("GitHubCli.layer with GitHubAccount", () => {
 
   it.effect("runs gh with the repository's account token", () =>
     Effect.gen(function* () {
-      envFor.mockReturnValueOnce(Effect.succeedSome({ GH_TOKEN: "gho_secret" }));
+      envFor.mockReturnValue(Effect.succeedSome({ GH_TOKEN: "gho_secret" }));
       mockRun.mockReturnValueOnce(Effect.succeed(processOutput("main\n")));
 
       const gh = yield* GitHubCli.GitHubCli;
       const branch = yield* gh.getDefaultBranch({ cwd: "/repo" });
 
       assert.strictEqual(branch, "main");
-      assert.deepEqual(envFor.mock.calls[0], ["/repo"]);
+      // The quota probe resolves its own account first, so the command under test is the last call.
+      assert.deepEqual(envFor.mock.calls.at(-1), ["/repo"]);
       assert.deepEqual(mockRun.mock.calls[0]?.[0].env, { GH_TOKEN: "gho_secret" });
     }).pipe(Effect.provide(layerWithAccount)),
   );
 
   it.effect("leaves the environment alone when the repository names no account", () =>
     Effect.gen(function* () {
-      envFor.mockReturnValueOnce(Effect.succeedNone);
+      envFor.mockReturnValue(Effect.succeedNone);
       mockRun.mockReturnValueOnce(Effect.succeed(processOutput("main\n")));
 
       const gh = yield* GitHubCli.GitHubCli;

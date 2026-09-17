@@ -5,6 +5,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
 import repairUpstreamMigrations from "./055_RepairUpstreamMigrationsAfterFork.ts";
+import repairThreadTitleStateColumn from "./056_RepairThreadTitleStateColumn.ts";
 
 it.layer(NodeSqliteClient.layerMemory())("055_RepairUpstreamMigrationsAfterFork", (it) => {
   it.effect("repairs upstream migrations skipped by an existing fork database", () =>
@@ -24,22 +25,30 @@ it.layer(NodeSqliteClient.layerMemory())("055_RepairUpstreamMigrationsAfterFork"
       const ran = yield* runMigrations();
       assert.deepStrictEqual(
         ran.map(([id]) => id),
-        [55],
+        [55, 56],
       );
 
       // Every repair must also be safe when a database already has the schema.
       yield* repairUpstreamMigrations;
+      yield* repairThreadTitleStateColumn;
 
       const messageColumns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(projection_thread_messages)
       `;
-      assert.equal(messageColumns.some((column) => column.name === "context_json"), true);
+      assert.equal(
+        messageColumns.some((column) => column.name === "context_json"),
+        true,
+      );
 
       const threadColumns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(projection_threads)
       `;
       assert.equal(
         threadColumns.some((column) => column.name === "branch_pull_request_json"),
+        true,
+      );
+      assert.equal(
+        threadColumns.some((column) => column.name === "title_state_json"),
         true,
       );
     }),

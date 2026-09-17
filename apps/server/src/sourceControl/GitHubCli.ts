@@ -667,11 +667,16 @@ export const make = Effect.gen(function* () {
   });
 });
 
-/** GitHub CLI layer requiring account selection and process execution services. */
+/**
+ * GitHub CLI layer requiring only process execution. Account selection is built in, so callers
+ * that never think about the fork's per-repository `gh.account` support do not have to provide it.
+ * Tests that stub account selection build the service from `make` instead.
+ */
 export const layer = Layer.effect(GitHubCli, make).pipe(
   Layer.provideMerge(GitHubGraphQlBudget.layer),
   Layer.provideMerge(SourceControlRateLimit.layer),
+  Layer.provideMerge(GitHubAccount.layer),
 );
 
-/** Production GitHub CLI layer with live account selection, requiring only process execution. */
-export const layerLive = layer.pipe(Layer.provide(GitHubAccount.layer));
+/** @deprecated Use `layer`; account selection is no longer a separate requirement. */
+export const layerLive = layer;

@@ -151,7 +151,7 @@ await Effect.runPromise(
         SourceControlProviderRegistry.layer.pipe(
           Layer.provide(
             Layer.mergeAll(
-              GitHubCli.layer,
+              GitHubCli.layerLive,
               GitLabCli.layer,
               ForgejoCli.layer,
               AzureDevOpsCli.layer,
