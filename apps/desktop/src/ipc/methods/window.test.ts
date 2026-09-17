@@ -1,24 +1,30 @@
 import { assert, describe, it } from "@effect/vitest";
-import { NodeServices } from "@effect/platform-node";
-import { CommandAvailability } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
+
+const { focusedWebContents, ownerWindow } = vi.hoisted(() => ({
+  focusedWebContents: vi.fn(),
+  ownerWindow: vi.fn(),
+}));
+vi.mock("electron", () => ({
+  webContents: { getFocusedWebContents: focusedWebContents },
+  BrowserWindow: { fromWebContents: ownerWindow },
+}));
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
+import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
+import type { DesktopSettings } from "../../settings/DesktopAppSettings.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
-  openRemoteEditorCommand,
+  pasteAsText,
   pickProjectFavicon,
 } from "./window.ts";
 
@@ -159,20 +165,66 @@ describe("getWindowFullscreenState", () => {
   });
 });
 
+describe("pasteAsText", () => {
+  it.effect(
+    "pastes into the focused guest only after the main renderer acknowledges the menu action",
+    () => {
+      const paste = vi.fn();
+      const mainPaste = vi.fn();
+      const window = {
+        webContents: { id: 42, paste: mainPaste },
+        isDestroyed: () => false,
+      } as unknown as Electron.BrowserWindow;
+      focusedWebContents.mockReturnValue({ paste, isDestroyed: () => false });
+      ownerWindow.mockReturnValue(window);
+
+      return Effect.gen(function* () {
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        assert.equal(mainPaste.mock.calls.length, 0);
+
+        yield* pasteAsText.handler(undefined, { sender: { id: 99 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue({}); // A focused PiP/other BrowserWindow.
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue(null); // Detached contents.
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        ownerWindow.mockReturnValue(window);
+        focusedWebContents.mockReturnValue({ paste, isDestroyed: () => true });
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+        focusedWebContents.mockReturnValue(null);
+        yield* pasteAsText.handler(undefined, { sender: { id: 42 } });
+        assert.equal(paste.mock.calls.length, 1);
+      }).pipe(
+        Effect.provide(
+          Layer.mock(ElectronWindow.ElectronWindow)({
+            main: Effect.succeed(Option.some(window)),
+          }),
+        ),
+      );
+    },
+  );
+});
+
 describe("pickProjectFavicon", () => {
+  const pickerLayer = (pickFiles: () => Effect.Effect<Array<string>>, settings?: DesktopSettings) =>
+    Layer.mergeAll(
+      Layer.mock(ElectronDialog.ElectronDialog)({ pickFiles }),
+      Layer.mock(ElectronWindow.ElectronWindow)({
+        focusedMainOrFirst: Effect.succeed(Option.none()),
+      }),
+      DesktopAppSettings.layerTest(settings),
+    );
+
   it.effect("opens a single-image picker from the project directory", () =>
     Effect.gen(function* () {
       const pickFiles = vi.fn(() => Effect.succeed(["/pictures/icon.png"]));
-      const result = yield* pickProjectFavicon.handler("/project").pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            Layer.mock(ElectronDialog.ElectronDialog)({ pickFiles }),
-            Layer.mock(ElectronWindow.ElectronWindow)({
-              focusedMainOrFirst: Effect.succeed(Option.none()),
-            }),
-          ),
-        ),
-      );
+      const result = yield* pickProjectFavicon
+        .handler("/project")
+        .pipe(Effect.provide(pickerLayer(pickFiles)));
 
       assert.strictEqual(result, "/pictures/icon.png");
       assert.deepEqual(pickFiles.mock.calls, [
@@ -192,86 +244,21 @@ describe("pickProjectFavicon", () => {
       ]);
     }),
   );
-});
 
-describe("openRemoteEditorCommand", () => {
-  const spawned: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> = [];
-  const recordingSpawner = Layer.succeed(
-    ChildProcessSpawner.ChildProcessSpawner,
-    ChildProcessSpawner.make((command) => {
-      const childProcess = command as unknown as {
-        readonly command: string;
-        readonly args: ReadonlyArray<string>;
-      };
-      spawned.push({ command: childProcess.command, args: childProcess.args });
-      return Effect.succeed(
-        ChildProcessSpawner.makeHandle({
-          pid: ChildProcessSpawner.ProcessId(1),
-          exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
-          isRunning: Effect.succeed(true),
-          kill: () => Effect.void,
-          unref: Effect.succeed(Effect.void),
-          stdin: Sink.drain,
-          stdout: Stream.empty,
-          stderr: Stream.empty,
-          all: Stream.empty,
-          getInputFd: () => Sink.drain,
-          getOutputFd: () => Stream.empty,
-        }),
+  it.effect("does not open a picker while the local environment is off", () =>
+    Effect.gen(function* () {
+      const pickFiles = vi.fn(() => Effect.succeed(["/pictures/icon.png"]));
+      const result = yield* pickProjectFavicon.handler("/project").pipe(
+        Effect.provide(
+          pickerLayer(pickFiles, {
+            ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
+            localEnvironmentEnabled: false,
+          }),
+        ),
       );
+
+      assert.strictEqual(result, null);
+      assert.strictEqual(pickFiles.mock.calls.length, 0);
     }),
-  );
-  const availableCommands = (names: ReadonlyArray<string>) =>
-    Layer.succeed(CommandAvailability, (command) => Effect.succeed(names.includes(command)));
-
-  it.effect("runs the first installed Zed CLI with an ssh:// URL", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "zed",
-        host: "srv1975423.local",
-        absolutePath: "/root/repos/news/newsifier-front",
-      });
-      assert.isTrue(opened);
-      assert.deepEqual(spawned, [
-        { command: "zeditor", args: ["ssh://srv1975423.local/root/repos/news/newsifier-front"] },
-      ]);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands(["zeditor"])),
-      ),
-    ),
-  );
-
-  it.effect("reports false without spawning when no Zed CLI is on PATH", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "zed",
-        host: "sol",
-        absolutePath: "/tmp/x",
-      });
-      assert.isFalse(opened);
-      assert.deepEqual(spawned, []);
-    }).pipe(
-      Effect.provide(Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands([]))),
-    ),
-  );
-
-  it.effect("reports false for editors that open remotely by deep link instead", () =>
-    Effect.gen(function* () {
-      spawned.length = 0;
-      const opened = yield* openRemoteEditorCommand.handler({
-        editor: "vscode",
-        host: "sol",
-        absolutePath: "/tmp/x",
-      });
-      assert.isFalse(opened);
-      assert.deepEqual(spawned, []);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(NodeServices.layer, recordingSpawner, availableCommands(["code"])),
-      ),
-    ),
   );
 });

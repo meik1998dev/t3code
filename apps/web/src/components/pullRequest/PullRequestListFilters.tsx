@@ -3,7 +3,6 @@ import type {
   EnvironmentId,
   ProjectId,
   PullRequestInvolvement,
-  ProjectIconOverride,
   PullRequestListFilters,
   PullRequestListState,
   SourceControlProviderKind,
@@ -15,7 +14,6 @@ import {
   CircleXIcon,
   EyeOffIcon,
   FolderGit2Icon,
-  GitPullRequestDraftIcon,
   LayersIcon,
   ListFilterIcon,
   SearchIcon,
@@ -25,7 +23,7 @@ import {
 import { type ElementType, useState } from "react";
 
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
-import { ProjectFavicon } from "../ProjectFavicon";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Button } from "../ui/button";
 
@@ -51,18 +49,14 @@ import {
   type PullRequestLabelFacet,
 } from "./pullRequestList.logic";
 import { PullRequestActorAvatar } from "./pullRequestPresentation";
+import { PullRequestGlyph } from "./pullRequestIcons";
 
 export interface PullRequestFilterOption<Value extends string> {
   readonly value: Value;
   readonly label: string;
   /** Uses the option's native icon tone. */
   readonly Icon: ElementType<{ className?: string }>;
-  readonly favicon?: {
-    readonly environmentId: EnvironmentId;
-    readonly cwd: string;
-    readonly faviconPath?: string | null;
-    readonly projectIcon?: ProjectIconOverride | null;
-  };
+  readonly project?: ProjectFaviconProject;
   /** Why it cannot be chosen, carried onto the item as its title. */
   readonly unavailable?: string | undefined;
 }
@@ -72,15 +66,8 @@ export function PullRequestFilterOptionIcon<Value extends string>({
 }: {
   option: PullRequestFilterOption<Value>;
 }) {
-  return option.favicon ? (
-    <ProjectFavicon
-      environmentId={option.favicon.environmentId}
-      cwd={option.favicon.cwd}
-      projectName={option.label}
-      faviconPath={option.favicon.faviconPath}
-      projectIcon={option.favicon.projectIcon}
-      className="size-3.5"
-    />
+  return option.project ? (
+    <ProjectFavicon project={option.project} className="size-3.5" />
   ) : (
     <option.Icon aria-hidden className="size-3.5" />
   );
@@ -150,7 +137,7 @@ export const pullRequestProjectKey = (project: {
 
 const DRAFT_OPTIONS = [
   { value: UNFILTERED_VALUE, label: "All", Icon: LayersIcon },
-  { value: "only", label: "Drafts only", Icon: GitPullRequestDraftIcon },
+  { value: "only", label: "Drafts only", Icon: PullRequestGlyph.draft },
   { value: "hide", label: "Hide drafts", Icon: EyeOffIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<string>>;
 
@@ -397,14 +384,7 @@ function PullRequestLabelFilter({
 }
 
 /** What a project row is: enough to render it, and enough to hand back when it is picked. */
-export interface PullRequestProjectOption {
-  readonly id: ProjectId;
-  readonly environmentId: EnvironmentId;
-  readonly title: string;
-  readonly workspaceRoot: string;
-  readonly faviconPath?: string | null;
-  readonly projectIcon?: ProjectIconOverride | null;
-}
+export type PullRequestProjectOption = ProjectFaviconProject & { readonly id: ProjectId };
 
 /**
  * Several projects at once, since a reader watching two repositories wants both lists and not
@@ -447,12 +427,7 @@ export function PullRequestProjectFilter({
               value: pullRequestProjectKey(picked[0]),
               label: picked[0].title,
               Icon: FolderGit2Icon,
-              favicon: {
-                environmentId: picked[0].environmentId,
-                cwd: picked[0].workspaceRoot,
-                faviconPath: picked[0].faviconPath ?? null,
-                projectIcon: picked[0].projectIcon ?? null,
-              },
+              project: picked[0],
             }}
           />
         ) : (
@@ -495,14 +470,7 @@ export function PullRequestProjectFilter({
                 }
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <ProjectFavicon
-                    environmentId={project.environmentId}
-                    cwd={project.workspaceRoot}
-                    projectName={project.title}
-                    faviconPath={project.faviconPath ?? null}
-                    projectIcon={project.projectIcon ?? null}
-                    className="size-3.5"
-                  />
+                  <ProjectFavicon project={project} className="size-3.5" />
                   <span className="min-w-0 flex-1 truncate">{project.title}</span>
                   {reason ? (
                     <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>

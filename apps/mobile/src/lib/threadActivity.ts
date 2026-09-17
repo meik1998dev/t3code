@@ -1,8 +1,11 @@
+import * as Option from "effect/Option";
+import { foldUserInputActivities } from "@t3tools/client-runtime/work-log/user-input";
+import * as Schema from "effect/Schema";
 import {
   requestKindFromRequestType,
   type PendingApproval,
 } from "@t3tools/client-runtime/pending-requests";
-import { isToolLifecycleItemType } from "@t3tools/contracts";
+import { UserInputAttachmentAnswerPayload, isToolLifecycleItemType } from "@t3tools/contracts";
 import type {
   OrchestrationLatestTurn,
   OrchestrationThread,
@@ -41,6 +44,8 @@ export type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/
 export interface PendingUserInputDraftAnswer {
   readonly selectedOptionValues?: ReadonlyArray<string>;
   readonly customAnswer?: string;
+  readonly attachmentCount?: number;
+  readonly attachmentsBlocked?: boolean;
 }
 
 export interface ThreadFeedActivity {
@@ -76,6 +81,7 @@ export interface ThreadFeedActivity {
 }
 
 export interface WorkLogEntry {
+  readonly questionAnswer?: UserInputAttachmentAnswerPayload;
   id: string;
   createdAt: string;
   turnId: TurnId | null;
@@ -162,7 +168,7 @@ export type ThreadFeedEntry =
       readonly summaryKind: ToolGroupSummaryKind;
       readonly toolSurface?: WorkLogEntry["toolSurface"];
       readonly toolIcon?: WorkLogEntry["toolIcon"];
-      readonly summaryToolIcon?: "browser" | "t3-code";
+      readonly summaryToolIcon?: "browser" | "device" | "t3-code" | "pull-request";
       readonly hasFailure: boolean;
       readonly live: boolean;
       readonly shimmer: boolean;
@@ -258,6 +264,10 @@ export function isContextCompactionActivityGroup(
   );
 }
 
+function isUserInputActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  return entry.activities.some((activity) => activity.workEntry.questionAnswer !== undefined);
+}
+
 function normalizeDraftAnswer(value: string | undefined): string | null {
   if (typeof value !== "string") {
     return null;
@@ -302,6 +312,7 @@ function resolvePendingUserInputAnswer(
   question: UserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
 ): string | ReadonlyArray<string> | null {
+  if (draft?.attachmentsBlocked) return null;
   const customAnswer =
     question.allowCustomAnswer === false ? null : normalizeDraftAnswer(draft?.customAnswer);
   if (customAnswer) {
@@ -310,9 +321,16 @@ function resolvePendingUserInputAnswer(
 
   const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
   if (question.multiSelect) {
-    return selectedOptionValues.length > 0 ? selectedOptionValues : null;
+    return selectedOptionValues.length > 0
+      ? selectedOptionValues
+      : question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0
+        ? ""
+        : null;
   }
-  return selectedOptionValues[0] ?? null;
+  return (
+    selectedOptionValues[0] ??
+    (question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0 ? "" : null)
+  );
 }
 
 /** Some providers settle agents through task.updated instead of task.completed. */
@@ -392,7 +410,8 @@ function deriveWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const ordered = Arr.sort(activities, activityOrder);
   const entries: DerivedWorkLogEntry[] = [];
-  for (const activity of ordered) {
+  for (const activity of foldUserInputActivities(ordered)) {
+    // Mobile has no setup card, so a failed setup surfaces as an error row.
     if (activity.tone !== "error" && isWorktreeSetupActivity(activity.kind)) continue;
     if (activity.kind === "tool.started") continue;
     // Like web: an agent's task.started row anchors its batch. It has a fixed
@@ -434,6 +453,8 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
       : null;
   return typeof payload?.detail === "string" && payload.detail.startsWith("ExitPlanMode:");
 }
+
+const decodeQuestionAttachmentAnswer = Schema.decodeUnknownOption(UserInputAttachmentAnswerPayload);
 
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
@@ -480,6 +501,11 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
           ? "info"
           : activity.tone,
     sourceActivityKind: activity.kind,
+    ...(() => {
+      if (activity.kind !== "user-input.answer-submitted") return {};
+      const answer = decodeQuestionAttachmentAnswer(activity.payload);
+      return Option.isSome(answer) ? { questionAnswer: answer.value } : {};
+    })(),
   };
   const toolCallId =
     asTrimmedString(payload?.toolCallId) ?? asTrimmedString(asRecord(payload?.data)?.toolCallId);
@@ -916,6 +942,7 @@ function workEntryStatus(entry: WorkLogEntry): ThreadFeedActivity["status"] {
 function workEntryIcon(entry: DerivedWorkLogEntry): ThreadFeedActivity["icon"] {
   if (entry.agentSpawn) return "agent";
   if (
+    entry.questionAnswer ||
     entry.sourceActivityKind === "user-input.requested" ||
     entry.sourceActivityKind === "user-input.resolved"
   ) {
@@ -969,6 +996,7 @@ function buildWorkEntryExpandedBody(entry: WorkLogEntry): string | null {
  * for every row (see the deferred-expansion test).
  */
 function workEntryCanExpand(entry: WorkLogEntry): boolean {
+  if (entry.questionAnswer) return true;
   if (entry.agentSpawn) return agentSpawnMembers(entry.agentSpawn).length > 0;
   if (entry.itemType === "mcp_tool_call" && entry.toolData !== undefined) return true;
   if (entry.changedFiles?.some((path) => path.trim().length > 0)) return true;
@@ -1533,13 +1561,15 @@ function groupAdjacentActivities(entries: ReadonlyArray<RawThreadFeedEntry>): Th
       continue;
     }
 
-    const isCompaction = entry.activity.workEntry.sourceActivityKind === "context-compaction";
-    if (isCompaction || firstActivityEntry?.turnId !== entry.turnId) {
+    const isStandalone =
+      entry.activity.workEntry.sourceActivityKind === "context-compaction" ||
+      entry.activity.workEntry.questionAnswer !== undefined;
+    if (isStandalone || firstActivityEntry?.turnId !== entry.turnId) {
       flushGroup();
     }
     firstActivityEntry ??= entry;
     openGroupActivities.push(entry.activity);
-    if (isCompaction) {
+    if (isStandalone) {
       flushGroup();
     }
   }
@@ -1566,7 +1596,7 @@ function maxIsoTimestamp(a: string | null, b: string | null): string | null {
   return bMs > aMs ? b : a;
 }
 
-function deriveUnsettledTurnId(latestTurn: ThreadFeedLatestTurn | null): TurnId | null {
+export function deriveUnsettledTurnId(latestTurn: ThreadFeedLatestTurn | null): TurnId | null {
   if (!latestTurn) {
     return null;
   }
@@ -1607,8 +1637,13 @@ function deriveThreadFeedTurnFolds(
       pendingUserBoundary = entry.message.createdAt;
       continue;
     }
+    // Thinking is work, so it folds with the rest of it. A provider that
+    // interleaves a block with every tool call would otherwise leave dozens of
+    // "Thought" rows standing beside the "Worked for ..." summary.
+    // Nothing folds while the turn is live, which is when traces are watched.
     const turnId =
-      entry.type === "message" && entry.message.role === "assistant"
+      entry.type === "message" &&
+      (entry.message.role === "assistant" || entry.message.role === "reasoning")
         ? entry.message.turnId
         : entry.type === "activity-group"
           ? entry.turnId
@@ -1635,7 +1670,15 @@ function deriveThreadFeedTurnFolds(
     if (turnId === unsettledTurnId) {
       continue;
     }
-    if (entries.some((entry) => entry.type === "message" && entry.message.streaming)) {
+    // A live turn is already excluded above, so only an answer still being
+    // written may hold a fold open. A thinking block stranded by a crashed
+    // provider keeps its streaming flag forever and must not.
+    if (
+      entries.some(
+        (entry) =>
+          entry.type === "message" && entry.message.streaming && entry.message.role !== "reasoning",
+      )
+    ) {
       continue;
     }
 
@@ -1645,7 +1688,9 @@ function deriveThreadFeedTurnFolds(
       entries
         .filter(
           (entry) =>
-            entry.id !== firstAssistantMessageId && entry.id !== terminalAssistantMessageId,
+            entry.id !== firstAssistantMessageId &&
+            entry.id !== terminalAssistantMessageId &&
+            !(entry.type === "activity-group" && isUserInputActivityGroup(entry)),
         )
         .map((entry) => entry.id),
     );
@@ -1653,13 +1698,16 @@ function deriveThreadFeedTurnFolds(
       continue;
     }
     // A lone compaction row stays visible on its own; it only folds away as
-    // part of a turn that already folds other work.
-    const hidesNonCompactionWork = entries.some(
+    // part of a turn that already folds other work. Thinking is the same: a
+    // question answered by thought alone keeps its "Thought" row
+    // rather than collapsing behind a "Worked for ..." that hides nothing else.
+    const hidesFoldableWork = entries.some(
       (entry) =>
         hiddenEntryIds.has(entry.id) &&
-        !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)),
+        !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&
+        !(entry.type === "message" && entry.message.role === "reasoning"),
     );
-    if (!hidesNonCompactionWork) {
+    if (!hidesFoldableWork) {
       continue;
     }
 
@@ -1787,6 +1835,15 @@ export function deriveThreadFeedPresentation(
     !result.some(
       (row) =>
         (row.type === "work-toggle" && row.shimmer) ||
+        // A live thinking block is the real version of this row, so it takes
+        // the slot instead of sitting under a second "Thinking". Scoped to the
+        // live turn: a block stranded by a killed server must not silence this
+        // row for every turn that follows.
+        (row.type === "message" &&
+          row.message.role === "reasoning" &&
+          row.message.streaming &&
+          row.message.turnId !== null &&
+          row.message.turnId === unsettledTurnId) ||
         // A working spawn card is the live activity: its status line shows
         // what the agents are doing, so a Thinking row under it would lie.
         (row.type === "agent-spawn" &&
@@ -1825,7 +1882,7 @@ function appendPresentedFeedEntry(
     result.push(entry);
     return;
   }
-  if (isContextCompactionActivityGroup(entry)) {
+  if (isContextCompactionActivityGroup(entry) || isUserInputActivityGroup(entry)) {
     result.push(entry);
     return;
   }
@@ -2163,21 +2220,30 @@ export function buildThreadFeed(
     : loadedMessages;
   const oldestLoadedMessageCreatedAt =
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
-  const activityEntries = getThreadFeedActivityEntries(thread.activities);
+  const activityEntries = getThreadFeedActivityEntries(thread.activities).filter(
+    (entry) =>
+      oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
+  );
+  const foldedAnswerMessageIds = new Set(
+    activityEntries.flatMap((entry) =>
+      entry.activity.workEntry.questionAnswer
+        ? [`async-answer:${entry.activity.workEntry.questionAnswer.requestId}`]
+        : [],
+    ),
+  );
   const entries = Arr.sortWith(
     [
-      ...messages.map((message) => {
-        let entry = messageEntriesCache.get(message);
-        if (!entry) {
-          entry = { type: "message", id: message.id, createdAt: message.createdAt, message };
-          messageEntriesCache.set(message, entry);
-        }
-        return entry;
-      }),
-      ...activityEntries.filter(
-        (entry) =>
-          oldestLoadedMessageCreatedAt === null || entry.createdAt >= oldestLoadedMessageCreatedAt,
-      ),
+      ...messages
+        .filter((message) => message.role !== "user" || !foldedAnswerMessageIds.has(message.id))
+        .map((message) => {
+          let entry = messageEntriesCache.get(message);
+          if (!entry) {
+            entry = { type: "message", id: message.id, createdAt: message.createdAt, message };
+            messageEntriesCache.set(message, entry);
+          }
+          return entry;
+        }),
+      ...activityEntries,
     ],
     (s) => new Date(s.createdAt),
     Order.Date,

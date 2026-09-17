@@ -1,10 +1,10 @@
 import type { UserInputQuestion } from "@t3tools/contracts";
 
-import { stripPastedTextMarkers } from "./lib/pastedText";
-
 export interface PendingUserInputDraftAnswer {
   selectedOptionValues?: string[];
   customAnswer?: string;
+  attachmentCount?: number;
+  attachmentsBlocked?: boolean;
 }
 
 export interface PendingUserInputProgress {
@@ -26,7 +26,7 @@ function normalizeDraftAnswer(value: string | undefined): string | null {
     return null;
   }
 
-  const trimmed = stripPastedTextMarkers(value).trim();
+  const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -43,6 +43,7 @@ export function resolvePendingUserInputAnswer(
   question: UserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
 ): string | string[] | null {
+  if (draft?.attachmentsBlocked) return null;
   const customAnswer =
     question.allowCustomAnswer === false ? null : normalizeDraftAnswer(draft?.customAnswer);
   if (customAnswer) {
@@ -53,10 +54,17 @@ export function resolvePendingUserInputAnswer(
     (value) => question.options.some((option) => (option.value ?? option.label) === value),
   );
   if (question.multiSelect) {
-    return selectedOptionValues.length > 0 ? selectedOptionValues : null;
+    return selectedOptionValues.length > 0
+      ? selectedOptionValues
+      : question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0
+        ? ""
+        : null;
   }
 
-  return selectedOptionValues[0] ?? null;
+  return (
+    selectedOptionValues[0] ??
+    (question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0 ? "" : null)
+  );
 }
 
 export function setPendingUserInputCustomAnswer(

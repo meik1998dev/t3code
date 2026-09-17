@@ -47,3 +47,22 @@ Terms whose meaning matters across T3 Code. Architecture and lifecycle constrain
 | Turn diff           | The workspace changes attributed to one turn.                                                                                                                                                          |
 | Fork point          | The message a user forks or reverts from. Its workspace state is the checkpoint on its side of the turn: before the turn for a user message, after it for an assistant message.                        |
 | Fork                | A new thread started from a fork point. Its composer holds a transcript up to that point. "Fork to new workspace" creates a worktree from the fork point's checkpoint. The source thread is unchanged. |
+
+## Pull requests
+
+| Term                 | Meaning                                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pull request link    | A persisted thread association identified by host, repository, and number. Links can cross projects within an environment and carry a server-maintained snapshot.                        |
+| Pull request sync    | The reactor that refreshes each distinct linked review once per cadence and discovers native stack layers. Explicit refreshes and failed stack reads trigger another read.               |
+| Current pull request | The link used by single-review controls and older clients. Open work takes precedence; a completed single chain points at its top layer. Unrelated terminal links use the latest update. |
+
+## Composer context
+
+| Term                 | Meaning                                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Context record       | The typed payload behind a composer chip, keyed by `contextId` in `message.context.records`. It never holds bytes.                  |
+| Context reference    | One occurrence of a record in message text: `[label](t3-context://v1/<kind>/<contextId>)`. Several references can share one record. |
+| Attachment binding   | The link from an image or file record to its server-owned attachment. Its attachment ID can change without changing `contextId`.    |
+| Attachment inventory | The ordered image records shown as thumbnails above the prose, including images with no inline references.                          |
+
+See [composer context references](./composer-context-references.md) for the contract and lifecycle.

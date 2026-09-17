@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CheckpointRef,
   CommandId,
+  ComposerContextId,
   EventId,
   MessageId,
   ProjectId,
@@ -10,7 +11,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import type { OrchestrationMessage, OrchestrationThread } from "@t3tools/contracts";
+import type { OrchestrationThread } from "@t3tools/contracts";
 
 import { applyThreadDetailEvent } from "./threadReducer.ts";
 
@@ -37,6 +38,7 @@ const baseThread: OrchestrationThread = {
   archivedAt: null,
   settledOverride: null,
   settledAt: null,
+  pullRequests: [],
   deletedAt: null,
   messages: [],
   proposedPlans: [],
@@ -57,7 +59,7 @@ describe("applyThreadDetailEvent", () => {
         type: "project.created",
         payload: {
           projectId: ProjectId.make("project-1"),
-          title: "Spindle",
+          title: "T3 Code",
           workspaceRoot: "/repo",
           repositoryIdentity: null,
           defaultModelSelection: null,
@@ -432,7 +434,173 @@ describe("applyThreadDetailEvent", () => {
     );
   });
 
+  describe("thread pull request links", () => {
+    const link = {
+      host: "github.com",
+      repository: "pingdotgg/t3code",
+      number: 42,
+      url: "https://github.com/pingdotgg/t3code/pull/42",
+      source: "manual" as const,
+      linkedAt: "2026-04-01T05:00:00.000Z",
+      snapshot: null,
+      stack: null,
+    };
+    const key = { host: "github.com", repository: "pingdotgg/t3code", number: 42 };
+    const linkEvent = (sequence: number) =>
+      ({
+        ...baseEventFields,
+        sequence,
+        occurredAt: "2026-04-01T05:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.pull-request-linked",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          link,
+          updatedAt: "2026-04-01T05:00:00.000Z",
+        },
+      }) as const;
+
+    it("links without inventing a legacy route and replaces by key", () => {
+      const linked = applyThreadDetailEvent(baseThread, linkEvent(5));
+      expect(linked.kind).toBe("updated");
+      if (linked.kind !== "updated") return;
+      expect(linked.thread.pullRequests).toEqual([link]);
+      expect(linked.thread.linkedPullRequest).toBeNull();
+
+      const relinked = applyThreadDetailEvent(linked.thread, {
+        ...linkEvent(6),
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          link: { ...link, host: "GitHub.com", source: "agent" },
+          updatedAt: "2026-04-01T06:00:00.000Z",
+        },
+      });
+      if (relinked.kind !== "updated") throw new Error("expected update");
+      expect(relinked.thread.pullRequests).toHaveLength(1);
+      expect(relinked.thread.pullRequests[0]?.source).toBe("agent");
+    });
+
+    it("syncs snapshot and stack onto the matching link only", () => {
+      const linked = applyThreadDetailEvent(baseThread, linkEvent(5));
+      if (linked.kind !== "updated") throw new Error("expected update");
+      const snapshot = {
+        state: "merged" as const,
+        title: "Ship it",
+        headBranch: "feature",
+        baseBranch: "main",
+        isDraft: false,
+        updatedAt: "2026-04-02T00:00:00.000Z",
+        syncedAt: "2026-04-02T00:01:00.000Z",
+      };
+      const synced = applyThreadDetailEvent(linked.thread, {
+        ...baseEventFields,
+        sequence: 6,
+        occurredAt: "2026-04-02T00:01:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.pull-request-synced",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          ...key,
+          snapshot,
+          stack: null,
+          updatedAt: "2026-04-02T00:01:00.000Z",
+        },
+      });
+      if (synced.kind !== "updated") throw new Error("expected update");
+      expect(synced.thread.pullRequests[0]?.snapshot).toEqual(snapshot);
+
+      const unknown = applyThreadDetailEvent(synced.thread, {
+        ...baseEventFields,
+        sequence: 7,
+        occurredAt: "2026-04-02T00:02:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.pull-request-synced",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          ...key,
+          number: 99,
+          snapshot,
+          stack: null,
+          updatedAt: "2026-04-02T00:02:00.000Z",
+        },
+      });
+      expect(unknown.kind).toBe("unchanged");
+    });
+
+    it("unlinks and clears the compat field", () => {
+      const linked = applyThreadDetailEvent(baseThread, linkEvent(5));
+      if (linked.kind !== "updated") throw new Error("expected update");
+      const unlinked = applyThreadDetailEvent(linked.thread, {
+        ...baseEventFields,
+        sequence: 6,
+        occurredAt: "2026-04-01T06:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.pull-request-unlinked",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          ...key,
+          updatedAt: "2026-04-01T06:00:00.000Z",
+        },
+      });
+      if (unlinked.kind !== "updated") throw new Error("expected update");
+      expect(unlinked.thread.pullRequests).toEqual([]);
+      expect(unlinked.thread.linkedPullRequest).toBeNull();
+    });
+  });
+
   describe("thread.message-sent", () => {
+    it.each([
+      ["first", ["first+", "middle", "last"]],
+      ["middle", ["first", "middle+", "last"]],
+      ["last", ["first", "middle", "last+"]],
+      ["new", ["first", "middle", "last", "+"]],
+    ] as const)("applies a delta to %s without changing other messages", (id, texts) => {
+      const messages = Object.freeze(
+        ["first", "middle", "last"].map((name) =>
+          Object.freeze({
+            id: MessageId.make(name),
+            role: "assistant" as const,
+            text: name,
+            turnId: null,
+            streaming: false,
+            createdAt: baseThread.createdAt,
+            updatedAt: baseThread.updatedAt,
+          }),
+        ),
+      );
+      const result = applyThreadDetailEvent(
+        { ...baseThread, messages },
+        {
+          ...baseEventFields,
+          sequence: 6,
+          occurredAt: baseThread.updatedAt,
+          aggregateKind: "thread",
+          aggregateId: baseThread.id,
+          type: "thread.message-sent",
+          payload: {
+            threadId: baseThread.id,
+            messageId: MessageId.make(id),
+            role: "assistant",
+            text: "+",
+            turnId: null,
+            streaming: true,
+            createdAt: baseThread.createdAt,
+            updatedAt: baseThread.updatedAt,
+          },
+        },
+      );
+      expect(result.kind).toBe("updated");
+      if (result.kind !== "updated") return;
+      expect(result.thread.messages.map((message) => message.text)).toEqual(texts);
+      for (const [index, message] of messages.entries()) {
+        if (message.id !== id) expect(result.thread.messages[index]).toBe(message);
+      }
+    });
+
     it("appends a new message", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,
@@ -492,6 +660,48 @@ describe("applyThreadDetailEvent", () => {
       expect(repeated.thread.messages).toEqual(imported.thread.messages);
       expect(repeated.thread.latestTurn).toBeNull();
       expect(repeated.thread.checkpoints).toBe(baseThread.checkpoints);
+    });
+
+    it("keeps structured context on a newly sent message", () => {
+      const context = {
+        version: 1 as const,
+        records: [
+          {
+            version: 1 as const,
+            contextId: ComposerContextId.make("video-1"),
+            kind: "file" as const,
+            label: "demo.mp4",
+            attachmentId: "attachment-video-1",
+            name: "demo.mp4",
+            mimeType: "video/mp4",
+            sizeBytes: 42,
+          },
+        ],
+      };
+      const result = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 7,
+        occurredAt: "2026-04-01T06:01:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-with-context"),
+          role: "user",
+          text: "Watch [demo.mp4](t3-context://v1/file/video-1).",
+          context,
+          turnId: null,
+          streaming: false,
+          createdAt: "2026-04-01T06:01:00.000Z",
+          updatedAt: "2026-04-01T06:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.messages[0]?.context).toEqual(context);
+      }
     });
 
     it("appends text for streaming messages", () => {
@@ -1461,83 +1671,6 @@ describe("applyThreadDetailEvent", () => {
         // msg-3 (turn-2) is filtered, msg-1 (no turn) and msg-2 (turn-1) remain
         expect(result.thread.messages).toHaveLength(2);
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
-      }
-    });
-
-    it("drops unbound user messages beyond the retained turn count", () => {
-      // User messages are appended before their turn exists, so none of them
-      // carry a turnId. Reverting to turn 1 must still remove the second one.
-      const userMessage = (id: string, text: string, createdAt: string): OrchestrationMessage => ({
-        id: MessageId.make(id),
-        role: "user",
-        text,
-        turnId: null,
-        streaming: false,
-        createdAt,
-        updatedAt: createdAt,
-      });
-      const threadWithData: OrchestrationThread = {
-        ...baseThread,
-        messages: [
-          userMessage("msg-1", "First", "2026-04-01T01:00:00.000Z"),
-          {
-            id: MessageId.make("msg-2"),
-            role: "assistant",
-            text: "Response 1",
-            turnId: TurnId.make("turn-1"),
-            streaming: false,
-            createdAt: "2026-04-01T02:00:00.000Z",
-            updatedAt: "2026-04-01T02:00:00.000Z",
-          },
-          userMessage("msg-3", "Second", "2026-04-01T03:00:00.000Z"),
-          {
-            id: MessageId.make("msg-4"),
-            role: "assistant",
-            text: "Response 2",
-            turnId: TurnId.make("turn-2"),
-            streaming: false,
-            createdAt: "2026-04-01T04:00:00.000Z",
-            updatedAt: "2026-04-01T04:00:00.000Z",
-          },
-        ],
-        checkpoints: [
-          {
-            turnId: TurnId.make("turn-1"),
-            checkpointTurnCount: 1,
-            checkpointRef: CheckpointRef.make("ref-1"),
-            status: "ready",
-            files: [],
-            assistantMessageId: MessageId.make("msg-2"),
-            completedAt: "2026-04-01T02:00:00.000Z",
-          },
-          {
-            turnId: TurnId.make("turn-2"),
-            checkpointTurnCount: 2,
-            checkpointRef: CheckpointRef.make("ref-2"),
-            status: "ready",
-            files: [],
-            assistantMessageId: MessageId.make("msg-4"),
-            completedAt: "2026-04-01T04:00:00.000Z",
-          },
-        ],
-      };
-
-      const result = applyThreadDetailEvent(threadWithData, {
-        ...baseEventFields,
-        sequence: 14,
-        occurredAt: "2026-04-01T05:00:00.000Z",
-        aggregateKind: "thread",
-        aggregateId: ThreadId.make("thread-1"),
-        type: "thread.reverted",
-        payload: {
-          threadId: ThreadId.make("thread-1"),
-          turnCount: 1,
-        },
-      });
-
-      expect(result.kind).toBe("updated");
-      if (result.kind === "updated") {
-        expect(result.thread.messages.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
       }
     });
   });

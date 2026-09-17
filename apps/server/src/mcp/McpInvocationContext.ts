@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  McpCapabilityUnavailableError,
   PreviewAutomationUnavailableError,
   type ProviderInstanceId,
   type ThreadId,
@@ -12,7 +13,7 @@ import * as Effect from "effect/Effect";
  * start other threads; it is only granted to threads a person started, so an
  * agent-started thread cannot start more.
  */
-export type McpCapability = "preview" | "orchestration";
+export type McpCapability = "preview" | "device" | "pull-requests" | "orchestration";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
@@ -28,18 +29,32 @@ export class McpInvocationContext extends Context.Service<
   McpInvocationScope
 >()("t3/mcp/McpInvocationContext") {}
 
-export const requireMcpCapability = Effect.fn("mcp.requireCapability")(function* (
-  capability: "preview",
-) {
-  const invocation = yield* McpInvocationContext;
-  if (!invocation.capabilities.has(capability)) {
-    return yield* new PreviewAutomationUnavailableError({
-      capability,
-      environmentId: invocation.environmentId,
-      threadId: invocation.threadId,
-      providerSessionId: invocation.providerSessionId,
-      providerInstanceId: invocation.providerInstanceId,
-    });
-  }
-  return invocation;
-});
+/** The error a missing capability surfaces as; preview keeps its own so the broker can route it. */
+export type McpCapabilityError<C extends McpCapability> = C extends "preview"
+  ? PreviewAutomationUnavailableError
+  : McpCapabilityUnavailableError;
+
+const missingCapability = (
+  invocation: McpInvocationScope,
+  capability: McpCapability,
+): PreviewAutomationUnavailableError | McpCapabilityUnavailableError => {
+  const fields = {
+    environmentId: invocation.environmentId,
+    threadId: invocation.threadId,
+    providerSessionId: invocation.providerSessionId,
+    providerInstanceId: invocation.providerInstanceId,
+  };
+  return capability === "preview"
+    ? new PreviewAutomationUnavailableError({ capability, ...fields })
+    : new McpCapabilityUnavailableError({ capability, ...fields });
+};
+
+export const requireMcpCapability = <const C extends McpCapability>(
+  capability: C,
+): Effect.Effect<McpInvocationScope, McpCapabilityError<C>, McpInvocationContext> =>
+  Effect.flatMap(McpInvocationContext, (invocation) =>
+    invocation.capabilities.has(capability)
+      ? Effect.succeed(invocation)
+      : // The conditional type narrows what the literal argument decided at runtime.
+        Effect.fail(missingCapability(invocation, capability) as McpCapabilityError<C>),
+  ).pipe(Effect.withSpan("mcp.requireCapability"));

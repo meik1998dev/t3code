@@ -2,6 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
+  it("requires explicit registration of every PR and stack layer", () => {
+    const instructions = buildRuntimeInstructions({ harness: "Codex" });
+    expect(instructions).toContain("When the t3-code MCP server exposes link_pull_request");
+    expect(instructions).toContain("with the full PR URL immediately after creating a PR");
+    expect(instructions).toContain("For a stack, call it for every layer");
+    expect(instructions).toContain("call list_thread_pull_requests and link any PR");
+  });
+
   it("keeps known model and effort metadata on one line", () => {
     expect(
       buildRuntimeInstructions({
@@ -52,7 +60,6 @@ describe("buildTaskTrackingInstructions", () => {
     expect(instructions).toContain("3 or more things");
     expect(instructions).toContain("TaskCreate and TaskUpdate calls");
     expect(instructions).toContain("create every step with TaskCreate");
-    expect(instructions).toMatch(/^<task_tracking>.*<\/task_tracking>$/u);
   });
 
   it("names a shared tool once", () => {

@@ -1,4 +1,9 @@
-export type ComposerTriggerKind = "path" | "slash-command" | "slash-model" | "skill";
+export type ComposerTriggerKind =
+  | "path"
+  | "pull-request"
+  | "slash-command"
+  | "slash-model"
+  | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 
 export interface ComposerTrigger {
@@ -56,7 +61,6 @@ export function detectComposerTrigger(
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const linePrefix = text.slice(lineStart, cursor);
 
-  // `/model <args>` spans whitespace, so it is only recognised from the line start.
   const modelMatch = /^\/model(?:\s+(.*))?$/.exec(linePrefix);
   if (modelMatch) {
     return {
@@ -75,8 +79,6 @@ export function detectComposerTrigger(
   const tokenStart = tokenIdx + 1;
 
   const token = text.slice(tokenStart, cursor);
-  // `/` opens the menu from any token start, not only the prompt start. The
-  // menu itself decides which items make sense at the current position.
   if (token.startsWith("/")) {
     const commandQuery = token.slice(1);
     if (commandQuery.toLowerCase() === "model") {
@@ -94,6 +96,14 @@ export function detectComposerTrigger(
       rangeEnd: cursor,
     };
   }
+  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*)?$/u.exec(token);
+  if (pullRequestMatch)
+    return {
+      kind: "pull-request",
+      query: pullRequestMatch[1] ?? "",
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
   if (token.startsWith("$")) {
     return {
       kind: "skill",

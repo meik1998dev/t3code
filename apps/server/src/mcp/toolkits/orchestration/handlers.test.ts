@@ -132,6 +132,8 @@ const codexWithEffort = provider("codex", {
 
 const client = McpSchema.McpServerClient.of({
   clientId: 1,
+  clientCapabilities: {},
+  clientInfo: { name: "orchestration-test", version: "1.0.0" },
   protocolVersion: "2025-06-18",
   initializePayload: {
     protocolVersion: "2025-06-18",
@@ -566,7 +568,7 @@ describe("orchestration MCP tools", () => {
       });
       // Unnamed branches get the same temporary name the composer uses, which
       // the server renames from the task after the first turn.
-      expect(command?.bootstrap?.prepareWorktree?.branch).toMatch(/^[0-9a-f]{8}$/);
+      expect(command?.bootstrap?.prepareWorktree?.branch).toMatch(/^t3code\/[0-9a-f]{8}$/);
       expect(command?.bootstrap?.runSetupScript).toBe(true);
     }),
   );

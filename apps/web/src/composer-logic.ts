@@ -1,3 +1,4 @@
+import type { ClientSettings } from "@t3tools/contracts/settings";
 import type { AssistantCitation } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -7,12 +8,10 @@ import {
   splitPromptIntoComposerSegments,
   type ComposerPromptSegment,
 } from "./composer-editor-mentions";
-import { PASTED_TEXT_END, PASTED_TEXT_START } from "./lib/pastedText";
-import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "path" | "slash-command" | "skill";
+export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
-export type ComposerSubmissionIntent = "foreground" | "background";
+export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -30,9 +29,17 @@ export function composerSubmissionIntentForEnter(input: {
   shiftKey: boolean;
   modifierKey: boolean;
   isDraftThread: boolean;
+  isRunning?: boolean;
+  sendShortcut?: ClientSettings["sendShortcut"];
+  prompt?: string;
 }): ComposerSubmissionIntent | null {
-  if (input.isMobileViewport || input.shiftKey) {
-    return null;
+  const requiresModifier =
+    input.sendShortcut === "mod-enter" ||
+    (input.sendShortcut === "mod-enter-multiline" && /[\r\n]/.test(input.prompt ?? ""));
+  if (input.isMobileViewport || (requiresModifier && !input.modifierKey)) return null;
+  if (input.shiftKey && !(requiresModifier && input.modifierKey && input.isRunning)) return null;
+  if (input.isRunning && input.modifierKey && (!requiresModifier || input.shiftKey)) {
+    return "alternate";
   }
   return input.modifierKey && input.isDraftThread ? "background" : "foreground";
 }
@@ -45,15 +52,7 @@ function clampCursor(text: string, cursor: number): number {
 }
 
 function isWhitespace(char: string): boolean {
-  return (
-    char === " " ||
-    char === "\n" ||
-    char === "\t" ||
-    char === "\r" ||
-    char === INLINE_TERMINAL_CONTEXT_PLACEHOLDER ||
-    char === PASTED_TEXT_START ||
-    char === PASTED_TEXT_END
-  );
+  return char === " " || char === "\n" || char === "\t" || char === "\r";
 }
 
 function tokenStartForCursor(text: string, cursor: number): number {
@@ -78,7 +77,7 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
     if (
       segment.type === "mention" ||
       segment.type === "citation" ||
-      segment.type === "pasted-text"
+      segment.type === "context-reference"
     ) {
       const expandedLength = segment.source.length;
       if (remaining <= 1) {
@@ -95,14 +94,6 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
       }
       remaining -= 1;
       expandedCursor += expandedLength;
-      continue;
-    }
-    if (segment.type === "terminal-context") {
-      if (remaining <= 1) {
-        return expandedCursor + remaining;
-      }
-      remaining -= 1;
-      expandedCursor += 1;
       continue;
     }
 
@@ -159,7 +150,7 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
     if (
       segment.type === "mention" ||
       segment.type === "citation" ||
-      segment.type === "pasted-text"
+      segment.type === "context-reference"
     ) {
       const expandedLength = segment.source.length;
       if (remaining === 0) {
@@ -181,14 +172,6 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
         return collapsedCursor + 1;
       }
       remaining -= expandedLength;
-      collapsedCursor += 1;
-      continue;
-    }
-    if (segment.type === "terminal-context") {
-      if (remaining <= 1) {
-        return collapsedCursor + remaining;
-      }
-      remaining -= 1;
       collapsedCursor += 1;
       continue;
     }
@@ -236,13 +219,19 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   const cursor = clampCursor(text, cursorInput);
   const tokenStart = tokenStartForCursor(text, cursor);
   const token = text.slice(tokenStart, cursor);
-
-  // `/` opens the menu from any token start, not only the prompt start. The
-  // menu itself decides which items make sense at the current position.
   if (token.startsWith("/")) {
     return {
       kind: "slash-command",
       query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
+  }
+  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*)?$/u.exec(token);
+  if (pullRequestMatch) {
+    return {
+      kind: "pull-request",
+      query: pullRequestMatch[1] ?? "",
       rangeStart: tokenStart,
       rangeEnd: cursor,
     };

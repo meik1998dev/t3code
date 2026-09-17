@@ -1,51 +1,5 @@
 @import "tailwindcss";
 
-/* Current: the thread is static; only a tiny compositor layer travels. */
-.current-status-bead {
-  position: absolute;
-  left: 4.167%;
-  top: 41.667%;
-  width: 16.667%;
-  height: 16.667%;
-  border-radius: 50%;
-  background: currentColor;
-  animation: current-status-travel 3s ease-in-out infinite;
-}
-.current-status-bead[data-animate="false"] {
-  animation-play-state: paused;
-}
-@keyframes current-status-travel {
-  0% {
-    transform: translate(0, 0);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  25% {
-    transform: translate(125%, -125%);
-  }
-  50% {
-    transform: translate(250%, 0);
-  }
-  75% {
-    transform: translate(375%, 125%);
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate(500%, 0);
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .current-status-bead {
-    animation: none;
-  }
-}
-
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
@@ -208,6 +162,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-update-surface: var(--update-surface);
   --color-success-foreground: var(--success-foreground);
   --color-success: var(--success);
+  --color-diff-addition: var(--diff-addition);
+  --color-diff-deletion: var(--diff-deletion);
+  --color-diff-addition-foreground: var(--diff-addition-foreground);
+  --color-diff-deletion-foreground: var(--diff-deletion-foreground);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-destructive-foreground: var(--destructive-foreground);
@@ -407,7 +365,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   -webkit-mask-position: top, bottom, right;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-size:
-    100% var(--workspace-titlebar-scroll-fade-height),
+    100% calc(var(--workspace-titlebar-scroll-fade-height) + 1px),
     100% calc(100% - var(--workspace-titlebar-scroll-fade-height)),
     var(--app-scrollbar-width) 100%;
   mask-image:
@@ -425,7 +383,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   mask-position: top, bottom, right;
   mask-repeat: no-repeat;
   mask-size:
-    100% var(--workspace-titlebar-scroll-fade-height),
+    100% calc(var(--workspace-titlebar-scroll-fade-height) + 1px),
     100% calc(100% - var(--workspace-titlebar-scroll-fade-height)),
     var(--app-scrollbar-width) 100%;
 }
@@ -1122,22 +1080,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
-/* The left sidebar is an index, not body copy, so it runs 10% smaller than the
-   rest of the app. Overriding the type scale (rather than every utility) keeps
-   `text-xs`/`text-sm` meaningful inside the sidebar, and the insets scale by
-   the same factor so rows keep their proportions. Portaled tooltips and menus
-   render outside this scope and stay full size. */
-[data-app-sidebar] {
-  --text-xs: 0.675rem;
-  --text-sm: 0.7875rem;
-  --text-base: 0.9rem;
-  --text-lg: 1.0125rem;
-  --sidebar-content-inset: 0.45rem;
-  --sidebar-row-content-inset: 0.5625rem;
-  /* Header row (20px) + title line + branch row + scaled vertical inset. */
-  --sidebar-thread-card-height: 4.5625rem;
-}
-
 /* Keep both sidebar implementations (default and legacy) on the same quiet
    zinc hierarchy: zinc-50 navigation, zinc-25 hover, and white selected/raised
    surfaces. */
@@ -1361,6 +1303,18 @@ html[data-theme-id] [data-workspace-titlebar-controls] [data-slot="toggle"],
 html[data-theme-id] [data-workspace-titlebar-controls] [data-slot="tooltip-trigger"] {
   --control-icon-color: var(--contrast-toolbar-foreground);
   color: var(--contrast-toolbar-foreground);
+}
+
+html[data-theme-id] [data-panel-layout-controls] [data-slot="toggle"]:disabled,
+html[data-theme-id] [data-panel-layout-controls] [data-slot="tooltip-trigger"]:disabled,
+html[data-theme-id] [data-workspace-titlebar-controls] [data-slot="toggle"]:disabled,
+html[data-theme-id] [data-workspace-titlebar-controls] [data-slot="tooltip-trigger"]:disabled {
+  --control-icon-color: color-mix(
+    in oklab,
+    var(--contrast-toolbar-foreground) 55%,
+    var(--toolbar-background)
+  );
+  color: color-mix(in oklab, var(--contrast-toolbar-foreground) 55%, var(--toolbar-background));
 }
 
 html[data-theme-id] [data-chat-header] [data-slot="button"]:hover,
@@ -1688,6 +1642,16 @@ code {
   -webkit-app-region: drag;
 }
 
+/* Electron 44 inherits app-region. Reset children to the initial value so they
+   do not add drag rectangles over fixed controls. Explicit `none` is treated
+   as `no-drag` and breaks titlebar dragging; `initial` emits no rectangle.
+   The base layer lets explicit drag/no-drag utilities take precedence. */
+@layer base {
+  .drag-region > * {
+    -webkit-app-region: initial;
+  }
+}
+
 .drag-region button,
 .drag-region input,
 .drag-region textarea,
@@ -1950,6 +1914,22 @@ code {
   background: transparent !important;
 }
 
+/* Paragraphs and code blocks arrive in chunks while a response streams. Fade
+   each new block in so the chunk does not pop. @starting-style only applies
+   when an element is first inserted, and the rule is gated on data-streaming,
+   so opening a finished thread never replays the fade. Opacity only, one
+   shot, no layout change. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-markdown[data-streaming] > *,
+  .chat-markdown[data-streaming] .chat-markdown-shiki {
+    transition: opacity 600ms ease-out;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+}
+
 /* Diagnostics-style tables: row separators only, uppercase headers, and a
    scroll-fade container for horizontal overflow. The root chat-markdown
    wrapping rules (overflow-wrap: anywhere) would let columns shrink to single
@@ -2010,6 +1990,17 @@ code {
   }
 }
 
+/* Expanded capture preview swaps between the screenshot and its extracted text.
+   One-shot fade on whichever panel mounts, so nothing repaints continuously. */
+@keyframes snap-shot-contents-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes provider-update-pill-countdown {
   from {
     transform: scaleX(1);
@@ -2017,6 +2008,28 @@ code {
   to {
     transform: scaleX(0);
   }
+}
+
+:root {
+  --diff-addition: var(--success);
+  --diff-deletion: var(--destructive);
+  --diff-addition-foreground: light-dark(var(--color-emerald-600), var(--color-emerald-400));
+  --diff-deletion-foreground: light-dark(var(--color-red-600), var(--color-red-400));
+}
+
+:root[data-diff-color-scheme="blue-orange"] {
+  --diff-addition: light-dark(var(--color-blue-600), var(--color-blue-400));
+  --diff-deletion: light-dark(var(--color-orange-600), var(--color-orange-400));
+  --diff-addition-foreground: var(--diff-addition);
+  --diff-deletion-foreground: var(--diff-deletion);
+  --diffs-addition-color-override: var(--diff-addition);
+  --diffs-deletion-color-override: var(--diff-deletion);
+  --trees-status-added-override: var(--diff-addition);
+  --trees-status-deleted-override: var(--diff-deletion);
+  --trees-status-untracked-override: var(--diff-addition);
+  --trees-git-added-color-override: var(--diff-addition);
+  --trees-git-deleted-color-override: var(--diff-deletion);
+  --trees-git-untracked-color-override: var(--diff-addition);
 }
 
 .diff-render-surface diffs-container {
