@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `32e8b2584` (2026-09-16, `fix(web): show private repository media in pull request tabs (#11706)`, v0.0.42).
+- Last synced upstream commit: `9ea9c3d5d2` (2026-09-18, `fix(web): keep a file-to-symlink type change from crashing the diff view (#11075)`, v0.0.43-nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -27,21 +27,25 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If the fork and upstream both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This already happened twice: fork 48 hid upstream 48, and fork 50–52 hid upstream 50–51.
+This already happened three times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51, and
+fork 53 hid upstream 53.
 The repair migrations below make both upgrade paths safe.
 
 Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 53     | `053_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
 | 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
 | 56     | `056_RepairThreadTitleStateColumn.ts`        | Sync repair   |
 | 57     | `057_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 58     | `058_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 59     | `059_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
 
-Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`), and
-52 (`ProjectionThreadTitleState`). Migration 56 idempotently adds `title_state_json` for databases
-that had already recorded the fork's own 52.
+Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`),
+52 (`ProjectionThreadTitleState`), and 53 (`PullRequestFilesViewed`). Migration 56 idempotently
+adds `title_state_json` for databases that had already recorded the fork's own 52. The v0.0.43
+sync moved the fork's own 53 to 58, and migration 59 replays upstream's 53 for databases that
+had recorded the fork's 53 instead.
 Migration 55 idempotently reapplies upstream 50–51 and fork 53 for databases that had already
 recorded the fork's old 50–54 sequence. The removed parent-thread migration remains only as a
 historical row in upgraded databases; migration 57 idempotently restores that column for both
@@ -70,11 +74,12 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts` | Agent threads, Task tracking                             |
 | `apps/server/src/provider/RuntimeInstructions.ts`  | Agent threads, Task tracking                             |
 | `apps/server/src/persistence/Migrations.ts`        | [Migrations](#migrations)                                |
+| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks            |
 | `packages/contracts/src/orchestration.ts`          | Agent threads, Message fork                              |
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 53 and 55)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 55–59)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
@@ -329,6 +334,10 @@ Host <hostname>.local
 - Key files: `apps/server/src/sourceControl/{GitHubAccount,GitHubCli}.ts`,
   `apps/server/src/pullRequest/*`, `packages/contracts/src/pullRequest.ts`, `docs/user/source-control.md`.
 - Tests: `GitHubAccount.test.ts`, `GitHubCli.test.ts`, `PullRequestService.test.ts`.
+- Sync note: upstream groups viewer lookups by host. The fork groups them by
+  (host, kind, account key), so `SupportedProject` carries `viewerAccountKey`, the project scan is
+  an `Effect.forEach` that can call `api.getViewerAccountKey`, and the cache is `viewersByAccount`.
+  Keep that shape and re-apply upstream's changes on top of it.
 - Check: in a repo with `gh.account` set to a non-default account, the pull request list loads.
 - Drop when: upstream supports several `gh` accounts.
 
