@@ -342,6 +342,10 @@
     "./spindleMark": {
       "types": "./src/spindleMark.ts",
       "import": "./src/spindleMark.ts"
+    },
+    "./gitPatchPath": {
+      "types": "./src/gitPatchPath.ts",
+      "import": "./src/gitPatchPath.ts"
     }
   },
   "scripts": {

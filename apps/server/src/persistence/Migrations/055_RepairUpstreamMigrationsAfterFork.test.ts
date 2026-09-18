@@ -6,6 +6,8 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runMigrations } from "../Migrations.ts";
 import repairUpstreamMigrations from "./055_RepairUpstreamMigrationsAfterFork.ts";
 import repairThreadTitleStateColumn from "./056_RepairThreadTitleStateColumn.ts";
+import repairThreadBranchPullRequestColumn from "./058_RepairThreadBranchPullRequestColumn.ts";
+import repairPullRequestFilesViewedTable from "./059_RepairPullRequestFilesViewedTable.ts";
 
 it.layer(NodeSqliteClient.layerMemory())("055_RepairUpstreamMigrationsAfterFork", (it) => {
   it.effect("repairs upstream migrations skipped by an existing fork database", () =>
@@ -25,12 +27,14 @@ it.layer(NodeSqliteClient.layerMemory())("055_RepairUpstreamMigrationsAfterFork"
       const ran = yield* runMigrations();
       assert.deepStrictEqual(
         ran.map(([id]) => id),
-        [55, 56],
+        [55, 56, 57, 58, 59],
       );
 
       // Every repair must also be safe when a database already has the schema.
       yield* repairUpstreamMigrations;
       yield* repairThreadTitleStateColumn;
+      yield* repairThreadBranchPullRequestColumn;
+      yield* repairPullRequestFilesViewedTable;
 
       const messageColumns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(projection_thread_messages)
@@ -51,6 +55,12 @@ it.layer(NodeSqliteClient.layerMemory())("055_RepairUpstreamMigrationsAfterFork"
         threadColumns.some((column) => column.name === "title_state_json"),
         true,
       );
+
+      // Upstream's migration 53 is skipped by fork databases that recorded a 53 of their own.
+      const tables = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pull_request_files_viewed'
+      `;
+      assert.equal(tables.length, 1);
     }),
   );
 });
