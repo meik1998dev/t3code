@@ -320,11 +320,17 @@ Host <hostname>.local
 
 ### Sidebar look (#6, #8, #22, #23)
 
-- What: bigger sidebar text and taller rows. The update pill shows only when an update needs
-  action. No working circle in statuses. No provider icon at the end of thread rows (the hover
-  tooltip still names the provider and model).
+- What: taller sidebar rows, and sidebar text one step smaller than the center panel. The
+  smaller text comes from a single rule in `index.css` that scales the Tailwind `--text-xs`,
+  `--text-sm` and `--text-base` variables by `--sidebar-text-scale` (0.85) inside
+  `[data-slot="sidebar"]`, so every `text-*` utility in the sidebar scales without touching
+  component files. Change the one scale value to retune the size. The update pill shows only
+  when an update needs action. No working circle in statuses. No provider icon at the end of
+  thread rows (the hover tooltip still names the provider and model).
 - Key files: `apps/web/src/index.css`, `Sidebar.tsx`, `sidebar/SidebarUpdatePill.tsx`.
-- Check: compare row height and text size with the pre-sync build.
+- Check: compare row height with the pre-sync build; sidebar thread titles must read smaller
+  than the chat text next to them.
+- Drop when: upstream ships its own smaller sidebar type scale.
 
 ## Git and GitHub
 
@@ -358,8 +364,17 @@ Host <hostname>.local
 
 - What: a smaller border radius across the app. The composer radius was restored once after a sync,
   and again when the upstream composer footer came back (`rounded-3xl` in `ComposerSurface.tsx`).
-- Key files: `apps/web/src/index.css`, `chat/{ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
-- Check: the composer and cards have the smaller radius.
+  The composer input surface in `ChatComposer.tsx` was a hardcoded `rounded-[20px]`, so it ignored
+  the token and looked rounder than its own frame; it now uses
+  `rounded-[calc(var(--radius-3xl)-1px)]`, the same inner-surface idiom as `ui/dialog.tsx`.
+- Key files: `apps/web/src/index.css`, `chat/{ChatComposer,ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
+- Check: the composer and cards have the smaller radius, and the input corners match the composer frame.
+- The composer glass backdrop is drawn with `clip-path: shape()`, so its corners cannot inherit
+  `rounded-*`. `ComposerSurface.tsx` now defines `--chat-composer-corner` (`--radius-3xl`) and
+  `--chat-composer-strip-corner` (`--radius-2xl`) plus their `*-control` bezier offsets
+  (`corner * 0.4477`), and the shape, the seam polygon and the strip use those instead of the
+  old literal `22px`/`9.85px`/`16px`/`7.16px`. Upstream's literals were also 2px off its own
+  `rounded-3xl`, so take upstream's shape on a conflict and re-apply the variables.
 - Warning: upstream often changes radius tokens. Take upstream's token names, then set the fork values again.
 
 ### Branch names in the code font (#10)
