@@ -65,17 +65,17 @@ On every sync where numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                               | Entries                                                  |
-| -------------------------------------------------- | -------------------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`             | Agent threads, Message fork, Tasks                       |
-| `apps/web/src/components/Sidebar.tsx`              | Agent threads, Sidebar filter, Sidebar style, Transcript |
-| `apps/web/src/index.css`                           | Sidebar style, Radius, Mermaid                           |
-| `apps/server/src/ws.ts`                            | Agent ports, GitHub account, Message fork                |
-| `apps/server/src/provider/Layers/ClaudeAdapter.ts` | Agent threads, Task tracking                             |
-| `apps/server/src/provider/RuntimeInstructions.ts`  | Agent threads, Task tracking                             |
-| `apps/server/src/persistence/Migrations.ts`        | [Migrations](#migrations)                                |
-| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks            |
-| `packages/contracts/src/orchestration.ts`          | Agent threads, Message fork                              |
+| File                                                | Entries                                                  |
+| --------------------------------------------------- | -------------------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`              | Agent threads, Message fork, Tasks                       |
+| `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style, Transcript |
+| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid                           |
+| `apps/server/src/ws.ts`                             | Agent ports, GitHub account, Message fork                |
+| `apps/server/src/provider/Layers/ClaudeAdapter.ts`  | Agent threads, Task tracking                             |
+| `apps/server/src/provider/RuntimeInstructions.ts`   | Agent threads, Task tracking                             |
+| `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                                |
+| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks             |
+| `packages/contracts/src/orchestration.ts`           | Agent threads, Message fork                              |
 
 ## Remote server (VPS) deploy
 
@@ -420,3 +420,13 @@ Host <hostname>.local
 - Warning: this conflicts on every sync while upstream keeps improving its installers. Keep the
   fork side unless the fork starts publishing its own package or install script.
 - Drop it when: Spindle ships a real installer or npm package of its own.
+
+### `msgpackr-extract` build flag (direct commit)
+
+- What: upstream #12326 left pnpm's placeholder `msgpackr-extract: set this to true or false` in
+  `allowBuilds`. The desktop build script reads that map as booleans and fails with
+  `SchemaError: Expected boolean`. The fork sets it to `false` (the pnpm 10 default; `msgpackr`
+  falls back to plain JS).
+- Key files: `pnpm-workspace.yaml`.
+- Check: `vp run dist:desktop:dmg:arm64` gets past `readWorkspaceConfig`.
+- Drop it when: upstream sets a real value.
