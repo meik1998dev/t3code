@@ -2245,3 +2245,16 @@ code {
 .composer-tiptap li[data-checked] > div > p {
   margin: 0;
 }
+
+/*
+ * Fork change: the sidebar used the same type scale as the center panel, which
+ * made thread titles look as loud as the chat itself. Shrinking the Tailwind
+ * text-scale variables inside the sidebar subtree scales every `text-*`
+ * utility at once, so no component file has to change (keeps upstream syncs clean).
+ */
+[data-slot="sidebar"] {
+  --sidebar-text-scale: 0.85;
+  --text-xs: calc(0.75rem * var(--sidebar-text-scale));
+  --text-sm: calc(0.875rem * var(--sidebar-text-scale));
+  --text-base: calc(1rem * var(--sidebar-text-scale));
+}
