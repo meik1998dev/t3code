@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `9ea9c3d5d2` (2026-09-18, `fix(web): keep a file-to-symlink type change from crashing the diff view (#11075)`, v0.0.43-nightly).
+- Last synced upstream commit: `1de563c149` (2026-09-21, `feat(devices): offer manual updates in tool version details (#12877)`, v0.0.43-nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -65,17 +65,17 @@ On every sync where numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                               | Entries                                                  |
-| -------------------------------------------------- | -------------------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`             | Agent threads, Message fork, Tasks                       |
-| `apps/web/src/components/Sidebar.tsx`              | Agent threads, Sidebar filter, Sidebar style, Transcript |
-| `apps/web/src/index.css`                           | Sidebar style, Radius, Mermaid                           |
-| `apps/server/src/ws.ts`                            | Agent ports, GitHub account, Message fork                |
-| `apps/server/src/provider/Layers/ClaudeAdapter.ts` | Agent threads, Task tracking                             |
-| `apps/server/src/provider/RuntimeInstructions.ts`  | Agent threads, Task tracking                             |
-| `apps/server/src/persistence/Migrations.ts`        | [Migrations](#migrations)                                |
-| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks            |
-| `packages/contracts/src/orchestration.ts`          | Agent threads, Message fork                              |
+| File                                                | Entries                                                  |
+| --------------------------------------------------- | -------------------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`              | Agent threads, Message fork, Tasks                       |
+| `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style, Transcript |
+| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid                           |
+| `apps/server/src/ws.ts`                             | Agent ports, GitHub account, Message fork                |
+| `apps/server/src/provider/Layers/ClaudeAdapter.ts`  | Agent threads, Task tracking                             |
+| `apps/server/src/provider/RuntimeInstructions.ts`   | Agent threads, Task tracking                             |
+| `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                                |
+| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks             |
+| `packages/contracts/src/orchestration.ts`           | Agent threads, Message fork                              |
 
 ## Remote server (VPS) deploy
 
@@ -218,6 +218,9 @@ Host <hostname>.local
 - Tests: `RuntimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`, `ClaudeHome.test.ts`,
   `codexLaunchArgs.test.ts`.
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
+- Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
+  returns a copy of `process.env`, not `process.env` itself. Upstream's test asserts identity
+  (`.toBe(process.env)`); on a conflict keep the fork's value check instead.
 - Drop when: upstream turns these tools on and adds its own instruction.
 
 ## Transcripts
@@ -380,6 +383,11 @@ Host <hostname>.local
 ### Branch names in the code font (#10)
 
 - Key files: `apps/web/src/components/BranchToolbarBranchSelector.tsx`, `Sidebar.tsx`, `ThreadCommandSubtitle.tsx`.
+- Upstream now renders branch names through `ui/middle-truncate.tsx`, which merges `className` onto
+  its outer span, so the fork passes `font-mono` there instead of owning the span. On a conflict,
+  take upstream's `MiddleTruncate` and add `font-mono` to its `className`.
+- The branch selector's own trigger label is deliberately _not_ in the code font: that spot took
+  upstream wholesale in the 2026-09-21 sync, since the label doubles as the "Select ref" placeholder.
 
 ### Mermaid diagrams (#15)
 
@@ -407,6 +415,10 @@ Host <hostname>.local
 
 - Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
 - Check: a project with no actions shows no "Add action" in the chat header.
+- Upstream (#12453) moved the header buttons into a `headerActions` fragment that collapses into a
+  "More actions" menu on narrow headers. The guard now lives in a narrowed `projectScripts` const
+  above that fragment and also gates the menu separators and the menu trigger. A plain boolean does
+  not narrow the type, so keep the `?.length ? ... : undefined` form.
 
 ### Install instructions point at a checkout (sync/v0.0.42)
 
