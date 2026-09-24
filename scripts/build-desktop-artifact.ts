@@ -33,6 +33,10 @@ import {
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
+import {
+  ALLOW_BUILD_WITHOUT_CLOUD_ENV,
+  missingCloudPublicConfig,
+} from "./lib/cloud-config-guard.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -627,6 +631,18 @@ export class MissingDesktopBuildInputError extends Schema.TaggedError<MissingDes
 ) {
   override get message(): string {
     return `Missing ${desktopBuildInputArtifactNames[this.artifact]} at ${this.artifactPath}. Run '${this.buildCommand}' first.`;
+  }
+}
+
+export class DesktopBuildCloudConfigMissingError extends Schema.TaggedError<DesktopBuildCloudConfigMissingError>()(
+  "DesktopBuildCloudConfigMissingError",
+  {
+    repoRoot: Schema.String,
+    missing: Schema.Array(Schema.String),
+  },
+) {
+  override get message(): string {
+    return `T3 Connect config missing (${this.missing.join(", ")}): copy ~/t3code/.env into ${this.repoRoot}, or set ${ALLOW_BUILD_WITHOUT_CLOUD_ENV}=1 to build without T3 Connect.`;
   }
 }
 
@@ -3329,6 +3345,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   options: ResolvedBuildOptions,
 ) {
   const repoRoot = yield* RepoRoot;
+  const missingCloudConfig = missingCloudPublicConfig({ repoRoot });
+  if (missingCloudConfig.length > 0) {
+    return yield* new DesktopBuildCloudConfigMissingError({
+      repoRoot,
+      missing: missingCloudConfig,
+    });
+  }
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcessPlatform;

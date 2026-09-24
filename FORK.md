@@ -97,13 +97,15 @@ Move it into `scripts/` when it stabilises.
    (workspace devDependencies). `npm pack` works but copies `"catalog:"` specifiers as is,
    and npm on the server rejects them (`Unsupported URL Type "catalog:"`). Rewrite each one
    with the version from `pnpm-workspace.yaml` (`[catalog]`) and drop `devDependencies`.
-3. On the server: `cd ~/.t3/runtime/versions/<version> && npm install <tgz>`, then apply the
+3. On the server: `cd ~/spindle/runtime/<version> && npm install <tgz>`, then apply the
    repo's `patches/*.patch` to the installed runtime packages with `patch -p1` (npm ignores pnpm
    patches; without the `@ff-labs/fff-node` one the server dies at boot with
-   `ERR_PACKAGE_PATH_NOT_EXPORTED`). `<version>` must equal `apps/server/package.json` and the
-   desktop app build (0.0.42 today), because the desktop matches remote runtimes by that number.
+   `ERR_PACKAGE_PATH_NOT_EXPORTED`). `<version>` must equal `apps/server/package.json`. Never
+   install into `~/.t3/runtime/versions/<version>`: that folder belongs to the upstream SSH
+   launcher (`run-t3.sh`), which drops its native `t3` there and starts it on 3774. Those
+   folders stay `chattr +i` (locked) all the time, deploys included.
 4. Point the systemd unit at the slot and restart: `ExecStart=/usr/local/bin/node
-~/.t3/runtime/versions/<version>/node_modules/t3/dist/bin.mjs serve`, then
+~/spindle/runtime/<version>/node_modules/t3/dist/bin.mjs serve`, then
    `systemctl --user daemon-reload && systemctl --user restart t3code`. Since upstream 0.0.42 the
    launcher (`t3 __service-launcher`, protocol 3) only starts a standalone `t3` executable, so the
    old `~/.t3/runtime/service-launcher.mjs` and `service-state.json` are no longer used; the
@@ -116,13 +118,17 @@ Move it into `scripts/` when it stabilises.
   script. The installed desktop app keeps working against the new server.
 - Client-side change (`apps/web`, `apps/desktop`, `packages/client-runtime`, client bits of
   `packages/contracts`): build and install a new desktop app, `vp run dist:desktop:dmg`. The
+  build folder needs `.env` (copy `~/t3code/.env` into a worktree first); see
+  [Desktop build needs `.env`](#desktop-build-needs-env-direct-commit). The
   server needs no deploy for that, unless contracts changed what the server sends (then both).
 - Mobile (`apps/mobile`): a new mobile build, see `docs/user/install.md`.
 
 ### Rules on the server
 
 - Never run `npx t3 service update` there; it replaces the slot with upstream.
-- The desktop "SSH environment" mode is fine **only while the service is up**: its launch
+- Never add the VPS as a desktop "SSH environment"; use T3 Connect only. Since 0.0.42 the SSH
+  launch also replaces the runtime slot with upstream's binary (2026-09-17, 2026-09-19). The
+  old reason still applies: its launch
   script reuses the server named in `~/.t3/userdata/server-runtime.json`. If that file is
   missing (service restarting, or an old copy deleted it on exit) it starts upstream
   `npx t3 serve` on 3774 in the same `~/.t3`, which then hijacks the T3 Connect tunnel too.
@@ -456,3 +462,18 @@ Host <hostname>.local
 - Key files: `pnpm-workspace.yaml`.
 - Check: `vp run dist:desktop:dmg:arm64` gets past `readWorkspaceConfig`.
 - Drop it when: upstream sets a real value.
+
+### Desktop build needs `.env` (direct commit)
+
+- What: the T3 Connect UI exists only when the build has `T3CODE_CLERK_PUBLISHABLE_KEY`,
+  `T3CODE_CLERK_JWT_TEMPLATE` and `T3CODE_RELAY_URL` (`hasCloudPublicConfig()`), read from the
+  checkout's git-ignored `.env`. A DMG built in a worktree or fresh clone has no `.env`, so the
+  app has no "Sign in to T3 Connect" button and every T3 Connect environment shows "Your cloud
+  sign-in changed". Happened on 2026-09-13, 2026-09-17 and 2026-09-24. The desktop build now
+  stops early and names the missing keys; `T3CODE_ALLOW_BUILD_WITHOUT_CLOUD=1` skips the check.
+- Key files: `scripts/lib/cloud-config-guard.ts`, `scripts/build-desktop-artifact.ts`
+  (`buildDesktopArtifact`, `DesktopBuildCloudConfigMissingError`).
+- Tests: `scripts/lib/cloud-config-guard.test.ts`.
+- Check: after a build, `grep -a -c relay.t3.codes Spindle.app/Contents/Resources/app.asar`
+  inside the mounted DMG is above 0.
+- Drop it when: never, while the fork builds its own desktop app.
