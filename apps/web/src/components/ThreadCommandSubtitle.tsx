@@ -86,7 +86,9 @@ export function ThreadCommandSubtitle(props: {
           {projectLabel ? <CommandPaletteMetaDot /> : null}
           <span className="inline-flex min-w-0 items-center gap-1">
             <WorkspaceIcon variant={variant} isWorktree={isWorktree} />
-            <MiddleTruncate value={branchLabel} className="font-mono" />
+            <span className="flex min-w-0 font-mono">
+              <MiddleTruncate value={branchLabel} />
+            </span>
           </span>
         </>
       ) : null}

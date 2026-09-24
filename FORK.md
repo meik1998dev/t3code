@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `1de563c149` (2026-09-21, `feat(devices): offer manual updates in tool version details (#12877)`, v0.0.43-nightly).
+- Last synced upstream commit: `e67abcf798` (2026-09-24, `feat(observability): honor the OpenTelemetry kill switch (#13355)`, v0.0.43-nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -383,9 +383,9 @@ Host <hostname>.local
 ### Branch names in the code font (#10)
 
 - Key files: `apps/web/src/components/BranchToolbarBranchSelector.tsx`, `Sidebar.tsx`, `ThreadCommandSubtitle.tsx`.
-- Upstream now renders branch names through `ui/middle-truncate.tsx`, which merges `className` onto
-  its outer span, so the fork passes `font-mono` there instead of owning the span. On a conflict,
-  take upstream's `MiddleTruncate` and add `font-mono` to its `className`.
+- Upstream renders branch names through `ui/middle-truncate.tsx`, and its `no-restyle` lint rule
+  forbids `font-mono` on `<MiddleTruncate>`. The fork puts `font-mono` on a plain wrapper span (or
+  the parent) instead. On a conflict, take upstream's markup and add `font-mono` to that wrapper.
 - The branch selector's own trigger label is deliberately _not_ in the code font: that spot took
   upstream wholesale in the 2026-09-21 sync, since the label doubles as the "Select ref" placeholder.
 
