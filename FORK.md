@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `9ea9c3d5d2` (2026-09-18, `fix(web): keep a file-to-symlink type change from crashing the diff view (#11075)`, v0.0.43-nightly).
+- Last synced upstream commit: `e67abcf798` (2026-09-24, `feat(observability): honor the OpenTelemetry kill switch (#13355)`, v0.0.43-nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -69,7 +69,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | --------------------------------------------------- | -------------------------------------------------------- |
 | `apps/web/src/components/ChatView.tsx`              | Agent threads, Message fork, Tasks                       |
 | `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style, Transcript |
-| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid                           |
+| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid, Quieter tool rows        |
 | `apps/server/src/ws.ts`                             | Agent ports, GitHub account, Message fork                |
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts`  | Agent threads, Task tracking                             |
 | `apps/server/src/provider/RuntimeInstructions.ts`   | Agent threads, Task tracking                             |
@@ -218,6 +218,9 @@ Host <hostname>.local
 - Tests: `RuntimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`, `ClaudeHome.test.ts`,
   `codexLaunchArgs.test.ts`.
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
+- Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
+  returns a copy of `process.env`, not `process.env` itself. Upstream's test asserts identity
+  (`.toBe(process.env)`); on a conflict keep the fork's value check instead.
 - Drop when: upstream turns these tools on and adds its own instruction.
 
 ## Transcripts
@@ -332,6 +335,20 @@ Host <hostname>.local
   than the chat text next to them.
 - Drop when: upstream ships its own smaller sidebar type scale.
 
+### Quieter tool and thinking rows (direct commit)
+
+- What: tool, command, thinking and status rows in the chat timeline ("Ran 4 commands",
+  "Running python3", "Thinking", "Thought", "Working for 2m", "Worked for 5m") render at 85% size and 60% opacity, back to full opacity on
+  hover or focus, so they stand apart from the assistant's prose. One CSS rule in `index.css`
+  keyed off the `data-timeline-row-kind` / `data-message-role` attributes the timeline already
+  renders; no component file changes. Change `zoom` or `opacity` there to retune it.
+- Key files: `apps/web/src/index.css`.
+- Check: in a thread with tool calls, the summary rows read smaller and dimmer than the
+  assistant text, and brighten under the pointer.
+- On a conflict: if upstream renames those row attributes, the rows silently return to full
+  size; update the selectors in the rule.
+- Drop when: upstream ships its own quieter styling for tool rows.
+
 ## Git and GitHub
 
 ### GitHub account per repo (#1)
@@ -380,6 +397,11 @@ Host <hostname>.local
 ### Branch names in the code font (#10)
 
 - Key files: `apps/web/src/components/BranchToolbarBranchSelector.tsx`, `Sidebar.tsx`, `ThreadCommandSubtitle.tsx`.
+- Upstream renders branch names through `ui/middle-truncate.tsx`, and its `no-restyle` lint rule
+  forbids `font-mono` on `<MiddleTruncate>`. The fork puts `font-mono` on a plain wrapper span (or
+  the parent) instead. On a conflict, take upstream's markup and add `font-mono` to that wrapper.
+- The branch selector's own trigger label is deliberately _not_ in the code font: that spot took
+  upstream wholesale in the 2026-09-21 sync, since the label doubles as the "Select ref" placeholder.
 
 ### Mermaid diagrams (#15)
 
@@ -407,6 +429,10 @@ Host <hostname>.local
 
 - Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
 - Check: a project with no actions shows no "Add action" in the chat header.
+- Upstream (#12453) moved the header buttons into a `headerActions` fragment that collapses into a
+  "More actions" menu on narrow headers. The guard now lives in a narrowed `projectScripts` const
+  above that fragment and also gates the menu separators and the menu trigger. A plain boolean does
+  not narrow the type, so keep the `?.length ? ... : undefined` form.
 
 ### Install instructions point at a checkout (sync/v0.0.42)
 

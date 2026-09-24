@@ -325,56 +325,58 @@ export function SidebarPortsPill() {
         <PopoverPopup
           align="end"
           aria-label={showAll ? "All ports" : "Agent ports"}
-          className="w-80 max-w-[calc(100vw-2rem)] p-1.5"
+          className="w-80 max-w-[calc(100vw-2rem)]"
           side="top"
         >
-          <div className="flex items-center justify-between gap-2 px-1 pb-1">
-            <span className="text-xs font-medium text-sidebar-foreground">
-              {showAll ? "All ports" : "Agent ports"}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">refreshes every 4 s</span>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-pressed={showAll}
-                      className={cn(
-                        "cursor-pointer rounded px-1.5 py-0.5 text-[11px] outline-hidden ring-ring focus-visible:ring-2",
-                        showAll
-                          ? "bg-sidebar-control-surface text-sidebar-foreground"
-                          : "text-muted-foreground hover:text-sidebar-foreground",
-                      )}
-                      onClick={() => setShowAll(!showAll)}
-                    >
-                      All
-                    </button>
-                  }
-                />
-                <TooltipPopup align="end" side="top">
-                  {showAll
-                    ? "Show only ports agent sessions opened"
-                    : "Show every listening port, system services included"}
-                </TooltipPopup>
-              </Tooltip>
-            </div>
-          </div>
-          {open ? (
-            <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-              {environments.length === 0 ? (
-                <p className="px-1 py-2 text-xs text-muted-foreground">No environments.</p>
-              ) : (
-                environments.map((environment) => (
-                  <EnvironmentPortsSection
-                    key={environment.environmentId}
-                    environment={environment}
-                    scope={scope}
+          <div className="p-1.5">
+            <div className="flex items-center justify-between gap-2 px-1 pb-1">
+              <span className="text-xs font-medium text-sidebar-foreground">
+                {showAll ? "All ports" : "Agent ports"}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">refreshes every 4 s</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-pressed={showAll}
+                        className={cn(
+                          "cursor-pointer rounded px-1.5 py-0.5 text-[11px] outline-hidden ring-ring focus-visible:ring-2",
+                          showAll
+                            ? "bg-sidebar-control-surface text-sidebar-foreground"
+                            : "text-muted-foreground hover:text-sidebar-foreground",
+                        )}
+                        onClick={() => setShowAll(!showAll)}
+                      >
+                        All
+                      </button>
+                    }
                   />
-                ))
-              )}
+                  <TooltipPopup align="end" side="top">
+                    {showAll
+                      ? "Show only ports agent sessions opened"
+                      : "Show every listening port, system services included"}
+                  </TooltipPopup>
+                </Tooltip>
+              </div>
             </div>
-          ) : null}
+            {open ? (
+              <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
+                {environments.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-muted-foreground">No environments.</p>
+                ) : (
+                  environments.map((environment) => (
+                    <EnvironmentPortsSection
+                      key={environment.environmentId}
+                      environment={environment}
+                      scope={scope}
+                    />
+                  ))
+                )}
+              </div>
+            ) : null}
+          </div>
         </PopoverPopup>
       </Popover>
     </SidebarMenuItem>
