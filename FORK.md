@@ -69,7 +69,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 | --------------------------------------------------- | -------------------------------------------------------- |
 | `apps/web/src/components/ChatView.tsx`              | Agent threads, Message fork, Tasks                       |
 | `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style, Transcript |
-| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid                           |
+| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid, Quieter tool rows        |
 | `apps/server/src/ws.ts`                             | Agent ports, GitHub account, Message fork                |
 | `apps/server/src/provider/Layers/ClaudeAdapter.ts`  | Agent threads, Task tracking                             |
 | `apps/server/src/provider/RuntimeInstructions.ts`   | Agent threads, Task tracking                             |
@@ -334,6 +334,20 @@ Host <hostname>.local
 - Check: compare row height with the pre-sync build; sidebar thread titles must read smaller
   than the chat text next to them.
 - Drop when: upstream ships its own smaller sidebar type scale.
+
+### Quieter tool and thinking rows (direct commit)
+
+- What: tool, command, thinking and status rows in the chat timeline ("Ran 4 commands",
+  "Running python3", "Thinking", "Thought", "Working for 2m", "Worked for 5m") render at 85% size and 60% opacity, back to full opacity on
+  hover or focus, so they stand apart from the assistant's prose. One CSS rule in `index.css`
+  keyed off the `data-timeline-row-kind` / `data-message-role` attributes the timeline already
+  renders; no component file changes. Change `zoom` or `opacity` there to retune it.
+- Key files: `apps/web/src/index.css`.
+- Check: in a thread with tool calls, the summary rows read smaller and dimmer than the
+  assistant text, and brighten under the pointer.
+- On a conflict: if upstream renames those row attributes, the rows silently return to full
+  size; update the selectors in the rule.
+- Drop when: upstream ships its own quieter styling for tool rows.
 
 ## Git and GitHub
 

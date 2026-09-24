@@ -2239,3 +2239,37 @@ code {
   --text-sm: calc(0.875rem * var(--sidebar-text-scale));
   --text-base: calc(1rem * var(--sidebar-text-scale));
 }
+
+/*
+ * Fork change: tool, command, thinking and working-status rows in the chat
+ * timeline read as loud as the assistant's prose. `zoom` shrinks their text,
+ * icons and spacing together, and they dim until hovered or focused. Keyed off
+ * the row attributes the timeline already renders, so no component file has to
+ * change (keeps upstream syncs clean).
+ */
+:is(
+  [data-timeline-row-kind="work"],
+  [data-timeline-row-kind="work-live"],
+  [data-timeline-row-kind="work-toggle"],
+  [data-timeline-row-kind="activity-group"],
+  [data-timeline-row-kind="thinking"],
+  [data-timeline-row-kind="working"],
+  [data-timeline-row-kind="turn-fold"],
+  [data-message-role="reasoning"]
+) {
+  zoom: 0.85;
+  opacity: 0.6;
+  transition: opacity 150ms;
+}
+:is(
+  [data-timeline-row-kind="work"],
+  [data-timeline-row-kind="work-live"],
+  [data-timeline-row-kind="work-toggle"],
+  [data-timeline-row-kind="activity-group"],
+  [data-timeline-row-kind="thinking"],
+  [data-timeline-row-kind="working"],
+  [data-timeline-row-kind="turn-fold"],
+  [data-message-role="reasoning"]
+):is(:hover, :focus-within) {
+  opacity: 1;
+}
