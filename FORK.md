@@ -94,8 +94,10 @@ same in the app, so the gap shows up late as "No skills found" or no per-repo PR
 
 Learned on 2026-09-12 while setting up a root-login VPS (Ubuntu 24.04, Node 22).
 
-Since the v0.0.45 sync (new orchestrator) the server needs **Node 24** (`engines.node ^24.13.1`).
-Upgrade Node on the VPS before deploying that build. The first start copies
+Since the v0.0.45 sync (new orchestrator) the repo's dev tooling needs Node 24
+(`engines.node ^24.13.1` in the root `package.json`); build on the Mac with
+`PATH=/opt/homebrew/opt/node@24/bin:$PATH`. The server package still accepts Node 22.16+, so the
+VPS keeps Node 22. The first start copies
 `userdata/state.sqlite` into a new `userdata/statev2.sqlite` once and runs from the copy, so the
 old file stays as a rollback point for the previous build.
 
