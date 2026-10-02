@@ -29,7 +29,7 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
         const ran = yield* runMigrations();
         assert.deepStrictEqual(
           ran.map(([id]) => id),
-          [55, 56, 57, 58, 59],
+          [55, 56, 57, 58, 59, 60],
         );
 
         // Every repair must also be safe when a database already has the schema.
@@ -55,6 +55,11 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
         );
         assert.equal(
           threadColumns.some((column) => column.name === "title_state_json"),
+          true,
+        );
+        // Upstream's 54 is skipped by fork databases that recorded a 54 of their own.
+        assert.equal(
+          threadColumns.some((column) => column.name === "auto_settle_disabled_at"),
           true,
         );
 

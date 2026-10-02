@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `e67abcf798` (2026-09-24, `feat(observability): honor the OpenTelemetry kill switch (#13355)`, v0.0.43-nightly).
+- Last synced upstream commit: `6c8fed35dd` (2026-10-02, `fix(markdown): keep Windows paths intact in link and image destinations (#12615)`, v0.0.45-nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -28,7 +28,8 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 The migration runner tracks migrations by number only. If the fork and upstream both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
 This already happened three times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51, and
-fork 53 hid upstream 53.
+fork 53 hid upstream 53. A fourth case needs no clash: upstream added 54 after fork databases had
+recorded 59, and the runner only runs IDs above the latest recorded one, so they skipped it.
 The repair migrations below make both upgrade paths safe.
 
 Fork migrations today:
@@ -40,9 +41,12 @@ Fork migrations today:
 | 57     | `057_ProjectionThreadsParentThreadId.ts`     | Agent threads |
 | 58     | `058_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
 | 59     | `059_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 60     | `060_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
 
 Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`),
-52 (`ProjectionThreadTitleState`), and 53 (`PullRequestFilesViewed`). Migration 56 idempotently
+52 (`ProjectionThreadTitleState`), 53 (`PullRequestFilesViewed`), and 54
+(`ProjectionThreadsAutoSettleDisabledAt`). Migration 60 reruns upstream's idempotent 54 for
+databases that were already at 59. Migration 56 idempotently
 adds `title_state_json` for databases that had already recorded the fork's own 52. The v0.0.43
 sync moved the fork's own 53 to 58, and migration 59 replays upstream's 53 for databases that
 had recorded the fork's 53 instead.
@@ -51,7 +55,8 @@ recorded the fork's old 50–54 sequence. The removed parent-thread migration re
 historical row in upgraded databases; migration 57 idempotently restores that column for both
 new and already-upgraded databases. The removed task-plan lookup may remain as an unused index.
 
-On every sync where numbers clash:
+On every sync where upstream adds a migration numbered below the fork's last one, or where
+numbers clash:
 
 1. Take upstream's files and numbers as they are.
 2. Move fork migrations to numbers after upstream's last one. Keep them idempotent
@@ -227,6 +232,11 @@ Host <hostname>.local
 - Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
   returns a copy of `process.env`, not `process.env` itself. Upstream's test asserts identity
   (`.toBe(process.env)`); on a conflict keep the fork's value check instead.
+- Codex: since v0.0.45 upstream sends its runtime context through `turn/start.additionalContext`
+  (`buildCodexAdditionalContext`), because newer models replace the collaboration-mode prompt.
+  The fork appends task tracking (Default mode only) and the thread tool block to the
+  `t3_code_runtime` entry there, not to `developer_instructions`. Keep that entry under Codex's
+  per-entry cap (about 4,000 bytes); `CodexDeveloperInstructions.test.ts` checks it.
 - Drop when: upstream turns these tools on and adds its own instruction.
 
 ## Transcripts
@@ -389,7 +399,10 @@ Host <hostname>.local
   and again when the upstream composer footer came back (`rounded-3xl` in `ComposerSurface.tsx`).
   The composer input surface in `ChatComposer.tsx` was a hardcoded `rounded-[20px]`, so it ignored
   the token and looked rounder than its own frame; it now uses
-  `rounded-[calc(var(--radius-3xl)-1px)]`, the same inner-surface idiom as `ui/dialog.tsx`.
+  `rounded-(--chat-composer-inner-corner)`, a variable `ComposerSurface.tsx` sets to the composer
+  corner minus 1px. Upstream's `shadcn/no-arbitrary-values` lint rule (v0.0.45) fails on
+  `rounded-[calc(...)]` and `text-[11px]`-style classes, so fork classes must use theme tokens
+  or `(--var)` shorthands.
 - Key files: `apps/web/src/index.css`, `chat/{ChatComposer,ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
 - Check: the composer and cards have the smaller radius, and the input corners match the composer frame.
 - The composer glass backdrop is drawn with `clip-path: shape()`, so its corners cannot inherit

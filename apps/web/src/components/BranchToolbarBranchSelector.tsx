@@ -762,7 +762,7 @@ export function BranchToolbarBranchSelector({
           <span className="flex min-w-0 flex-1 font-mono">
             <MiddleTruncate value={itemValue} />
           </span>
-          {badge && <span className="shrink-0 text-[10px] text-muted-foreground/45">{badge}</span>}
+          {badge && <span className="shrink-0 text-3xs text-muted-foreground/45">{badge}</span>}
         </div>
       </ComboboxItem>
     );
@@ -798,7 +798,7 @@ export function BranchToolbarBranchSelector({
           number={prNumber}
           url={prUrl}
           status={displayedPrStatus}
-          onOpenStack={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
+          onOpenList={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
           onOpenPullRequest={(event) => {
             if (prUrl) openPrLink(event, prUrl);
           }}
@@ -824,7 +824,7 @@ export function BranchToolbarBranchSelector({
             >
               <span
                 data-composer-label-motion
-                className="flex w-full max-w-[240px] transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
+                className="flex w-full max-w-[240px] transition-opacity duration-180 ease-drawer group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
               >
                 <MiddleTruncate value={triggerLabel} />
               </span>

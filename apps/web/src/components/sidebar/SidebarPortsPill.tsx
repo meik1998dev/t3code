@@ -157,7 +157,7 @@ const AgentPortRow = memo(function AgentPortRow({
                   {formatAgentPortCommand(port)}
                 </span>
                 {owned !== null ? (
-                  <span className="truncate text-[11px] text-muted-foreground">{owned}</span>
+                  <span className="truncate text-2xs text-muted-foreground">{owned}</span>
                 ) : null}
               </span>
               {canOpenHere ? (
@@ -268,13 +268,13 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   return (
     <section aria-label={`${environment.label} ports`} className="flex flex-col gap-0.5">
       <header className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">
-        <span className="truncate text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        <span className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
           {environment.label}
         </span>
         {status !== null ? (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{status}</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">{status}</span>
         ) : (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{count}</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">{count}</span>
         )}
       </header>
       {ports.map((port) => (
@@ -306,7 +306,7 @@ export function SidebarPortsPill() {
         "inline-flex size-8 cursor-pointer items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
         open
           ? "bg-sidebar-control-surface text-sidebar-foreground"
-          : "text-[var(--sidebar-icon-color)] hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+          : "text-(--sidebar-icon-color) hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
       )}
     >
       <EthernetPortIcon aria-hidden="true" className="size-4" />
@@ -334,7 +334,7 @@ export function SidebarPortsPill() {
                 {showAll ? "All ports" : "Agent ports"}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">refreshes every 4 s</span>
+                <span className="text-2xs text-muted-foreground">refreshes every 4 s</span>
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -342,7 +342,7 @@ export function SidebarPortsPill() {
                         type="button"
                         aria-pressed={showAll}
                         className={cn(
-                          "cursor-pointer rounded px-1.5 py-0.5 text-[11px] outline-hidden ring-ring focus-visible:ring-2",
+                          "cursor-pointer rounded px-1.5 py-0.5 text-2xs outline-hidden ring-ring focus-visible:ring-2",
                           showAll
                             ? "bg-sidebar-control-surface text-sidebar-foreground"
                             : "text-muted-foreground hover:text-sidebar-foreground",
