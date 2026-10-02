@@ -30,18 +30,12 @@ describe("resolveCodexLaunchArgs", () => {
 
 describe("codexAppServerArgs", () => {
   it("returns the app-server command for empty launch args", () => {
-    NodeAssert.deepStrictEqual(codexAppServerArgs(""), [
-      "app-server",
-      "-c",
-      "tools.update_plan.enabled=true",
-    ]);
+    NodeAssert.deepStrictEqual(codexAppServerArgs(""), ["app-server"]);
   });
 
   it("appends parsed launch args after app-server", () => {
     NodeAssert.deepStrictEqual(codexAppServerArgs("--strict-config --enable foo"), [
       "app-server",
-      "-c",
-      "tools.update_plan.enabled=true",
       "--strict-config",
       "--enable",
       "foo",

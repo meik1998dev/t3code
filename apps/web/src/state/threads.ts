@@ -8,26 +8,17 @@ import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
   type EnvironmentThreadState,
   createThreadEnvironmentAtoms,
-  isThreadSessionRunning,
-  ThreadSnapshotLoader,
+  createFullThreadHistoryCommand,
 } from "@t3tools/client-runtime/state/threads";
-import { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
-import {
-  createEnvironmentCommand,
-  runAtomCommand,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
-  OrchestrationThread,
-  OrchestrationThreadShell,
+  OrchestrationV2ThreadProjection,
+  OrchestrationV2ThreadShell,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
@@ -61,46 +52,23 @@ export function useEnvironmentThread(
       ? environmentThreads.stateAtom(environmentId, threadId)
       : EMPTY_THREAD_STATE_ATOM,
   );
-  return Option.getOrElse(
+  const state = Option.getOrElse(
     AsyncResult.value(result),
     () => EMPTY_ENVIRONMENT_THREAD_STATE,
   ) as EnvironmentThreadState;
+  return state;
 }
 
-class FullThreadHistoryError extends Data.TaggedError("FullThreadHistoryError")<{
-  readonly message: string;
-}> {}
-
-const fullThreadSnapshotCommand = createEnvironmentCommand(connectionAtomRuntime, {
-  label: "environment-data:threads:full-snapshot",
-  execute: (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      const supervisor = yield* EnvironmentSupervisor;
-      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-      if (Option.isNone(prepared)) {
-        return yield* new FullThreadHistoryError({
-          message: "Reconnect the environment before forking this chat.",
-        });
-      }
-      const loader = yield* ThreadSnapshotLoader;
-      const snapshot = yield* loader.load(prepared.value, threadId);
-      if (Option.isNone(snapshot)) {
-        return yield* new FullThreadHistoryError({
-          message: "Could not load the full chat history.",
-        });
-      }
-      return snapshot.value.thread;
-    }),
-});
+const fullThreadSnapshotCommand = createFullThreadHistoryCommand(connectionAtomRuntime);
 
 /**
- * Fetches the complete thread over HTTP with no turn window. Fork needs every
- * message once, so this bypasses the paged thread store instead of loading
- * every older page into it and keeping them resident.
+ * Fetches the complete thread projection over HTTP with no turn window. Fork
+ * and "copy transcript" need every message once, so this bypasses the paged
+ * thread store instead of loading every older page into it.
  */
 export async function loadFullThreadHistory(
   threadRef: ScopedThreadRef,
-): Promise<OrchestrationThread> {
+): Promise<OrchestrationV2ThreadProjection> {
   const result = await runAtomCommand(
     appAtomRegistry,
     fullThreadSnapshotCommand,
@@ -113,6 +81,9 @@ export async function loadFullThreadHistory(
   return result.value;
 }
 
+const isRunning = (status: string) =>
+  status === "preparing" || status === "starting" || status === "running";
+
 type KeptThreads = ReadonlyMap<EnvironmentId, ReadonlySet<ThreadId>>;
 
 // True once a thread's own stream no longer needs to stay open: it is in sync
@@ -123,7 +94,8 @@ function isDetailDone<E>(result: AsyncResult.AsyncResult<EnvironmentThreadState,
   const { status, data, error } = result.value;
   if (status === "deleted" || Option.isSome(error)) return true;
   return (
-    status === "live" && !Option.exists(data, (thread) => isThreadSessionRunning(thread.session))
+    status === "live" &&
+    !Option.exists(data, (thread) => thread.runs.some((run) => isRunning(run.status)))
   );
 }
 
@@ -140,7 +112,7 @@ export function createRunningThreadKeepAliveAtom<E>(input: {
   readonly environmentIdsAtom: Atom.Atom<ReadonlyArray<EnvironmentId>>;
   readonly threadsAtom: (
     environmentId: EnvironmentId,
-  ) => Atom.Atom<ReadonlyArray<Pick<OrchestrationThreadShell, "id" | "session">>>;
+  ) => Atom.Atom<ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "status">>>;
   readonly stateAtom: (
     environmentId: EnvironmentId,
     threadId: ThreadId,
@@ -152,7 +124,7 @@ export function createRunningThreadKeepAliveAtom<E>(input: {
     let previous: ReadonlyArray<ThreadId> = [];
     return Atom.make((get) => {
       const running = get(input.threadsAtom(environmentId)).flatMap((thread) =>
-        isThreadSessionRunning(thread.session) ? [thread.id] : [],
+        isRunning(thread.status) ? [thread.id] : [],
       );
       if (arrayElementsEqual(previous, running)) return previous;
       previous = running;

@@ -11,7 +11,7 @@ import {
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
-  OrchestrationThread,
+  OrchestrationV2ThreadProjection,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
@@ -49,21 +49,22 @@ export function useEnvironmentThread(
       ? environmentThreads.stateAtom(environmentId, threadId)
       : EMPTY_THREAD_STATE_ATOM,
   );
-  return Option.getOrElse(
+  const state = Option.getOrElse(
     AsyncResult.value(result),
     () => EMPTY_ENVIRONMENT_THREAD_STATE,
   ) as EnvironmentThreadState;
+  return state;
 }
 
 const fullThreadSnapshotCommand = createFullThreadHistoryCommand(connectionAtomRuntime);
 
 /**
- * Fetches the complete thread over HTTP with no turn window. "Copy transcript"
- * needs every message once, so this bypasses the paged thread store.
+ * Fetches the complete thread projection over HTTP with no turn window. "Copy
+ * transcript" needs every message once, so this bypasses the paged thread store.
  */
 export async function loadFullThreadHistory(
   threadRef: ScopedThreadRef,
-): Promise<OrchestrationThread> {
+): Promise<OrchestrationV2ThreadProjection> {
   const result = await runAtomCommand(
     appAtomRegistry,
     fullThreadSnapshotCommand,

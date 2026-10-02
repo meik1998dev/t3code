@@ -18,13 +18,13 @@ export async function copyThreadTranscript(threadRef: ScopedThreadRef, title: st
     timeout: 0,
   });
   try {
-    const thread = await loadFullThreadHistory(threadRef);
-    const transcript = buildThreadTranscript(thread.title, thread.messages);
+    const projection = await loadFullThreadHistory(threadRef);
+    const transcript = buildThreadTranscript(projection.thread.title, projection.messages);
     await writeTextToClipboard(transcript, "transcript");
     toastManager.update(toastId, {
       type: "success",
       title: "Transcript copied",
-      description: thread.title,
+      description: projection.thread.title,
       timeout: TRANSCRIPT_RESULT_TOAST_MS,
     });
   } catch (error) {

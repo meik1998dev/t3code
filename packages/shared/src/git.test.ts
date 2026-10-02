@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyGitStatusStreamEvent,
+  formatGeneratedBranchName,
   buildTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
@@ -176,13 +177,7 @@ describe("isTemporaryWorktreeBranch", () => {
     ).toBe(true);
   });
 
-  it("matches generated temporary worktree refs without a prefix", () => {
-    expect(isTemporaryWorktreeBranch("deadbeef")).toBe(true);
-    expect(isTemporaryWorktreeBranch(" deadbeef ")).toBe(true);
-    expect(isTemporaryWorktreeBranch("DEADBEEF")).toBe(true);
-  });
-
-  it("matches legacy prefixed temporary worktree refs", () => {
+  it("matches generated temporary worktree refs", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef`)).toBe(true);
     expect(isTemporaryWorktreeBranch(` ${WORKTREE_BRANCH_PREFIX}/deadbeef `)).toBe(true);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/DEADBEEF`)).toBe(true);
@@ -190,7 +185,7 @@ describe("isTemporaryWorktreeBranch", () => {
 
   it("normalizes a UUID-shaped random callback to the canonical 8-hex form", () => {
     expect(buildTemporaryWorktreeBranchName(() => "f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12")).toBe(
-      "f4ae4e0e",
+      `${WORKTREE_BRANCH_PREFIX}/f4ae4e0e`,
     );
   });
 
@@ -214,7 +209,6 @@ describe("isTemporaryWorktreeBranch", () => {
   it("rejects non-temporary refName names", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
-    expect(isTemporaryWorktreeBranch("deadbeef-extra")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
   });
 });
@@ -279,5 +273,54 @@ describe("applyGitStatusStreamEvent", () => {
       behindCount: 1,
       pr: null,
     });
+  });
+});
+
+describe("formatGeneratedBranchName", () => {
+  it.each(["t3code", "t3code/"])("joins static prefix %s with one slash", (prefix) => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix, instructions: "" }),
+    ).toBe("t3code/add-search");
+  });
+  it("supports an empty prefix and preserves user prefix casing", () => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix: "", instructions: "" }),
+    ).toBe("add-search");
+    expect(
+      formatGeneratedBranchName("Add Search", {
+        mode: "static",
+        prefix: "Team/Julius/",
+        instructions: "",
+      }),
+    ).toBe("Team/Julius/add-search");
+  });
+  it.each([
+    ["release..candidate", "release-candidate/add-search"],
+    [" Team / Jules.lock/", "Team/Jules-lock/add-search"],
+    ["-team//feature@{new}", "team/feature-new/add-search"],
+    [" /?. / ", "add-search"],
+  ])("normalizes invalid static prefix %s", (prefix, expected) => {
+    expect(
+      formatGeneratedBranchName("Add Search", { mode: "static", prefix, instructions: "" }),
+    ).toBe(expected);
+  });
+  it("uses the model's semantic prefix without the stored static prefix", () => {
+    expect(
+      formatGeneratedBranchName("feat/Add Search", {
+        mode: "semantic",
+        prefix: "t3code",
+        instructions: "",
+      }),
+    ).toBe("feat/add-search");
+  });
+  it("preserves the full custom name, including case, dots and length", () => {
+    const branch = `Julius/ABC-123/release.v2-${"x".repeat(70)}`;
+    expect(
+      formatGeneratedBranchName(` ${branch} `, {
+        mode: "custom",
+        prefix: "ignored",
+        instructions: "",
+      }),
+    ).toBe(branch);
   });
 });
