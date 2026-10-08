@@ -194,6 +194,7 @@ describe("GitHubCredentials", () => {
           .pipe(Effect.provideService(GitHubCredentials.RepositoryGitHubAccount, "gone")),
       );
       expect(error._tag).toBe("GitHubNotSignedInError");
+      expect(error.message).toContain('GitHub account "gone" (from git config gh.account)');
       expect(calls).toEqual([["auth", "token", "--hostname", "github.com", "--user", "gone"]]);
     }).pipe(Effect.provide(layer));
   });

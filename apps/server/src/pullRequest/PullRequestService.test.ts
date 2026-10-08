@@ -38,6 +38,8 @@ import {
   type PullRequestProviderApi,
 } from "./PullRequestProvider.ts";
 import * as PullRequestProviderRegistry from "./PullRequestProviderRegistry.ts";
+import * as GitHubCredentials from "../sourceControl/GitHubCredentials.ts";
+import * as GitHubPullRequestApi from "./GitHubPullRequestApi.ts";
 import * as GitHubPullRequestProvider from "./GitHubPullRequestProvider.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 import * as PullRequestReadCache from "./PullRequestReadCache.ts";
@@ -950,6 +952,36 @@ it.effect("calls a transient viewer failure a failed operation, not a signed-out
 
     // `cli-unauthenticated` would send the reader to `gh auth login` over a transient error.
     assert.strictEqual(error._tag, "PullRequestOperationError");
+  }),
+);
+
+it.effect("keeps the configured GitHub account in the pull request error", () =>
+  Effect.gen(function* () {
+    const accountError = new GitHubCredentials.GitHubNotSignedInError({
+      host: "github.com",
+      account: "octocat",
+      fromRepository: true,
+    });
+    const github = yield* GitHubPullRequestProvider.make.pipe(
+      Effect.provide(
+        Layer.mock(GitHubPullRequestApi.GitHubPullRequestApi)({
+          accountKeyFor: () => Effect.succeed("octocat"),
+          getViewerLogin: () => Effect.fail(accountError),
+        }),
+      ),
+    );
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [github],
+    });
+
+    const error = yield* Effect.flip(service.list({ state: "open" }));
+
+    // A missing `gh.account` login is this repository's problem, not a signed-out host.
+    assert.strictEqual(error._tag, "PullRequestOperationError");
+    assert.include(error.message, 'GitHub account "octocat"');
   }),
 );
 

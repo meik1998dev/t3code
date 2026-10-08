@@ -386,6 +386,8 @@ Host <hostname>.local
 - What: `git config gh.account <user>` picks the `gh` login for every GitHub API request about
   that repository (pull requests and source control). It wins over upstream's per-host choices
   (Settings → Source Control account or token, `GH_TOKEN`) and does not fall back to another login.
+  A missing login fails with `GitHubNotSignedInError` `fromRepository: true`, which names the
+  account and counts as a plain failure, so one repository cannot mark the whole host signed out.
 - How: upstream calls the GitHub API directly since v0.0.46 (`GitHubApi`, `GitHubCredentials`), so
   the fork no longer edits a `gh` wrapper. `GitHubAccount.scopeToRepositoryAccounts` wraps each
   service method that takes a `cwd` and sets the `RepositoryGitHubAccount` reference;

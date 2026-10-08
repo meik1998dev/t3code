@@ -45,9 +45,17 @@ export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingEr
 /** `gh` is installed but holds no login for the host, or not the account chosen in Settings. */
 export class GitHubNotSignedInError extends Schema.TaggedError<GitHubNotSignedInError>()(
   "GitHubNotSignedInError",
-  { host: Schema.String, account: Schema.optional(Schema.String) },
+  {
+    host: Schema.String,
+    account: Schema.optional(Schema.String),
+    /** Fork: the account came from the repository's `gh.account`, not from Settings. */
+    fromRepository: Schema.optional(Schema.Boolean),
+  },
 ) {
   override get message(): string {
+    if (this.fromRepository === true) {
+      return `GitHub account "${this.account}" (from git config gh.account) is not signed in to the GitHub CLI on ${this.host}. Run \`gh auth login --hostname ${this.host}\` for that account, or unset the key in this repository.`;
+    }
     return this.account === undefined
       ? `No GitHub credential for ${this.host}: run \`gh auth login --hostname ${this.host}\`.`
       : `No GitHub credential for ${this.account} on ${this.host}: run \`gh auth login --hostname ${this.host}\` for that account or pick another in Settings → Source Control.`;
@@ -211,7 +219,13 @@ export const make = Effect.gen(function* () {
   const lookup = Effect.fn("GitHubCredentials.lookup")(function* (key: string) {
     const [host = key, choice, scope] = key.split("\u0000");
     if (scope === "repository" && choice !== undefined) {
-      const token = yield* fromGh(host, choice);
+      const token = yield* fromGh(host, choice).pipe(
+        Effect.mapError((error) =>
+          error._tag === "GitHubNotSignedInError"
+            ? new GitHubNotSignedInError({ host, account: choice, fromRepository: true })
+            : error,
+        ),
+      );
       return {
         host,
         token: Redacted.make(token),

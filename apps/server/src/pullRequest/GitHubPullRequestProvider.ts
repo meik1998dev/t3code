@@ -110,6 +110,8 @@ export function gitHubProviderFailure(
     case "GitHubCliMissingError":
       return { reason: "missing-tool" };
     case "GitHubNotSignedInError":
+      // Fork: one repository's missing `gh.account` login must not mark the whole host signed out.
+      return error.fromRepository === true ? { reason: "failed" } : { reason: "unauthenticated" };
     case "GitHubHostDisabledError":
     case "GitHubApiAuthenticationError":
       return { reason: "unauthenticated" };
