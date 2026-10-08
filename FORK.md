@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `cc1e634bfa` (2026-10-02, `fix(server): released builds keep the OpenCode policy for their own version (#14863)`, v0.0.45 plus the new orchestrator, #2829).
+- Last synced upstream commit: `a6ec88f7a7` (2026-10-08, `fix(mobile): keep native screens ordered during stack pops (#17231)`, v0.0.46 nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -27,8 +27,8 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If the fork and upstream both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This already happened three times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51, and
-fork 53 hid upstream 53. A fourth case needs no clash: upstream added 54 after fork databases had
+This already happened four times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51,
+fork 53 hid upstream 53, and fork 57–60 hid upstream 57–60. A fourth case needs no clash: upstream added 54 after fork databases had
 recorded 59, and the runner only runs IDs above the latest recorded one, so they skipped it.
 The repair migrations below make both upgrade paths safe.
 
@@ -36,24 +36,26 @@ Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 57     | `057_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 58     | `058_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 59     | `059_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 60     | `060_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
 | 61     | `061_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
 | 62     | `062_RepairThreadTitleStateColumn.ts`        | Sync repair   |
 | 63     | `063_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 64     | `064_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 65     | `065_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 66     | `066_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 67     | `067_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 68     | `068_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–56, including 54 (`ProjectionThreadsAutoSettleDisabledAt`), 55
-(`OrchestrationV2`, the new orchestrator schema) and 56 (`RemoveRedundantProjectionIndexes`).
-Fork databases had already recorded 55 and 56 under fork names, so they skip upstream's. The
-v0.0.45 sync moved those two fork repairs to 61 and 62, and 63 then runs upstream 55 (only when
-`orchestration_v2_events` is missing; upstream 55 is not idempotent) and 56, and renames the
-ledger rows 55/56 to upstream's names. Fresh databases run upstream 55/56 normally and the
-fork's 57–63 do nothing harmful.
-Older history: 60 reruns upstream 54, 59 replays upstream 53, 62 adds `title_state_json` for
+Upstream owns 1–60. Fork databases recorded 55–60 under fork names before upstream took
+those ids, so they skip upstream's. 63 runs upstream 55 (only when `orchestration_v2_events`
+is missing; upstream 55 is not idempotent) and 56. 68 runs upstream 57 (only when
+`scheduled_tasks.webhook_token` is missing; it adds columns without a check) and 58–60. Both
+rename the ledger rows to upstream's names, so a fork database's ledger matches a fresh one.
+The v0.0.46 sync moved the fork's old 57–60 to 64–67; fork databases run them a second time,
+which is safe because each one checks first. Fresh databases run upstream 1–60 and the fork's
+61–68 do nothing harmful.
+Older history: 67 reruns upstream 54, 66 replays upstream 53, 62 adds `title_state_json` for
 databases that recorded the fork's own 52, and 61 reapplies upstream 50–51 for databases that
-recorded the fork's old 50–54. 57 keeps `projection_threads.parent_thread_id`; the v1 thread
+recorded the fork's old 50–54. 64 keeps `projection_threads.parent_thread_id`; the v1 thread
 importer (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"`
 when old threads are copied into the new orchestrator on first start.
 
@@ -72,21 +74,21 @@ numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                      | Entries                                           |
-| --------------------------------------------------------- | ------------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`                    | Message fork, Tasks                               |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                            |
-| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style      |
-| `apps/web/src/index.css`                                  | Sidebar style, Radius, Mermaid, Quieter tool rows |
-| `apps/server/src/ws.ts`                                   | Agent ports, GitHub account                       |
-| `apps/server/src/provider/RuntimeInstructions.ts`         | Task tracking, PR linking                         |
-| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts` | Task tracking                                     |
-| `apps/server/src/persistence/Migrations.ts`               | [Migrations](#migrations)                         |
-| `apps/server/src/pullRequest/PullRequestService.ts`       | GitHub account per repo, Pull request stacks      |
+| File                                                      | Entries                                      |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`                    | Message fork, Tasks                          |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                       |
+| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style |
+| `apps/web/src/index.css`                                  | Sidebar style, Radius, Quieter tool rows     |
+| `apps/server/src/ws.ts`                                   | Agent ports, GitHub account                  |
+| `apps/server/src/provider/RuntimeInstructions.ts`         | Task tracking, PR linking                    |
+| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts` | Task tracking                                |
+| `apps/server/src/persistence/Migrations.ts`               | [Migrations](#migrations)                    |
+| `apps/server/src/pullRequest/PullRequestService.ts`       | GitHub account per repo, Pull request stacks |
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 57–63)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 61–68)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
@@ -197,9 +199,10 @@ Host <hostname>.local
   drops the cached per-cwd `workspaceSnapshots`; the composer requests them again, so new
   skills, plugins and commands show without a restart.
 - Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`),
-  `apps/server/src/provider/Layers/ProviderRegistry.ts` (`mergeProviderSnapshot`).
+  `apps/server/src/provider/ProviderRegistry.ts` (`mergeProviderSnapshot`, and the `baseline`
+  compare in the per-cwd scan).
 - Tests: `apps/server/src/serverRuntimeState.test.ts`,
-  `apps/server/src/provider/Layers/ProviderRegistry.test.ts`.
+  `apps/server/src/provider/ProviderRegistry.test.ts`.
 - Check: add a skill dir under `~/.claude/skills`, Settings → Providers → Refresh, open a
   thread in that project, type `$` — the skill is listed. Restart the service while the
   desktop SSH environment is connected: `ss -ltnp | grep 377` still shows only 3773.
@@ -380,10 +383,20 @@ Host <hostname>.local
 
 ### GitHub account per repo (#1)
 
-- What: `git config gh.account <user>` picks the `gh` account for that repo's pull request calls.
-- Key files: `apps/server/src/sourceControl/{GitHubAccount,GitHubCli}.ts`,
-  `apps/server/src/pullRequest/*`, `packages/contracts/src/pullRequest.ts`, `docs/user/source-control.md`.
-- Tests: `GitHubAccount.test.ts`, `GitHubCli.test.ts`, `PullRequestService.test.ts`.
+- What: `git config gh.account <user>` picks the `gh` login for every GitHub API request about
+  that repository (pull requests and source control). It wins over upstream's per-host choices
+  (Settings → Source Control account or token, `GH_TOKEN`) and does not fall back to another login.
+- How: upstream calls the GitHub API directly since v0.0.46 (`GitHubApi`, `GitHubCredentials`), so
+  the fork no longer edits a `gh` wrapper. `GitHubAccount.scopeToRepositoryAccounts` wraps each
+  service method that takes a `cwd` and sets the `RepositoryGitHubAccount` reference;
+  `GitHubCredentials.get` reads it. The wrapper lives outside upstream's `make` bodies
+  (`makeWithRepositoryAccounts` in `GitHubPullRequestApi.ts` and
+  `GitHubSourceControlProvider.ts`) to keep the diff small. Request batches key on the account
+  too, so two accounts never share one GraphQL batch.
+- Key files: `apps/server/src/sourceControl/{GitHubAccount,GitHubCredentials,GitHubSourceControlProvider,SourceControlProviderRegistry}.ts`,
+  `apps/server/src/pullRequest/{GitHubPullRequestApi,GitHubPullRequestProvider,PullRequestProvider,PullRequestService}.ts`,
+  `docs/user/source-control.md`.
+- Tests: `GitHubAccount.test.ts`, `GitHubCredentials.test.ts`, `PullRequestService.test.ts`.
 - Sync note: upstream groups viewer lookups by host. The fork groups them by
   (host, kind, account key), so `SupportedProject` carries `viewerAccountKey`, the project scan is
   an `Effect.forEach` that can call `api.getViewerAccountKey`, and the cache is `viewersByAccount`.
@@ -394,7 +407,7 @@ Host <hostname>.local
 ### No `t3code/` worktree branch prefix (#2)
 
 - What: upstream now has a branch naming setting; the fork changes its default prefix from
-  `t3code` to empty, so generated branches have no prefix. Temporary placeholder branches still
+  `t3` (upstream's default since v0.0.46) to empty, so generated branches have no prefix. Temporary placeholder branches still
   use `t3code/<hex>` until the server renames them. A saved prefix in Settings still wins.
 - Key files: `packages/contracts/src/settings.ts` (`branchNamePrefix` default).
 - Tests: `packages/contracts/src/settings.test.ts`.
@@ -430,14 +443,6 @@ Host <hostname>.local
   the parent) instead. On a conflict, take upstream's markup and add `font-mono` to that wrapper.
 - The branch selector's own trigger label is deliberately _not_ in the code font: that spot took
   upstream wholesale in the 2026-09-21 sync, since the label doubles as the "Select ref" placeholder.
-
-### Mermaid diagrams (#15)
-
-- What: ` ```mermaid ` blocks render as diagrams in chat.
-- Key files: `apps/web/src/components/{MermaidDiagram,ChatMarkdown}.tsx`, `index.css`,
-  `apps/web/package.json` (the `mermaid` dependency), `pnpm-lock.yaml`.
-- Check: ask the agent for a small mermaid flowchart. It renders as a diagram.
-- Warning: on a lockfile conflict, take upstream's `pnpm-lock.yaml`, then run `vp i` again.
 
 ### App name without "(Alpha)" (#43)
 

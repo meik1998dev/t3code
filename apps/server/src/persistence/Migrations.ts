@@ -8,9 +8,9 @@
  * schema is always up to date before the application starts.
  */
 
-import * as Migrator from "effect/unstable/sql/Migrator";
+import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 // Import all migrations statically
@@ -70,13 +70,18 @@ import Migration0053 from "./Migrations/053_PullRequestFilesViewed.ts";
 import Migration0054 from "./Migrations/054_ProjectionThreadsAutoSettleDisabledAt.ts";
 import Migration0055 from "./Migrations/055_OrchestrationV2.ts";
 import Migration0056 from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
-import Migration0057 from "./Migrations/057_ProjectionThreadsParentThreadId.ts";
-import Migration0058 from "./Migrations/058_RepairThreadBranchPullRequestColumn.ts";
-import Migration0059 from "./Migrations/059_RepairPullRequestFilesViewedTable.ts";
-import Migration0060 from "./Migrations/060_RepairThreadAutoSettleColumn.ts";
+import Migration0057 from "./Migrations/057_ScheduledTaskWebhooks.ts";
+import Migration0058 from "./Migrations/058_WebhookRelayDeliveries.ts";
+import Migration0059 from "./Migrations/059_McpAppModelContext.ts";
+import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
 import Migration0061 from "./Migrations/061_RepairUpstreamMigrationsAfterFork.ts";
 import Migration0062 from "./Migrations/062_RepairThreadTitleStateColumn.ts";
 import Migration0063 from "./Migrations/063_RepairOrchestrationV2AfterFork.ts";
+import Migration0064 from "./Migrations/064_ProjectionThreadsParentThreadId.ts";
+import Migration0065 from "./Migrations/065_RepairThreadBranchPullRequestColumn.ts";
+import Migration0066 from "./Migrations/066_RepairPullRequestFilesViewedTable.ts";
+import Migration0067 from "./Migrations/067_RepairThreadAutoSettleColumn.ts";
+import Migration0068 from "./Migrations/068_RepairUpstream57To60AfterFork.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -147,16 +152,22 @@ export const migrationEntries = [
   // Preserve this migration's schema. Future V2 schema changes need new migrations.
   [55, "OrchestrationV2", Migration0055],
   [56, "RemoveRedundantProjectionIndexes", Migration0056],
+  [57, "ScheduledTaskWebhooks", Migration0057],
+  [58, "WebhookRelayDeliveries", Migration0058],
+  [59, "McpAppModelContext", Migration0059],
+  [60, "ThreadSnapshotWindowIndexes", Migration0060],
   // Spindle fork migrations. 61 and 62 were recorded as 55 and 56 before
   // upstream took those ids; 63 then applies upstream's 55 and 56 to those
-  // databases. See FORK.md "Migrations".
-  [57, "ProjectionThreadsParentThreadId", Migration0057],
-  [58, "RepairThreadBranchPullRequestColumn", Migration0058],
-  [59, "RepairPullRequestFilesViewedTable", Migration0059],
-  [60, "RepairThreadAutoSettleColumn", Migration0060],
+  // databases. 64-67 were recorded as 57-60 before upstream took those ids;
+  // 68 applies upstream's 57-60 to those databases. See FORK.md "Migrations".
   [61, "RepairUpstreamMigrationsAfterFork", Migration0061],
   [62, "RepairThreadTitleStateColumn", Migration0062],
   [63, "RepairOrchestrationV2AfterFork", Migration0063],
+  [64, "ProjectionThreadsParentThreadId", Migration0064],
+  [65, "RepairThreadBranchPullRequestColumn", Migration0065],
+  [66, "RepairPullRequestFilesViewedTable", Migration0066],
+  [67, "RepairThreadAutoSettleColumn", Migration0067],
+  [68, "RepairUpstream57To60AfterFork", Migration0068],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationEntries, runMigrations } from "../Migrations.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -13,8 +13,8 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationEntries.map(([id]) => id),
-        // 57-63 are Spindle fork migrations.
-        Array.from({ length: 63 }, (_, index) => index + 1),
+        // 61-68 are Spindle fork migrations.
+        Array.from({ length: 68 }, (_, index) => index + 1),
       );
     }),
   );
@@ -29,14 +29,19 @@ layer("055_OrchestrationV2", (it) => {
         [54, "ProjectionThreadsAutoSettleDisabledAt"],
         [55, "OrchestrationV2"],
         [56, "RemoveRedundantProjectionIndexes"],
+        [57, "ScheduledTaskWebhooks"],
+        [58, "WebhookRelayDeliveries"],
+        [59, "McpAppModelContext"],
+        [60, "ThreadSnapshotWindowIndexes"],
         // Spindle fork migrations (FORK.md "Migrations").
-        [57, "ProjectionThreadsParentThreadId"],
-        [58, "RepairThreadBranchPullRequestColumn"],
-        [59, "RepairPullRequestFilesViewedTable"],
-        [60, "RepairThreadAutoSettleColumn"],
         [61, "RepairUpstreamMigrationsAfterFork"],
         [62, "RepairThreadTitleStateColumn"],
         [63, "RepairOrchestrationV2AfterFork"],
+        [64, "ProjectionThreadsParentThreadId"],
+        [65, "RepairThreadBranchPullRequestColumn"],
+        [66, "RepairPullRequestFilesViewedTable"],
+        [67, "RepairThreadAutoSettleColumn"],
+        [68, "RepairUpstream57To60AfterFork"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -59,13 +64,18 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 54, name: "ProjectionThreadsAutoSettleDisabledAt" },
         { migration_id: 55, name: "OrchestrationV2" },
         { migration_id: 56, name: "RemoveRedundantProjectionIndexes" },
-        { migration_id: 57, name: "ProjectionThreadsParentThreadId" },
-        { migration_id: 58, name: "RepairThreadBranchPullRequestColumn" },
-        { migration_id: 59, name: "RepairPullRequestFilesViewedTable" },
-        { migration_id: 60, name: "RepairThreadAutoSettleColumn" },
+        { migration_id: 57, name: "ScheduledTaskWebhooks" },
+        { migration_id: 58, name: "WebhookRelayDeliveries" },
+        { migration_id: 59, name: "McpAppModelContext" },
+        { migration_id: 60, name: "ThreadSnapshotWindowIndexes" },
         { migration_id: 61, name: "RepairUpstreamMigrationsAfterFork" },
         { migration_id: 62, name: "RepairThreadTitleStateColumn" },
         { migration_id: 63, name: "RepairOrchestrationV2AfterFork" },
+        { migration_id: 64, name: "ProjectionThreadsParentThreadId" },
+        { migration_id: 65, name: "RepairThreadBranchPullRequestColumn" },
+        { migration_id: 66, name: "RepairPullRequestFilesViewedTable" },
+        { migration_id: 67, name: "RepairThreadAutoSettleColumn" },
+        { migration_id: 68, name: "RepairUpstream57To60AfterFork" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

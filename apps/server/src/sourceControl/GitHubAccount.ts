@@ -2,53 +2,24 @@ import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { RepositoryGitHubAccount } from "./GitHubCredentials.ts";
 
 /**
  * Git config key naming the signed-in `gh` account a repository should use. Set per repository
- * with `git config gh.account <login>`; repositories without it use the active `gh` account.
+ * with `git config gh.account <login>`; repositories without it use the host's account.
  */
 export const GITHUB_ACCOUNT_CONFIG_KEY = "gh.account";
-const ENV_CACHE_CAPACITY = 256;
-const ENV_CACHE_TTL = Duration.seconds(30);
-
-/** The repository names an account, but `gh` holds no token for it. */
-export class GitHubAccountUnavailableError extends Schema.TaggedError<GitHubAccountUnavailableError>()(
-  "GitHubAccountUnavailableError",
-  {
-    command: Schema.Literal("gh"),
-    cwd: Schema.String,
-    account: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  get detail(): string {
-    return `GitHub account "${this.account}" (from git config ${GITHUB_ACCOUNT_CONFIG_KEY}) is not signed in to GitHub CLI. Run \`gh auth login\` for that account, or unset the key.`;
-  }
-
-  override get message(): string {
-    return `GitHub CLI failed in envFor: ${this.detail}`;
-  }
-}
+const ACCOUNT_CACHE_CAPACITY = 256;
+const ACCOUNT_CACHE_TTL = Duration.seconds(30);
 
 export class GitHubAccount extends Context.Service<
   GitHubAccount,
   {
-    /** The configured account for this repository, or null when `gh` should use its active account. */
+    /** The configured account for this repository, or null when the host's account applies. */
     readonly accountKeyFor: (cwd: string) => Effect.Effect<string | null>;
-
-    /**
-     * Environment overrides for `gh` runs in this repository: a `GH_TOKEN` for the configured
-     * account, or none when the repository names no account.
-     */
-    readonly envFor: (
-      cwd: string,
-    ) => Effect.Effect<Option.Option<NodeJS.ProcessEnv>, GitHubAccountUnavailableError>;
   }
 >()("t3/sourceControl/GitHubAccount") {}
 
@@ -56,7 +27,7 @@ export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
 
   // A missing key, a directory outside git, or a missing git binary all mean "no account":
-  // gh itself reports the real problem on the call that follows.
+  // the GitHub request that follows reports the real problem.
   const readAccount = (cwd: string) =>
     process
       .run({
@@ -71,62 +42,55 @@ export const make = Effect.gen(function* () {
         Effect.orElseSucceed(() => ""),
       );
 
-  const readToken = (cwd: string, account: string) =>
-    process
-      .run({
-        operation: "GitHubAccount.readToken",
-        command: "gh",
-        args: ["auth", "token", "--user", account],
-        cwd,
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) => new GitHubAccountUnavailableError({ command: "gh", cwd, account, cause }),
-        ),
-        Effect.map((output) => output.stdout.trim()),
-        Effect.flatMap((token) =>
-          token.length > 0
-            ? Effect.succeed(token)
-            : Effect.fail(
-                new GitHubAccountUnavailableError({
-                  command: "gh",
-                  cwd,
-                  account,
-                  cause: "GitHub CLI returned an empty token.",
-                }),
-              ),
-        ),
-      );
-
-  // Both caches hold a cwd's answer for 30 seconds, so a page that asks which account every
-  // project uses and then runs several gh commands per project spawns each subprocess once.
-  // The account read never fails; a failed token read is not held, so a login or logout takes
-  // effect within the TTL without a server restart.
+  // Holds a cwd's answer for 30 seconds, so a page that runs several GitHub reads per project
+  // spawns `git config` once per project.
   const accountCache = yield* Cache.makeWith(
     (cwd: string) =>
       readAccount(cwd).pipe(Effect.map((account) => (account.length === 0 ? null : account))),
-    { capacity: ENV_CACHE_CAPACITY, timeToLive: () => ENV_CACHE_TTL },
+    { capacity: ACCOUNT_CACHE_CAPACITY, timeToLive: () => ACCOUNT_CACHE_TTL },
   );
-  const accountKeyFor: GitHubAccount["Service"]["accountKeyFor"] = (cwd) =>
-    Cache.get(accountCache, cwd);
 
-  const envCache = yield* Cache.makeWith(
-    (cwd: string) =>
-      accountKeyFor(cwd).pipe(
-        Effect.flatMap((account) =>
-          account === null
-            ? Effect.succeedNone
-            : readToken(cwd, account).pipe(Effect.map((token) => Option.some({ GH_TOKEN: token }))),
-        ),
-      ),
-    {
-      capacity: ENV_CACHE_CAPACITY,
-      timeToLive: (exit) => (Exit.isSuccess(exit) ? ENV_CACHE_TTL : Duration.zero),
-    },
-  );
-  const envFor: GitHubAccount["Service"]["envFor"] = (cwd) => Cache.get(envCache, cwd);
-
-  return GitHubAccount.of({ accountKeyFor, envFor });
+  return GitHubAccount.of({ accountKeyFor: (cwd) => Cache.get(accountCache, cwd) });
 });
 
 export const layer = Layer.effect(GitHubAccount, make);
+
+/** Runs `effect` with the credential of the repository's `gh.account`, when it names one. */
+export const withRepositoryAccount =
+  (account: GitHubAccount["Service"], cwd: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    account
+      .accountKeyFor(cwd)
+      .pipe(
+        Effect.flatMap((key) =>
+          key === null ? effect : Effect.provideService(effect, RepositoryGitHubAccount, key),
+        ),
+      );
+
+/**
+ * Wraps each method of a GitHub service whose first argument has a `cwd` and that returns an
+ * Effect, so every request it makes uses that repository's `gh.account`. Other methods pass
+ * through unchanged.
+ */
+export function scopeToRepositoryAccounts<S extends object>(
+  account: GitHubAccount["Service"],
+  service: S,
+): S {
+  const scoped: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(service)) {
+    scoped[name] =
+      typeof value !== "function"
+        ? value
+        : (...args: ReadonlyArray<unknown>) => {
+            const result: unknown = Reflect.apply(value, service, args);
+            const [input] = args;
+            const cwd =
+              typeof input === "object" && input !== null && "cwd" in input ? input.cwd : null;
+            if (typeof cwd !== "string" || !Effect.isEffect(result)) return result;
+            // The wrapped method's own types are restored by the `S` return type.
+            // @effect-diagnostics-next-line anyUnknownInErrorContext:off
+            return withRepositoryAccount(account, cwd)(result);
+          };
+  }
+  return scoped as S;
+}

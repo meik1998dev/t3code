@@ -1,13 +1,13 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
 import repairUpstreamMigrations from "./061_RepairUpstreamMigrationsAfterFork.ts";
 import repairThreadTitleStateColumn from "./062_RepairThreadTitleStateColumn.ts";
-import repairThreadBranchPullRequestColumn from "./058_RepairThreadBranchPullRequestColumn.ts";
-import repairPullRequestFilesViewedTable from "./059_RepairPullRequestFilesViewedTable.ts";
+import repairThreadBranchPullRequestColumn from "./065_RepairThreadBranchPullRequestColumn.ts";
+import repairPullRequestFilesViewedTable from "./066_RepairPullRequestFilesViewedTable.ts";
 
 it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
   "061_RepairUpstreamMigrationsAfterFork",
@@ -29,7 +29,7 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
         const ran = yield* runMigrations();
         assert.deepStrictEqual(
           ran.map(([id]) => id),
-          [55, 56, 57, 58, 59, 60, 61, 62, 63],
+          [55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68],
         );
 
         // Every repair must also be safe when a database already has the schema.

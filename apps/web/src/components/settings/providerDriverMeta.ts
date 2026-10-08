@@ -7,6 +7,7 @@ import {
   GrokSettings,
   OpenCodeSettings,
   PiSettings,
+  MuseSettings,
   ProviderDriverKind,
 } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
@@ -87,15 +88,19 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
     settingsSchema: AntigravitySettings,
   },
   {
+    value: ProviderDriverKind.make("muse"),
+    label: "Muse Code",
+    settingsSchema: MuseSettings,
+    badgeLabel: "Beta",
+  },
+  {
     value: ProviderDriverKind.make("pi"),
     label: "Pi",
-    badgeLabel: "Early Access",
     settingsSchema: PiSettings,
   },
   {
     value: ProviderDriverKind.make("acpRegistry"),
     label: "ACP Registry",
-    badgeLabel: "Early Access",
     settingsSchema: AcpRegistrySettings,
     hasDefaultInstance: false,
   },
