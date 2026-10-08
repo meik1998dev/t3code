@@ -1,4 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
+import { enabledEnvironmentIds } from "@t3tools/client-runtime/state/connections";
+import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import {
   createEnvironmentThreadDetailAtoms,
   createEnvironmentThreadShellAtoms,
@@ -6,24 +8,17 @@ import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
   type EnvironmentThreadState,
   createThreadEnvironmentAtoms,
-  ThreadSnapshotLoader,
+  createFullThreadHistoryCommand,
 } from "@t3tools/client-runtime/state/threads";
-import { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
-import {
-  createEnvironmentCommand,
-  runAtomCommand,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
-  OrchestrationThread,
+  OrchestrationV2ThreadProjection,
+  OrchestrationV2ThreadShell,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
@@ -57,46 +52,23 @@ export function useEnvironmentThread(
       ? environmentThreads.stateAtom(environmentId, threadId)
       : EMPTY_THREAD_STATE_ATOM,
   );
-  return Option.getOrElse(
+  const state = Option.getOrElse(
     AsyncResult.value(result),
     () => EMPTY_ENVIRONMENT_THREAD_STATE,
   ) as EnvironmentThreadState;
+  return state;
 }
 
-class FullThreadHistoryError extends Data.TaggedError("FullThreadHistoryError")<{
-  readonly message: string;
-}> {}
-
-const fullThreadSnapshotCommand = createEnvironmentCommand(connectionAtomRuntime, {
-  label: "environment-data:threads:full-snapshot",
-  execute: (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      const supervisor = yield* EnvironmentSupervisor;
-      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-      if (Option.isNone(prepared)) {
-        return yield* new FullThreadHistoryError({
-          message: "Reconnect the environment before forking this chat.",
-        });
-      }
-      const loader = yield* ThreadSnapshotLoader;
-      const snapshot = yield* loader.load(prepared.value, threadId);
-      if (Option.isNone(snapshot)) {
-        return yield* new FullThreadHistoryError({
-          message: "Could not load the full chat history.",
-        });
-      }
-      return snapshot.value.thread;
-    }),
-});
+const fullThreadSnapshotCommand = createFullThreadHistoryCommand(connectionAtomRuntime);
 
 /**
- * Fetches the complete thread over HTTP with no turn window. Fork needs every
- * message once, so this bypasses the paged thread store instead of loading
- * every older page into it and keeping them resident.
+ * Fetches the complete thread projection over HTTP with no turn window. Fork
+ * and "copy transcript" need every message once, so this bypasses the paged
+ * thread store instead of loading every older page into it.
  */
 export async function loadFullThreadHistory(
   threadRef: ScopedThreadRef,
-): Promise<OrchestrationThread> {
+): Promise<OrchestrationV2ThreadProjection> {
   const result = await runAtomCommand(
     appAtomRegistry,
     fullThreadSnapshotCommand,
@@ -108,3 +80,88 @@ export async function loadFullThreadHistory(
   }
   return result.value;
 }
+
+const isRunning = (status: string) =>
+  status === "preparing" || status === "starting" || status === "running";
+
+type KeptThreads = ReadonlyMap<EnvironmentId, ReadonlySet<ThreadId>>;
+
+// True once a thread's own stream no longer needs to stay open: it is in sync
+// and shows a settled session, or it cannot progress (deleted or failed). A
+// stream that is still loading or reconnecting keeps waiting for the stop.
+function isDetailDone<E>(result: AsyncResult.AsyncResult<EnvironmentThreadState, E>): boolean {
+  if (!AsyncResult.isSuccess(result)) return true;
+  const { status, data, error } = result.value;
+  if (status === "deleted" || Option.isSome(error)) return true;
+  return (
+    status === "live" &&
+    !Option.exists(data, (thread) => thread.runs.some((run) => isRunning(run.status)))
+  );
+}
+
+/**
+ * Keeps the thread state atom mounted for each running thread in the listed
+ * environments. Mount the result; its value is only bookkeeping.
+ *
+ * The shell and detail streams are independent, so the shell can report a
+ * stop before the detail loads or catches up. A stopped thread stays mounted
+ * until its own detail is live and shows the stop too. Then the stream closes
+ * and saves the settled state to disk.
+ */
+export function createRunningThreadKeepAliveAtom<E>(input: {
+  readonly environmentIdsAtom: Atom.Atom<ReadonlyArray<EnvironmentId>>;
+  readonly threadsAtom: (
+    environmentId: EnvironmentId,
+  ) => Atom.Atom<ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "status">>>;
+  readonly stateAtom: (
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  ) => Atom.Atom<AsyncResult.AsyncResult<EnvironmentThreadState, E>>;
+}) {
+  // Keeps its identity until a thread starts or stops, so ordinary shell
+  // updates do not rebuild the keep-alive set.
+  const runningThreadIdsAtom = Atom.family((environmentId: EnvironmentId) => {
+    let previous: ReadonlyArray<ThreadId> = [];
+    return Atom.make((get) => {
+      const running = get(input.threadsAtom(environmentId)).flatMap((thread) =>
+        isRunning(thread.status) ? [thread.id] : [],
+      );
+      if (arrayElementsEqual(previous, running)) return previous;
+      previous = running;
+      return running;
+    }).pipe(Atom.withLabel(`web-running-thread-ids:${environmentId}`));
+  });
+
+  return Atom.make((get): KeptThreads => {
+    const previous = Option.getOrUndefined(get.self<KeptThreads>());
+    const kept = new Map<EnvironmentId, ReadonlySet<ThreadId>>();
+    // An environment that leaves the list is not visited, so its mounts drop.
+    for (const environmentId of get(input.environmentIdsAtom)) {
+      const threadIds = new Set(get(runningThreadIdsAtom(environmentId)));
+      for (const threadId of previous?.get(environmentId) ?? []) {
+        if (threadIds.has(threadId)) continue;
+        const stateAtom = input.stateAtom(environmentId, threadId);
+        // `once`, not `get`: a dependency on a stopped thread would hold its
+        // stream open until some other change rebuilds this atom.
+        if (isDetailDone(get.once(stateAtom))) continue;
+        threadIds.add(threadId);
+        // Rebuild when this detail is done, not on each update.
+        get.subscribe(stateAtom, (state) => {
+          if (isDetailDone(state)) get.refreshSelf();
+        });
+      }
+      for (const threadId of threadIds) get.mount(input.stateAtom(environmentId, threadId));
+      kept.set(environmentId, threadIds);
+    }
+    return kept;
+  }).pipe(Atom.withLabel("web-running-thread-keep-alive"));
+}
+
+/** Mounted by `RunningThreadKeepAlive` on desktop, for every enabled environment. */
+export const runningThreadKeepAliveAtom = createRunningThreadKeepAliveAtom({
+  environmentIdsAtom: Atom.map(environmentCatalog.catalogValueAtom, (catalog) => [
+    ...enabledEnvironmentIds(catalog),
+  ]),
+  threadsAtom: environmentThreadShells.environmentThreadsAtom,
+  stateAtom: environmentThreads.stateAtom,
+});

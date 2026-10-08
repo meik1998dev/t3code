@@ -8,12 +8,14 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-/**
- * `preview` drives the collaborative browser. `orchestration` lets the agent
- * start other threads; it is only granted to threads a person started, so an
- * agent-started thread cannot start more.
- */
-export type McpCapability = "preview" | "device" | "pull-requests" | "orchestration";
+const ALL_MCP_CAPABILITIES = [
+  "preview",
+  "orchestration",
+  "worktree",
+  "device",
+  "pull-requests",
+] as const;
+export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
@@ -52,9 +54,11 @@ const missingCapability = (
 export const requireMcpCapability = <const C extends McpCapability>(
   capability: C,
 ): Effect.Effect<McpInvocationScope, McpCapabilityError<C>, McpInvocationContext> =>
-  Effect.flatMap(McpInvocationContext, (invocation) =>
-    invocation.capabilities.has(capability)
-      ? Effect.succeed(invocation)
-      : // The conditional type narrows what the literal argument decided at runtime.
-        Effect.fail(missingCapability(invocation, capability) as McpCapabilityError<C>),
-  ).pipe(Effect.withSpan("mcp.requireCapability"));
+  McpInvocationContext.pipe(
+    Effect.filterOrFail(
+      (invocation) => invocation.capabilities.has(capability),
+      // The conditional type narrows what the literal argument decided at runtime.
+      (invocation) => missingCapability(invocation, capability) as McpCapabilityError<C>,
+    ),
+    Effect.withSpan("mcp.requireCapability"),
+  );

@@ -1,6 +1,5 @@
 import type {
-  CheckpointRef,
-  ThreadId,
+  BranchNamingOptions,
   VcsRef,
   SourceControlProviderInfo,
   VcsStatusLocalResult,
@@ -8,20 +7,11 @@ import type {
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "@t3tools/contracts";
-import { CheckpointRef as CheckpointRefSchema } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
-import * as Encoding from "effect/Encoding";
 import * as Result from "effect/Result";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "t3code";
-export const CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
-
-export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
-  return CheckpointRefSchema.make(
-    `${CHECKPOINT_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/turn/${turnCount}`,
-  );
-}
 // Canonical form is `t3code/<8 hex>`. Older mobile builds generated `t3code/<uuid>`
 // via Crypto.randomUUID() (always RFC 4122 v4), so the matcher also accepts exactly
 // that shape — version nibble `4`, variant nibble `[89ab]` — to keep those threads
@@ -50,6 +40,24 @@ export function sanitizeBranchFragment(raw: string): string {
     .replace(/[./_-]+$/g, "");
 
   return branchFragment.length > 0 ? branchFragment : "update";
+}
+
+/** Custom naming preserves the model's complete ref; Git validates it on rename. */
+export function formatGeneratedBranchName(raw: string, naming?: BranchNamingOptions): string {
+  if (naming?.mode === "custom") return raw.trim();
+  const branch = sanitizeBranchFragment(raw);
+  if (naming?.mode !== "static") return branch;
+  const prefix = naming.prefix
+    .split("/")
+    .map((part) =>
+      part
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, ""),
+    )
+    .filter(Boolean)
+    .join("/");
+  return prefix ? `${prefix}/${branch}` : branch;
 }
 
 /**
@@ -274,6 +282,19 @@ function deriveLocalBranchNameCandidatesFromRemoteRef(
   }
 
   return [...candidates];
+}
+
+// Git rejects ASCII space and the ASCII control characters (tab, newline and
+// friends) in ref names, so the picker's "Create new ref" entry can only fail
+// for a typed name like "new branch". Replacing runs of those with a dash makes
+// the name usable without reimplementing check-ref-format: names invalid for
+// other reasons still surface the git error. Only the whitespace git actually
+// rejects is replaced — git accepts U+00A0 and friends, and rewriting those
+// would silently create a ref the user never asked for. Case and existing
+// dashes are left alone, since ref names are case sensitive and consecutive
+// dashes are valid.
+export function sanitizeNewRefName(rawName: string): string {
+  return rawName.trim().replace(/[ \t\n\r\f\v]+/g, "-");
 }
 
 /**

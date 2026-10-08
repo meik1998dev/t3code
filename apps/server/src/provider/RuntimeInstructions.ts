@@ -4,36 +4,25 @@ When the t3-code MCP server exposes link_pull_request, you must use it to regist
 
 /**
  * Shared runtime context; omit model and effort when the harness manages them dynamically.
- *
- * `threadTools` must reflect the turn's actual MCP credential: telling a child
- * thread about tools it cannot use would send it into a failing tool call.
+ * `modelName` is the display name users see in the model picker; `model` is the slug.
  */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
   readonly model?: string | undefined;
+  readonly modelName?: string | undefined;
   readonly reasoningEffort?: string | undefined;
-  readonly threadTools?: boolean | undefined;
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
+  const modelName = toSingleLine(runtime.modelName ?? "");
   const effort = toSingleLine(runtime.reasoningEffort ?? "");
-  const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${model}` : "";
+  const modelLabel =
+    modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
+  const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
   const runtimeInfo = `<runtime_info>In case you're asked: you are running in Spindle through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>`;
-  const threadInstructions = runtime.threadTools === true ? `\n\n${THREAD_TOOL_INSTRUCTIONS}` : "";
-  return `${runtimeInfo}\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${threadInstructions}`;
+  return `${runtimeInfo}\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}`;
 }
-
-/**
- * Routing rules are generic on purpose. The user's own model preferences live
- * in the thread routing notes setting, which list_models returns fresh on each
- * call, so edits apply without rebuilding this prompt.
- */
-const THREAD_TOOL_INSTRUCTIONS = `<t3_threads>You can start separate Spindle threads with the t3-code MCP tools list_projects, list_models, list_threads, read_thread, start_thread and send_message. Use start_thread when the user asks for work to run as its own thread, or when a task needs its own branch or worktree, a different model or provider, or another project. For parallel steps inside your current task, use your own sub-agents instead.
-Pick each thread's model and effort yourself unless the user names them. Call list_models first: its routingNotes are the user's preferences and win over these rules. One file, a clear recipe, or a cheap mistake: cheapest model, low effort. Many files, a hard bug, a public API, or security: strongest model, high effort. Investigation: default model, high effort. Unsure: your own model and effort.
-Before starting more than one thread, show a short table of task, model, effort and branch.
-To give a thread you started a follow-up, use send_message after it finishes its turn.
-To review another thread, call read_thread, then start_thread with a prompt that gives the reviewer that thread's workspacePath. Its uncommitted changes exist only there, not on its branch. The reviewer only reads that path and never edits another thread's files.</t3_threads>`;
 
 function toSingleLine(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim();

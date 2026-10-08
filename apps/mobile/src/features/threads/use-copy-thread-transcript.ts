@@ -25,9 +25,9 @@ export function useCopyThreadTranscript(thread: {
   const { environmentId, id: threadId } = thread;
   return useCallback(async () => {
     try {
-      const fullThread = await loadFullThreadHistory({ environmentId, threadId });
+      const projection = await loadFullThreadHistory({ environmentId, threadId });
       const copied = await tryCopyTextWithHaptic(
-        buildThreadTranscript(fullThread.title, fullThread.messages),
+        buildThreadTranscript(projection.thread.title, projection.messages),
         { target: "transcript" },
       );
       if (!copied) {

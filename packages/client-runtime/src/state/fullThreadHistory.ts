@@ -1,27 +1,30 @@
-import type { OrchestrationThread, ThreadId } from "@t3tools/contracts";
+import type { OrchestrationV2ThreadProjection, ThreadId } from "@t3tools/contracts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { HttpClient } from "effect/unstable/http";
 import type { Atom } from "effect/unstable/reactivity";
 
+import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import * as ManagedRelay from "../relay/managedRelay.ts";
 import { createEnvironmentCommand } from "./runtime.ts";
-import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
+import { fetchEnvironmentThreadSnapshot } from "./threadSnapshotHttp.ts";
 
 export class FullThreadHistoryError extends Data.TaggedError("FullThreadHistoryError")<{
   readonly message: string;
 }> {}
 
 /**
- * Command that fetches a complete thread over HTTP with no turn window. Fork
- * and "copy transcript" need every message once, so this bypasses the paged
- * thread store instead of loading every older page into it and keeping them
- * resident.
+ * Command that fetches a complete thread projection over HTTP. Fork and "copy
+ * transcript" need every message once, and the clients' snapshot loader only
+ * returns a bounded recent window, so this reads the full snapshot route
+ * directly instead of paging older history into the thread store.
  */
 export function createFullThreadHistoryCommand<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | ThreadSnapshotLoader | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | HttpClient.HttpClient | R, E>,
 ) {
   return createEnvironmentCommand(runtime, {
     label: "environment-data:threads:full-snapshot",
@@ -34,14 +37,21 @@ export function createFullThreadHistoryCommand<R, E>(
             message: "Reconnect the environment to load this chat's history.",
           });
         }
-        const loader = yield* ThreadSnapshotLoader;
-        const snapshot = yield* loader.load(prepared.value, threadId);
-        if (Option.isNone(snapshot)) {
-          return yield* new FullThreadHistoryError({
-            message: "Could not load the full chat history.",
-          });
-        }
-        return snapshot.value.thread satisfies OrchestrationThread;
+        const signer = yield* Effect.serviceOption(ManagedRelay.ManagedRelayDpopSigner);
+        const remoteAuthorization = yield* Effect.serviceOption(
+          RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
+        );
+        const snapshot = yield* fetchEnvironmentThreadSnapshot({
+          prepared: prepared.value,
+          threadId,
+          signer,
+          remoteAuthorization,
+        }).pipe(
+          Effect.mapError(
+            () => new FullThreadHistoryError({ message: "Could not load the full chat history." }),
+          ),
+        );
+        return snapshot.projection satisfies OrchestrationV2ThreadProjection;
       }),
   });
 }

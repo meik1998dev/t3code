@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `e67abcf798` (2026-09-24, `feat(observability): honor the OpenTelemetry kill switch (#13355)`, v0.0.43-nightly).
+- Last synced upstream commit: `cc1e634bfa` (2026-10-02, `fix(server): released builds keep the OpenCode policy for their own version (#14863)`, v0.0.45 plus the new orchestrator, #2829).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -28,30 +28,37 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 The migration runner tracks migrations by number only. If the fork and upstream both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
 This already happened three times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51, and
-fork 53 hid upstream 53.
+fork 53 hid upstream 53. A fourth case needs no clash: upstream added 54 after fork databases had
+recorded 59, and the runner only runs IDs above the latest recorded one, so they skipped it.
 The repair migrations below make both upgrade paths safe.
 
 Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 55     | `055_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 56     | `056_RepairThreadTitleStateColumn.ts`        | Sync repair   |
 | 57     | `057_ProjectionThreadsParentThreadId.ts`     | Agent threads |
 | 58     | `058_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
 | 59     | `059_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 60     | `060_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 61     | `061_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 62     | `062_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 63     | `063_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
 
-Upstream owns 50 (`ProjectionThreadPullRequests`), 51 (`ProjectionThreadMessageContext`),
-52 (`ProjectionThreadTitleState`), and 53 (`PullRequestFilesViewed`). Migration 56 idempotently
-adds `title_state_json` for databases that had already recorded the fork's own 52. The v0.0.43
-sync moved the fork's own 53 to 58, and migration 59 replays upstream's 53 for databases that
-had recorded the fork's 53 instead.
-Migration 55 idempotently reapplies upstream 50–51 and fork 53 for databases that had already
-recorded the fork's old 50–54 sequence. The removed parent-thread migration remains only as a
-historical row in upgraded databases; migration 57 idempotently restores that column for both
-new and already-upgraded databases. The removed task-plan lookup may remain as an unused index.
+Upstream owns 1–56, including 54 (`ProjectionThreadsAutoSettleDisabledAt`), 55
+(`OrchestrationV2`, the new orchestrator schema) and 56 (`RemoveRedundantProjectionIndexes`).
+Fork databases had already recorded 55 and 56 under fork names, so they skip upstream's. The
+v0.0.45 sync moved those two fork repairs to 61 and 62, and 63 then runs upstream 55 (only when
+`orchestration_v2_events` is missing; upstream 55 is not idempotent) and 56, and renames the
+ledger rows 55/56 to upstream's names. Fresh databases run upstream 55/56 normally and the
+fork's 57–63 do nothing harmful.
+Older history: 60 reruns upstream 54, 59 replays upstream 53, 62 adds `title_state_json` for
+databases that recorded the fork's own 52, and 61 reapplies upstream 50–51 for databases that
+recorded the fork's old 50–54. 57 keeps `projection_threads.parent_thread_id`; the v1 thread
+importer (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"`
+when old threads are copied into the new orchestrator on first start.
 
-On every sync where numbers clash:
+On every sync where upstream adds a migration numbered below the fork's last one, or where
+numbers clash:
 
 1. Take upstream's files and numbers as they are.
 2. Move fork migrations to numbers after upstream's last one. Keep them idempotent
@@ -65,27 +72,34 @@ On every sync where numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                | Entries                                                  |
-| --------------------------------------------------- | -------------------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`              | Agent threads, Message fork, Tasks                       |
-| `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style, Transcript |
-| `apps/web/src/index.css`                            | Sidebar style, Radius, Mermaid, Quieter tool rows        |
-| `apps/server/src/ws.ts`                             | Agent ports, GitHub account, Message fork                |
-| `apps/server/src/provider/Layers/ClaudeAdapter.ts`  | Agent threads, Task tracking                             |
-| `apps/server/src/provider/RuntimeInstructions.ts`   | Agent threads, Task tracking                             |
-| `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                                |
-| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks             |
-| `packages/contracts/src/orchestration.ts`           | Agent threads, Message fork                              |
+| File                                                      | Entries                                           |
+| --------------------------------------------------------- | ------------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`                    | Message fork, Tasks                               |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                            |
+| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style      |
+| `apps/web/src/index.css`                                  | Sidebar style, Radius, Mermaid, Quieter tool rows |
+| `apps/server/src/ws.ts`                                   | Agent ports, GitHub account                       |
+| `apps/server/src/provider/RuntimeInstructions.ts`         | Task tracking, PR linking                         |
+| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts` | Task tracking                                     |
+| `apps/server/src/persistence/Migrations.ts`               | [Migrations](#migrations)                         |
+| `apps/server/src/pullRequest/PullRequestService.ts`       | GitHub account per repo, Pull request stacks      |
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 55–59)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 57–63)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
 same in the app, so the gap shows up late as "No skills found" or no per-repo PR list.
 
 Learned on 2026-09-12 while setting up a root-login VPS (Ubuntu 24.04, Node 22).
+
+Since the v0.0.45 sync (new orchestrator) the repo's dev tooling needs Node 24
+(`engines.node ^24.13.1` in the root `package.json`); build on the Mac with
+`PATH=/opt/homebrew/opt/node@24/bin:$PATH`. The server package still accepts Node 22.16+, so the
+VPS keeps Node 22. The first start copies
+`userdata/state.sqlite` into a new `userdata/statev2.sqlite` once and runs from the copy, so the
+old file stays as a rollback point for the previous build.
 
 ### Build and ship (Mac → server)
 
@@ -192,74 +206,80 @@ Host <hostname>.local
 - Drop when: upstream guards the runtime-state clear by pid and invalidates workspace
   snapshots on refresh.
 
-### Agent thread tools (#37, restored after v0.0.42 sync)
+### Agent thread tools (#37; on upstream's tools since v0.0.45)
 
-- What: agents can list projects, models and threads; read another thread; and start or message
-  separate threads through the `t3-code` MCP toolkit. Threads retain their `parentThreadId`, and
-  web and mobile mark work started by another agent. Only person-started threads receive these
-  tools, so agent-created work stays one level deep. A server setting supplies live model-routing
-  notes to `list_models`.
-- Key files: `apps/server/src/mcp/toolkits/orchestration/{handlers,tools}.ts`,
-  `apps/server/src/orchestration/ThreadBootstrap.ts`, orchestration decider/projector and
-  projection persistence, migration 57, provider runtime instructions and adapters,
-  `packages/contracts/src/{orchestration,settings}.ts`, web settings/sidebar, and mobile thread rows.
-- Tests: `apps/server/src/mcp/toolkits/orchestration/handlers.test.ts`,
-  `apps/server/src/orchestration/decider.parentThread.test.ts`,
-  `apps/server/src/persistence/Migrations/057_ProjectionThreadsParentThreadId.test.ts`,
-  provider runtime/MCP tests, and contract settings tests.
-- Check: from a person-started Claude or Codex thread, ask it to start a separate thread. The child
-  appears with the agent-started indicator and can receive follow-up messages, but cannot create
-  another child. Change routing notes in Settings and confirm `list_models` returns the new text.
-- Drop when: upstream ships equivalent cross-thread orchestration with parent tracking, routing
-  guidance, and the one-level safety boundary.
+- What: upstream's new orchestrator ships its own agent tools (`t3_thread_launch`,
+  `create_threads`, `delegate_task`, `t3_thread_send/read/list`, `orchestrator_capabilities`),
+  so the fork's own toolkit is gone. The fork adds three things on top of upstream's tools:
+  (1) a one-level limit: a thread an agent started (`createdBy: "agent"`) or a delegated child
+  (`lineage.relationshipToParent: "subagent"`) cannot launch, create, delegate or schedule new
+  threads; it can still read, rename and link pull requests. (2) Settings → thread routing notes
+  are returned as `routingNotes` by `orchestrator_capabilities`, and its tool description tells
+  agents to follow them. (3) Web and mobile mark threads with `createdBy === "agent"`.
+- Key files: `apps/server/src/mcp/threadStartLimit.ts`, `mcp/OrchestratorMcpService.ts`
+  (`delegateTask`, `createThreads`, `scheduleTask`, `updateScheduledTask`),
+  `mcp/toolkits/project/handlers.ts` (`t3_thread_launch`), `mcp/toolkits/orchestrator/{handlers,tools}.ts`,
+  `packages/contracts/src/orchestratorMcp.ts` (`routingNotes`), `orchestration-v2/legacy/LegacyV1ThreadImporter.ts`
+  (v1 `parent_thread_id` → `createdBy: "agent"`), `packages/client-runtime/src/state/models.ts`
+  (`createdBy` on the client shell), web `Sidebar.tsx`/`LegacySidebar.tsx`, mobile `thread-list-v2-items.tsx`.
+- Tests: `apps/server/src/mcp/threadStartLimit.test.ts`, `OrchestratorMcpToolkit.integration.test.ts`
+  (`routingNotes`).
+- Check: from a person-started thread, ask the agent for a separate thread; it appears with the
+  agent mark. Ask that child to start another thread; it gets `capability_denied`. Change routing
+  notes in Settings and confirm `orchestrator_capabilities` returns the new text.
+- Drop when: upstream adds a depth limit and routing preferences of its own.
 
 ### Task tracking rule (#28, #29, direct commits)
 
 - What: runtime instructions ask Claude and Codex to keep a task list for work with 3+ steps.
-  Claude task tools stay on for new models. The Codex `update_plan` tool is on again.
-- Key files: `apps/server/src/provider/RuntimeInstructions.ts`,
-  `apps/server/src/provider/CodexDeveloperInstructions.ts`,
-  `apps/server/src/provider/Layers/ClaudeAdapter.ts`,
-  `apps/server/src/provider/Drivers/ClaudeHome.ts`, `apps/server/src/provider/Layers/codexLaunchArgs.ts`.
-- Tests: `RuntimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`, `ClaudeHome.test.ts`,
-  `codexLaunchArgs.test.ts`.
+  Claude task tools stay on for new models. Upstream now enables Codex `update_plan` itself
+  (`CODEX_THREAD_CONFIG` in `CodexAdapterV2.ts`), so the fork's launch flag is gone.
+- Key files: `apps/server/src/provider/RuntimeInstructions.ts` (`buildTaskTrackingInstructions`),
+  `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (`makeClaudeQueryOptions`
+  system prompt append), `apps/server/src/provider/CodexDeveloperInstructions.ts`
+  (`buildCodexAdditionalContext`, `interactionMode` option) called from `CodexAdapterV2.ts`,
+  `apps/server/src/provider/Drivers/ClaudeHome.ts`.
+- Tests: `RuntimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`,
+  `ClaudeAdapterV2.test.ts`, `ClaudeHome.test.ts`.
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
 - Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
   returns a copy of `process.env`, not `process.env` itself. Upstream's test asserts identity
   (`.toBe(process.env)`); on a conflict keep the fork's value check instead.
-- Drop when: upstream turns these tools on and adds its own instruction.
+- Codex: task tracking rides in the `t3_code_runtime` additional-context entry (Default mode
+  only), which upstream sends only when the `t3-code` MCP server is attached. Keep it under
+  Codex's per-entry cap (about 4,000 bytes); the orchestration prompt is its own entry.
+- Drop when: upstream adds its own task-list instruction.
 
 ## Transcripts
 
-### Fork from a message (#3; restored after v0.0.42 sync)
+### Fork from a message (#3; chat fork only since v0.0.45)
 
-- What: the message actions menu can fork the conversation through a selected user or terminal
-  assistant message. **Fork to new chat** opens a draft in the same checkout. **Fork to new
-  workspace** creates its worktree from that message's checkpoint. Both copy the full saved
-  user/assistant transcript through the fork point into the new draft and keep the source model.
-  The later **Fork after compaction** variants from #32/#34/#35 intentionally remain dropped.
-- Key files: `packages/client-runtime/src/forkTranscript.ts`,
-  `apps/web/src/components/{ChatView,ChatView.logic}.ts{x,}`,
+- What: the message actions menu can fork the conversation through a selected user or assistant
+  message. **Fork to new chat** opens a draft in the same checkout with the full saved
+  user/assistant transcript through that message, and keeps the source model. Upstream's own
+  **Fork from this response** button (assistant messages, provider-side context) also shows.
+  **Fork to new workspace** (worktree at the message's checkpoint) was dropped in the v0.0.45 sync
+  because the user did not use it; the compaction variants from #32/#34/#35 stay dropped.
+- Key files: `packages/client-runtime/src/{forkTranscript,state/fullThreadHistory}.ts`,
+  `apps/web/src/components/ChatView.tsx` (`onForkMessage`),
   `apps/web/src/components/chat/{MessagesTimeline,MessagesTimeline.logic}.ts{x,}`,
-  `apps/web/src/{composerDraftStore,state/threads}.ts`,
-  `apps/web/src/hooks/useHandleNewThread.ts`, `apps/server/src/checkpointing/Utils.ts`,
-  `apps/server/src/{ws,orchestration/ThreadBootstrap}.ts`, `packages/shared/src/git.ts`, and
-  `packages/contracts/src/orchestration.ts`.
-- Tests: `forkTranscript.test.ts`, `ChatView.logic.test.ts`, `MessagesTimeline.logic.test.ts`,
-  `composerDraftStore.test.ts`, `orchestration.test.ts`, and `GitVcsDriverCore.test.ts`.
-- Check: fork an earlier user message to a new chat and confirm the draft ends at that message;
-  fork a checkpointed message to a new workspace and confirm its first send creates files from
-  that checkpoint. Confirm the menu contains no compaction actions.
-- Drop when: upstream ships equivalent message-level chat and checkpoint-workspace forking.
+  `apps/web/src/state/threads.ts` (`loadFullThreadHistory`).
+- Tests: `forkTranscript.test.ts`, `MessagesTimeline.logic.test.ts`.
+- Check: fork an earlier user message to a new chat and confirm the draft ends at that message
+  and uses the same model. Confirm the menu has no workspace or compaction actions.
+- Drop when: upstream forks from user messages into an editable draft.
 
 ### Copy full transcript (#24)
 
-- What: thread menu on web and mobile copies the full thread transcript.
+- What: the thread menu copies the full thread transcript. The full history comes from the
+  server's thread snapshot endpoint (`fetchEnvironmentThreadSnapshot`), not the bounded client
+  window.
 - Key files: `packages/client-runtime/src/{threadTranscript,state/fullThreadHistory}.ts`,
-  `apps/web/src/components/threadTranscriptCopy.ts`, `threadActionMenu.logic.ts`, `Sidebar.tsx`,
-  `apps/mobile/src/features/threads/use-copy-thread-transcript.ts`.
+  `apps/web/src/components/threadTranscriptCopy.ts`, `threadActionMenu.logic.ts`, `Sidebar.tsx`.
 - Tests: `threadTranscript.test.ts`, `threadActionMenu.logic.test.ts`.
 - Check: right-click a thread and copy the transcript. Paste shows all turns.
+- Warning: mobile `use-copy-thread-transcript.ts` is up to date but has no menu entry; it lost
+  its caller in an earlier sync.
 - Drop when: upstream adds a copy transcript action.
 
 ## Composer
@@ -274,7 +294,8 @@ Host <hostname>.local
 ### Task list badge stays (#27)
 
 - What: the composer task badge stays after the turn ends.
-- Key files: `apps/web/src/components/ChatView.logic.ts`, `ChatView.tsx`, `chat/ComposerTasksBadge.tsx`.
+- Key files: `apps/web/src/components/ChatView.logic.ts` (`deriveComposerTasksProgress`, keyed by
+  run), `ChatView.tsx` (`activeComposerTasksProgress`), `chat/ComposerTasksBadge.tsx`.
 - Tests: `ChatView.logic.test.ts`.
 - Check: after a turn with a task list ends, the badge is still there.
 
@@ -372,14 +393,12 @@ Host <hostname>.local
 
 ### No `t3code/` worktree branch prefix (#2)
 
-- Key files: `packages/shared/src/git.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`.
-- Tests: `packages/shared/src/git.test.ts`, `ProviderCommandReactor.test.ts`.
-- Check: start a new worktree thread. The branch name has no `t3code/` prefix.
-
-### Pull request status with git actions (#18)
-
-- Key files: `apps/web/src/components/GitActionsControl.tsx`, `BranchToolbarBranchSelector.tsx`.
-- Check: on a branch with an open pull request, the status shows next to git actions.
+- What: upstream now has a branch naming setting; the fork changes its default prefix from
+  `t3code` to empty, so generated branches have no prefix. Temporary placeholder branches still
+  use `t3code/<hex>` until the server renames them. A saved prefix in Settings still wins.
+- Key files: `packages/contracts/src/settings.ts` (`branchNamePrefix` default).
+- Tests: `packages/contracts/src/settings.test.ts`.
+- Check: start a new worktree thread. After the first turn, the branch name has no `t3code/` prefix.
 
 ## Look and feel
 
@@ -389,7 +408,10 @@ Host <hostname>.local
   and again when the upstream composer footer came back (`rounded-3xl` in `ComposerSurface.tsx`).
   The composer input surface in `ChatComposer.tsx` was a hardcoded `rounded-[20px]`, so it ignored
   the token and looked rounder than its own frame; it now uses
-  `rounded-[calc(var(--radius-3xl)-1px)]`, the same inner-surface idiom as `ui/dialog.tsx`.
+  `rounded-(--chat-composer-inner-corner)`, a variable `ComposerSurface.tsx` sets to the composer
+  corner minus 1px. Upstream's `shadcn/no-arbitrary-values` lint rule (v0.0.45) fails on
+  `rounded-[calc(...)]` and `text-[11px]`-style classes, so fork classes must use theme tokens
+  or `(--var)` shorthands.
 - Key files: `apps/web/src/index.css`, `chat/{ChatComposer,ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
 - Check: the composer and cards have the smaller radius, and the input corners match the composer frame.
 - The composer glass backdrop is drawn with `clip-path: shape()`, so its corners cannot inherit
@@ -402,7 +424,7 @@ Host <hostname>.local
 
 ### Branch names in the code font (#10)
 
-- Key files: `apps/web/src/components/BranchToolbarBranchSelector.tsx`, `Sidebar.tsx`, `ThreadCommandSubtitle.tsx`.
+- Key files: `apps/web/src/components/BranchPicker.tsx`, `Sidebar.tsx`, `ThreadCommandSubtitle.tsx`.
 - Upstream renders branch names through `ui/middle-truncate.tsx`, and its `no-restyle` lint rule
   forbids `font-mono` on `<MiddleTruncate>`. The fork puts `font-mono` on a plain wrapper span (or
   the parent) instead. On a conflict, take upstream's markup and add `font-mono` to that wrapper.
@@ -433,12 +455,11 @@ Host <hostname>.local
 
 ### Hide "Add action" until a project has actions (direct commit)
 
-- Key files: `apps/web/src/components/chat/ChatHeader.tsx`.
-- Check: a project with no actions shows no "Add action" in the chat header.
-- Upstream (#12453) moved the header buttons into a `headerActions` fragment that collapses into a
-  "More actions" menu on narrow headers. The guard now lives in a narrowed `projectScripts` const
-  above that fragment and also gates the menu separators and the menu trigger. A plain boolean does
-  not narrow the type, so keep the `?.length ? ... : undefined` form.
+- Key files: `apps/web/src/components/chat/ThreadDetailsPanel.tsx`.
+- Check: a project with no actions (neither saved nor in a checked-in `t3.json`) shows no
+  "Add action" in the thread details panel.
+- Upstream moved project actions from the chat header into the thread details panel. The guard
+  renders `ProjectScriptsControl` only when the project has saved scripts or `t3.json` scripts.
 
 ### Install instructions point at a checkout (sync/v0.0.42)
 
@@ -452,16 +473,6 @@ Host <hostname>.local
 - Warning: this conflicts on every sync while upstream keeps improving its installers. Keep the
   fork side unless the fork starts publishing its own package or install script.
 - Drop it when: Spindle ships a real installer or npm package of its own.
-
-### `msgpackr-extract` build flag (direct commit)
-
-- What: upstream #12326 left pnpm's placeholder `msgpackr-extract: set this to true or false` in
-  `allowBuilds`. The desktop build script reads that map as booleans and fails with
-  `SchemaError: Expected boolean`. The fork sets it to `false` (the pnpm 10 default; `msgpackr`
-  falls back to plain JS).
-- Key files: `pnpm-workspace.yaml`.
-- Check: `vp run dist:desktop:dmg:arm64` gets past `readWorkspaceConfig`.
-- Drop it when: upstream sets a real value.
 
 ### Desktop build needs `.env` (direct commit)
 
