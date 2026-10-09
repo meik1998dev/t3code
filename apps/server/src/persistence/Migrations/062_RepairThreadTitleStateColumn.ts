@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 // Fork databases already carried a migration 52 of their own, so the runner
 // treated upstream's 52 (ProjectionThreadTitleState) as applied and skipped it,
