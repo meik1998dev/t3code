@@ -1,7 +1,14 @@
 # Source control
 
-Spindle integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, and Azure DevOps to clone and publish
-repositories, create pull requests, and review changes.
+Spindle integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, and GitCafe to clone
+and publish repositories, create pull requests, and review changes.
+
+## Review turn changes
+
+A turn's changed files and diff show only the turn's own work. When a turn pulls, merges, or
+rebases, the files Git brought in are left out. A file stays in the list when the turn edited it,
+committed it, or fixed a conflict in it. Use the branch comparison to review everything that changed
+against your base branch. Restore still returns the complete saved workspace.
 
 ## Connect an account
 
@@ -35,6 +42,9 @@ Spindle sends every GitHub request for that project as the named account. This c
 a saved token, `GH_TOKEN` and the account picked for the host. If the named account is not
 signed in, requests fail rather than use another account. Repositories without the key use the
 order above.
+
+For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. Spindle treats a
+custom server name as GitHub once it has a credential for that host.
 
 ### Forgejo and Gitea
 
@@ -97,6 +107,22 @@ Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), add the DevOp
 az extension add --name azure-devops
 az login
 ```
+
+### GitCafe
+
+Install the GitCafe CLI and sign in:
+
+```bash
+bun install -g @gitcafe/cli
+cafe auth login --host https://git.cafe/api
+```
+
+Alternatively, set `CAFE_TOKEN` in the server's environment and restart it. The token is only
+sent to the host `CAFE_HOST` names, which is `git.cafe` unless you set it. Repositories on
+`staging.git.cafe` need their own login with `--host https://staging.git.cafe/api`.
+
+Line comments, reviewer requests, and labels are not available for GitCafe pull requests yet.
+Merging a stack lands it through GitCafe, and updating a branch restacks the layers above it.
 
 ## Start, clone, or publish a project
 

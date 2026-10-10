@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `a6ec88f7a7` (2026-10-08, `fix(mobile): keep native screens ordered during stack pops (#17231)`, v0.0.46 nightly).
+- Last synced upstream commit: `c77a7b7eeb` (2026-10-10, `fix(web): align compact button touch targets (#17748)`, v0.0.46 nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -74,17 +74,17 @@ numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                      | Entries                                      |
-| --------------------------------------------------------- | -------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`                    | Message fork, Tasks                          |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                       |
-| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style |
-| `apps/web/src/index.css`                                  | Sidebar style, Radius, Quieter tool rows     |
-| `apps/server/src/ws.ts`                                   | Agent ports, GitHub account                  |
-| `apps/server/src/provider/RuntimeInstructions.ts`         | Task tracking, PR linking                    |
-| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts` | Task tracking                                |
-| `apps/server/src/persistence/Migrations.ts`               | [Migrations](#migrations)                    |
-| `apps/server/src/pullRequest/PullRequestService.ts`       | GitHub account per repo, Pull request stacks |
+| File                                                       | Entries                                      |
+| ---------------------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`                     | Message fork, Tasks                          |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`        | Message fork, Branding                       |
+| `apps/web/src/components/Sidebar.tsx`                      | Agent threads, Sidebar filter, Sidebar style |
+| `apps/web/src/index.css`                                   | Sidebar style, Radius, Quieter tool rows     |
+| `apps/server/src/ws.ts`                                    | Agent ports, GitHub account                  |
+| `packages/provider-core/src/server/runtimeInstructions.ts` | Task tracking, PR linking                    |
+| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts`  | Task tracking                                |
+| `apps/server/src/persistence/Migrations.ts`                | [Migrations](#migrations)                    |
+| `apps/server/src/pullRequest/PullRequestService.ts`        | GitHub account per repo, Pull request stacks |
 
 ## Remote server (VPS) deploy
 
@@ -237,12 +237,12 @@ Host <hostname>.local
 - What: runtime instructions ask Claude and Codex to keep a task list for work with 3+ steps.
   Claude task tools stay on for new models. Upstream now enables Codex `update_plan` itself
   (`CODEX_THREAD_CONFIG` in `CodexAdapterV2.ts`), so the fork's launch flag is gone.
-- Key files: `apps/server/src/provider/RuntimeInstructions.ts` (`buildTaskTrackingInstructions`),
+- Key files: `packages/provider-core/src/server/runtimeInstructions.ts` (`buildTaskTrackingInstructions`),
   `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (`makeClaudeQueryOptions`
   system prompt append), `apps/server/src/provider/CodexDeveloperInstructions.ts`
   (`buildCodexAdditionalContext`, `interactionMode` option) called from `CodexAdapterV2.ts`,
   `apps/server/src/provider/Drivers/ClaudeHome.ts`.
-- Tests: `RuntimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`,
+- Tests: `runtimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`,
   `ClaudeAdapterV2.test.ts`, `ClaudeHome.test.ts`.
 - Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
 - Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
@@ -395,8 +395,14 @@ Host <hostname>.local
   (`makeWithRepositoryAccounts` in `GitHubPullRequestApi.ts` and
   `GitHubSourceControlProvider.ts`) to keep the diff small. Request batches key on the account
   too, so two accounts never share one GraphQL batch.
-- Key files: `apps/server/src/sourceControl/{GitHubAccount,GitHubCredentials,GitHubSourceControlProvider,SourceControlProviderRegistry}.ts`,
-  `apps/server/src/pullRequest/{GitHubPullRequestApi,GitHubPullRequestProvider,PullRequestProvider,PullRequestService}.ts`,
+- Since the 2026-10-10 sync the GitHub code lives in `packages/source-control-github`, which may
+  only reach the server through `SourceControlHost`. `GitHubAccount` reads `git config` through
+  `SourceControlHost.process`. `driver.ts` uses `makeWithRepositoryAccounts`, and the server's
+  `builtInDrivers.ts` uses `GitHubPullRequestApi.layerWithRepositoryAccounts`. Upstream's plain
+  `layer` stays unwrapped: its test host stops on any unexpected `git` call.
+- Key files: `packages/source-control-github/src/server/{GitHubAccount,GitHubCredentials,GitHubSourceControlProvider,GitHubPullRequestApi,GitHubPullRequestProvider,driver}.ts`,
+  `apps/server/src/sourceControl/builtInDrivers.ts`,
+  `apps/server/src/pullRequest/{PullRequestProvider,PullRequestService}.ts`,
   `docs/user/source-control.md`.
 - Tests: `GitHubAccount.test.ts`, `GitHubCredentials.test.ts`, `PullRequestService.test.ts`.
 - Sync note: upstream groups viewer lookups by host. The fork groups them by
@@ -452,6 +458,8 @@ Host <hostname>.local
   their suffix so builds stay easy to tell apart. The `Alpha` stage label still exists in contracts;
   only the display name drops it.
 - Key files: `apps/desktop/package.json` (`productName`), `apps/desktop/src/app/DesktopEnvironment.ts`,
+  `apps/desktop/src/app/DesktopAppIdentity.ts` (the runtime `setName` is `Spindle` for the stable
+  build; upstream uses `<base> <stage>` so the User-Agent token stays valid, and `Spindle` is valid),
   `apps/desktop/scripts/electron-launcher.mjs`, `apps/web/src/branding.logic.ts`, `apps/web/index.html`.
 - Tests: `apps/web/src/branding.test.ts`, `apps/desktop/src/app/{DesktopEnvironment,DesktopAppIdentity}.test.ts`,
   `scripts/build-desktop-artifact.test.ts` (the identity test also fixes the legacy user-data path,
