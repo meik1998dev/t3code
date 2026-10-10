@@ -61,7 +61,6 @@ import {
   shouldOpenProactivePullRequest,
   shouldRetargetThreadPullRequestPanel,
   shouldOpenProactiveTurnDiff,
-  deriveComposerTasksProgress,
   shouldRenderPreviewMiniPlayer,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
@@ -87,37 +86,6 @@ import {
   waitForRevertedMessage,
   prepareRevertedMessageAttachments,
 } from "./ChatView.logic";
-
-describe("deriveComposerTasksProgress", () => {
-  const latestRunId = RunId.make("run-1");
-  const plan = (
-    steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
-    runId: RunId | null = latestRunId,
-  ) => ({ createdAt: "2026-09-06T00:00:00.000Z", runId, steps });
-
-  it("keeps a finished latest-run list visible", () => {
-    expect(
-      deriveComposerTasksProgress(
-        plan([
-          { step: "Write a.txt", status: "completed" },
-          { step: "Write b.txt", status: "completed" },
-        ]),
-        latestRunId,
-      ),
-    ).toEqual({ step: "Write b.txt", completedSteps: 2, totalSteps: 2 });
-  });
-
-  it("hides empty and older-run lists", () => {
-    expect(deriveComposerTasksProgress(null, latestRunId)).toBeNull();
-    expect(deriveComposerTasksProgress(plan([]), latestRunId)).toBeNull();
-    expect(
-      deriveComposerTasksProgress(
-        plan([{ step: "Old task", status: "pending" }]),
-        RunId.make("run-2"),
-      ),
-    ).toBeNull();
-  });
-});
 
 const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");

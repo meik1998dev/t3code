@@ -753,7 +753,6 @@ export function buildCodexTurnStartParams(input: {
               browser: input.browserToolsAvailable ?? true,
               device: input.deviceToolsAvailable ?? false,
             },
-            { interactionMode: input.runtimePolicy.interactionMode },
           )
         : undefined;
     const additionalContext =

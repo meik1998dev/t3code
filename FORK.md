@@ -76,13 +76,11 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 | File                                                       | Entries                                      |
 | ---------------------------------------------------------- | -------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`                     | Message fork, Tasks                          |
+| `apps/web/src/components/ChatView.tsx`                     | Message fork                                 |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`        | Message fork, Branding                       |
 | `apps/web/src/components/Sidebar.tsx`                      | Agent threads, Sidebar filter, Sidebar style |
 | `apps/web/src/index.css`                                   | Sidebar style, Radius, Quieter tool rows     |
 | `apps/server/src/ws.ts`                                    | Agent ports, GitHub account                  |
-| `packages/provider-core/src/server/runtimeInstructions.ts` | Task tracking, PR linking                    |
-| `apps/server/src/orchestration-v2/Adapters/*AdapterV2.ts`  | Task tracking                                |
 | `apps/server/src/persistence/Migrations.ts`                | [Migrations](#migrations)                    |
 | `apps/server/src/pullRequest/PullRequestService.ts`        | GitHub account per repo, Pull request stacks |
 
@@ -232,27 +230,6 @@ Host <hostname>.local
   notes in Settings and confirm `orchestrator_capabilities` returns the new text.
 - Drop when: upstream adds a depth limit and routing preferences of its own.
 
-### Task tracking rule (#28, #29, direct commits)
-
-- What: runtime instructions ask Claude and Codex to keep a task list for work with 3+ steps.
-  Claude task tools stay on for new models. Upstream now enables Codex `update_plan` itself
-  (`CODEX_THREAD_CONFIG` in `CodexAdapterV2.ts`), so the fork's launch flag is gone.
-- Key files: `packages/provider-core/src/server/runtimeInstructions.ts` (`buildTaskTrackingInstructions`),
-  `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (`makeClaudeQueryOptions`
-  system prompt append), `apps/server/src/provider/CodexDeveloperInstructions.ts`
-  (`buildCodexAdditionalContext`, `interactionMode` option) called from `CodexAdapterV2.ts`,
-  `apps/server/src/provider/Drivers/ClaudeHome.ts`.
-- Tests: `runtimeInstructions.test.ts`, `CodexDeveloperInstructions.test.ts`,
-  `ClaudeAdapterV2.test.ts`, `ClaudeHome.test.ts`.
-- Check: ask Claude and Codex for a 3-file change. Both show a task list in the composer.
-- Warning: because the fork always stamps `CLAUDE_CODE_ENABLE_TODO_TOOLS`, an empty `homePath`
-  returns a copy of `process.env`, not `process.env` itself. Upstream's test asserts identity
-  (`.toBe(process.env)`); on a conflict keep the fork's value check instead.
-- Codex: task tracking rides in the `t3_code_runtime` additional-context entry (Default mode
-  only), which upstream sends only when the `t3-code` MCP server is attached. Keep it under
-  Codex's per-entry cap (about 4,000 bytes); the orchestration prompt is its own entry.
-- Drop when: upstream adds its own task-list instruction.
-
 ## Transcripts
 
 ### Fork from a message (#3; chat fork only since v0.0.45)
@@ -293,14 +270,6 @@ Host <hostname>.local
 - Key files: `packages/shared/src/composerTrigger.ts`, `apps/web/src/composer-logic.ts`.
 - Tests: `composerTrigger.test.ts`, `composer-logic.test.ts`.
 - Check: type `please use /` in the middle of a sentence. The skills menu opens.
-
-### Task list badge stays (#27)
-
-- What: the composer task badge stays after the turn ends.
-- Key files: `apps/web/src/components/ChatView.logic.ts` (`deriveComposerTasksProgress`, keyed by
-  run), `ChatView.tsx` (`activeComposerTasksProgress`), `chat/ComposerTasksBadge.tsx`.
-- Tests: `ChatView.logic.test.ts`.
-- Check: after a turn with a task list ends, the badge is still there.
 
 ## Sidebar
 

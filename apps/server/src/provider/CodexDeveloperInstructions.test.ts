@@ -113,26 +113,3 @@ function toolInstructions(
 ) {
   return buildCodexAdditionalContext(runtime, available).t3_code_tools?.value ?? "";
 }
-
-describe("Spindle task tracking", () => {
-  const runtime = { model: "gpt-5.6", reasoningEffort: "high" };
-  const runtimeValue = (context: ReturnType<typeof buildCodexAdditionalContext>) =>
-    context.t3_code_runtime?.value ?? "";
-
-  it("asks for update_plan tracking in Default mode", () => {
-    const value = runtimeValue(
-      buildCodexAdditionalContext(runtime, true, { interactionMode: "default" }),
-    );
-    NodeAssert.match(value, /<task_tracking>/);
-    NodeAssert.match(value, /update_plan/);
-    NodeAssert.ok(value.indexOf("<runtime_info>") < value.indexOf("<task_tracking>"));
-  });
-
-  it("leaves task tracking out of Plan mode where update_plan is rejected", () => {
-    const value = runtimeValue(
-      buildCodexAdditionalContext(runtime, true, { interactionMode: "plan" }),
-    );
-    NodeAssert.doesNotMatch(value, /<task_tracking>/);
-    NodeAssert.match(value, /<runtime_info>/);
-  });
-});

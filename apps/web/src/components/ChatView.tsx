@@ -552,7 +552,6 @@ import {
   revokeUserMessagePreviewUrls,
   startNewThreadForProject,
   codexArtifactTemplatePromptToAppend,
-  deriveComposerTasksProgress,
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
@@ -2461,13 +2460,25 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveActivePlanState(serverProjection, activeActivityRun?.runId),
     [activeActivityRun?.runId, serverProjection],
   );
-  // Fork: the badge keeps the latest run's task list after that run settles.
-  // deriveActivePlanState falls back to older runs' plans, which must not
-  // label fresh work, so the plan's run must still be the latest one.
-  const activeComposerTasksProgress = useMemo(
-    () => deriveComposerTasksProgress(activePlan, activeActivityRun?.runId),
-    [activeActivityRun?.runId, activePlan],
-  );
+  // Tasks progress for the running turn's own plan only — deriveActivePlanState
+  // falls back to older runs' plans, which must not label fresh work.
+  const activeComposerTasksProgress = useMemo(() => {
+    if (
+      isLatestRunSettled(activeActivityRun, activeRuntime) ||
+      !activePlan ||
+      activePlan.runId !== (activeActivityRun?.runId ?? null)
+    ) {
+      return null;
+    }
+    const totalSteps = activePlan.steps.length;
+    if (totalSteps === 0) return null;
+    const completedSteps = activePlan.steps.filter((step) => step.status === "completed").length;
+    const step =
+      activePlan.steps.find((candidate) => candidate.status === "inProgress")?.step ??
+      activePlan.steps.find((candidate) => candidate.status === "pending")?.step ??
+      activePlan.steps.at(-1)!.step;
+    return { step, completedSteps, totalSteps };
+  }, [activeActivityRun, activePlan, activeRuntime]);
   const activeComposerTaskSteps =
     activeComposerTasksProgress && activePlan ? activePlan.steps : null;
   const activeProjectRef = useMemo(

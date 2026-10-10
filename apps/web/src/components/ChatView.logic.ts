@@ -57,7 +57,7 @@ import { stripInlineContextReferences } from "~/lib/composerContextReferences";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import { collapseExpandedComposerCursor, type ComposerSubmissionIntent } from "../composer-logic";
 import type { ReviewCommentContext } from "../reviewCommentContext";
-import { derivePhase, type ActivePlanState, type TimelineEntry } from "../session-logic";
+import { derivePhase, type TimelineEntry } from "../session-logic";
 import type { PreviewMiniPlayerSource } from "../previewMiniPlayerStore";
 import type { DesktopPreviewOverlay } from "../previewStateStore";
 import type { RightPanelSurface } from "../rightPanelStore";
@@ -1344,28 +1344,4 @@ export function restorePlanFollowUpComposer(input: {
     prompt: input.snapshot.prompt,
     detectTrigger: true,
   });
-}
-
-/** Keeps the latest run's task list visible after that run settles. */
-export function deriveComposerTasksProgress(
-  plan: ActivePlanState | null,
-  latestRunId: RunId | null | undefined,
-): {
-  readonly step: string;
-  readonly completedSteps: number;
-  readonly totalSteps: number;
-} | null {
-  if (!plan || !latestRunId || plan.runId !== latestRunId || plan.steps.length === 0) {
-    return null;
-  }
-  const currentStep =
-    plan.steps.find((step) => step.status === "inProgress") ??
-    plan.steps.find((step) => step.status === "pending") ??
-    plan.steps.at(-1);
-  if (!currentStep) return null;
-  return {
-    step: currentStep.step,
-    completedSteps: plan.steps.filter((step) => step.status === "completed").length,
-    totalSteps: plan.steps.length,
-  };
 }

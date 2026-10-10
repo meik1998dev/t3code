@@ -23,28 +23,12 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         expect(yield* resolveClaudeHomePath({ homePath: "" })).toBe(resolved);
         expect(yield* resolveClaudeHomePath({ homePath: "~/.claude" })).toBe(resolved);
         expect(yield* resolveClaudeHomePath({ homePath: resolved })).toBe(resolved);
-        // The fork always stamps CLAUDE_CODE_ENABLE_TODO_TOOLS, so the default home gets a copy
-        // of process.env rather than process.env itself. Everything else is inherited.
-        const env = yield* makeClaudeEnvironment({ homePath: "" });
-        expect(env).toEqual({ ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" });
-        expect(env.CLAUDE_CONFIG_DIR).toBe(process.env.CLAUDE_CONFIG_DIR);
+        expect(yield* makeClaudeEnvironment({ homePath: "" })).toBe(process.env);
 
         const key = `claude:home:${resolved}`;
         expect(yield* makeClaudeContinuationGroupKey({ homePath: "" })).toBe(key);
         expect(yield* makeClaudeContinuationGroupKey({ homePath: "~/.claude" })).toBe(key);
         expect(yield* makeClaudeContinuationGroupKey({ homePath: resolved })).toBe(key);
-      }),
-    );
-
-    it.effect("keeps the task tools on for every Claude home", () =>
-      Effect.gen(function* () {
-        const base = { PATH: "/usr/bin" } as NodeJS.ProcessEnv;
-        expect(
-          (yield* makeClaudeEnvironment({ homePath: "" }, base)).CLAUDE_CODE_ENABLE_TODO_TOOLS,
-        ).toBe("1");
-        const scoped = yield* makeClaudeEnvironment({ homePath: "~/.claude-work" }, base);
-        expect(scoped.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
-        expect(scoped.PATH).toBe("/usr/bin");
       }),
     );
 

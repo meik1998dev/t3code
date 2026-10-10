@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildRuntimeInstructions, buildTaskTrackingInstructions } from "./runtimeInstructions.ts";
+import { buildRuntimeInstructions } from "./runtimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
   it("requires explicit registration of every PR and stack layer", () => {
@@ -33,26 +33,5 @@ describe("buildRuntimeInstructions", () => {
     const instructions = buildRuntimeInstructions({ harness: "Cursor", model });
     expect(instructions).toContain("through the Cursor harness.");
     expect(instructions).not.toContain("reasoning effort");
-  });
-});
-
-describe("buildTaskTrackingInstructions", () => {
-  it("names the provider's task tools and the 3-step threshold", () => {
-    const instructions = buildTaskTrackingInstructions({
-      create: "TaskCreate",
-      update: "TaskUpdate",
-    });
-    expect(instructions).toContain("3 or more things");
-    expect(instructions).toContain("TaskCreate and TaskUpdate calls");
-    expect(instructions).toContain("create every step with TaskCreate");
-  });
-
-  it("names a shared tool once", () => {
-    const instructions = buildTaskTrackingInstructions({
-      create: "update_plan",
-      update: "update_plan",
-    });
-    expect(instructions).toContain("your update_plan calls");
-    expect(instructions).not.toContain("update_plan and update_plan");
   });
 });
