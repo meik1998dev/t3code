@@ -1,4 +1,4 @@
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -112,7 +112,7 @@ const makeLayer = (input: {
                   }),
                 ),
         }),
-        Layer.succeed(HostProcessPlatform, input.platform ?? "darwin"),
+        Layer.succeed(HostProcess.Platform, input.platform ?? "darwin"),
         Layer.succeed(AgentPortsService.AgentPortsServerPid, SERVER_PID),
         Layer.succeed(AgentPortsService.AgentPortsProcessControl, {
           signal: (pid, signal) => {

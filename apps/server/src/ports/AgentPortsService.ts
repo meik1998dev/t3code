@@ -33,7 +33,7 @@ import {
   type AgentPortStopInput,
   type AgentPortStopResult,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -264,7 +264,7 @@ export function resolveAgentPortOrigin(input: {
 export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const fileSystem = yield* FileSystem.FileSystem;
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const serverPid = yield* AgentPortsServerPid;
   const processControl = yield* AgentPortsProcessControl;
 
