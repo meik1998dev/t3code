@@ -16,7 +16,7 @@ import repairUpstream57To60 from "./070_RepairUpstream57To60AfterFork.ts";
 it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
   "065_RepairOrchestrationV2AfterFork",
   (it) => {
-    it.effect("applies upstream 55-60 to a fork database already at 60", () =>
+    it.effect("repairs a fork database already at 60 that startup refuses", () =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* runMigrations({ toMigrationInclusive: 54 });
@@ -37,11 +37,13 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
             (60, 'RepairThreadAutoSettleColumn')
         `;
 
-        const ran = yield* runMigrations();
-        assert.deepStrictEqual(
-          ran.map(([id]) => id),
-          [61, 62, 63, 64, 65, 66, 67, 68],
-        );
+        // Startup now refuses this ledger before any migration runs, so such a
+        // database must first open in the v0.0.46 build (see FORK.md "Migrations").
+        // The repairs themselves are still checked by calling them directly.
+        const refused = yield* Effect.flip(runMigrations());
+        assert.include(refused.message, "would skip required schema migrations");
+        yield* repairOrchestrationV2;
+        yield* repairUpstream57To60;
         const v2Tables = yield* sql<{ readonly name: string }>`
           SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orchestration_v2_events'
         `;

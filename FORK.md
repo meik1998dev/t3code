@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `339179f50a` (2026-10-14, `feat(pr): delete branches after merge or close (#19257)`, v0.0.46 nightly).
+- Last synced upstream commit: `cfafb4bb54` (2026-10-16, `fix(codex): a slow but healthy Codex no longer shows as Unavailable (#15945)`, v0.1.1 nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -79,15 +79,15 @@ numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                       | Entries                                      |
-| ---------------------------------------------------------- | -------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`                     | Message fork                                 |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`        | Message fork, Branding                       |
-| `apps/web/src/components/Sidebar.tsx`                      | Agent threads, Sidebar filter, Sidebar style |
-| `apps/web/src/index.css`                                   | Sidebar style, Radius, Quieter tool rows     |
-| `apps/server/src/ws.ts`                                    | Agent ports, GitHub account                  |
-| `apps/server/src/persistence/Migrations.ts`                | [Migrations](#migrations)                    |
-| `apps/server/src/pullRequest/PullRequestService.ts`        | GitHub account per repo, Pull request stacks |
+| File                                                | Entries                                      |
+| --------------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`              | Message fork                                 |
+| `apps/web/src/components/chat/MessagesTimeline.tsx` | Message fork, Branding                       |
+| `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style |
+| `apps/web/src/index.css`                            | Sidebar style, Radius, Quieter tool rows     |
+| `apps/server/src/ws.ts`                             | Agent ports, GitHub account                  |
+| `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                    |
+| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks |
 
 ## Remote server (VPS) deploy
 
@@ -362,13 +362,14 @@ Host <hostname>.local
   (Settings → Source Control account or token, `GH_TOKEN`) and does not fall back to another login.
   A missing login fails with `GitHubNotSignedInError` `fromRepository: true`, which names the
   account and counts as a plain failure, so one repository cannot mark the whole host signed out.
-- How: upstream calls the GitHub API directly since v0.0.46 (`GitHubApi`, `GitHubCredentials`), so
+- How: upstream calls the GitHub API directly since v0.0.46 (`GitHubRest` and the
+  `effect/graphql` client since v0.1, plus `GitHubCredentials`), so
   the fork no longer edits a `gh` wrapper. `GitHubAccount.scopeToRepositoryAccounts` wraps each
   service method that takes a `cwd` and sets the `RepositoryGitHubAccount` reference;
   `GitHubCredentials.get` reads it. The wrapper lives outside upstream's `make` bodies
   (`makeWithRepositoryAccounts` in `GitHubPullRequestApi.ts` and
   `GitHubSourceControlProvider.ts`) to keep the diff small. Request batches key on the account
-  too, so two accounts never share one GraphQL batch.
+  too (`gitHubGraphQlClient.ts` `batchKey`), so two accounts never share one GraphQL batch.
 - Since the 2026-10-10 sync the GitHub code lives in `packages/source-control-github`, which may
   only reach the server through `SourceControlHost`. `GitHubAccount` reads `git config` through
   `SourceControlHost.process`. `driver.ts` uses `makeWithRepositoryAccounts`, and the server's
@@ -426,11 +427,12 @@ Host <hostname>.local
 - The branch selector's own trigger label is deliberately _not_ in the code font: that spot took
   upstream wholesale in the 2026-09-21 sync, since the label doubles as the "Select ref" placeholder.
 
-### App name without "(Alpha)" (#43)
+### App name without a stage suffix (#43)
 
-- What: the stable desktop build is named `Spindle`, not `Spindle (Alpha)`. Dev and Nightly keep
-  their suffix so builds stay easy to tell apart. The `Alpha` stage label still exists in contracts;
-  only the display name drops it.
+- What: the stable desktop build is named `Spindle`, not `Spindle (Beta)`. Dev and Nightly keep
+  their suffix so builds stay easy to tell apart. Upstream's stable stage label is `Beta` since
+  v0.1 (`Alpha` before); only the display name drops it. Upstream renaming the stage again
+  silently brings the suffix back, so check the `=== "Beta"` tests after each sync.
 - Key files: `apps/desktop/package.json` (`productName`), `apps/desktop/src/app/DesktopEnvironment.ts`,
   `apps/desktop/src/app/DesktopAppIdentity.ts` (the runtime `setName` is `Spindle` for the stable
   build; upstream uses `<base> <stage>` so the User-Agent token stays valid, and `Spindle` is valid),
@@ -439,7 +441,7 @@ Host <hostname>.local
   `scripts/build-desktop-artifact.test.ts` (the identity test also fixes the legacy user-data path,
   which is `T3 Code (Alpha)` on real installs).
 - Check: the menu bar, window title, and About panel say `Spindle`; a `-nightly` version says `Spindle (Nightly)`.
-- Warning: the app bundle is now `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
+- Warning: the app bundle is `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
   the first install. User data is not affected (it lives under `~/.t3`).
 
 ### Hide "Add action" until a project has actions (direct commit)

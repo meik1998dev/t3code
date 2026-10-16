@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import { SymbolView } from "../../components/AppSymbol";
+import { SymbolView } from "../../components/ui/AppSymbol";
 
 /** Marks a thread that another thread's agent started, so it does not read as the user's own. */
 export function AgentStartedIcon({ selected = false }: { readonly selected?: boolean }) {

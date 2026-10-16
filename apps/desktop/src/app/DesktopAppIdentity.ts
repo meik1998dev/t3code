@@ -96,7 +96,7 @@ export const make = Effect.gen(function* () {
     // without rewriting preview sessions (which breaks Turnstile, #7110).
     // Spindle: the stable build is just "Spindle", matching its display name.
     yield* electronApp.setName(
-      environment.branding.stageLabel === "Alpha"
+      environment.branding.stageLabel === "Beta"
         ? environment.branding.baseName
         : `${environment.branding.baseName} ${environment.branding.stageLabel}`,
     );
