@@ -26,7 +26,7 @@ export interface PullRequestListPreferences {
   /** The projects the list is scoped to. Absent or empty is every project. */
   readonly projectIds?: ReadonlyArray<ProjectId>;
   readonly host?: string;
-  readonly q?: string;
+  readonly q?: string | undefined;
   readonly draft?: "only" | "hide";
   readonly review?: NonNullable<PullRequestListFilters["review"]>;
   readonly checks?: NonNullable<PullRequestListFilters["checks"]>;

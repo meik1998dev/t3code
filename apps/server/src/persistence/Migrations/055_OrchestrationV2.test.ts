@@ -13,8 +13,8 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationEntries.map(([id]) => id),
-        // 61-68 are Spindle fork migrations.
-        Array.from({ length: 68 }, (_, index) => index + 1),
+        // 63-70 are Spindle fork migrations.
+        Array.from({ length: 70 }, (_, index) => index + 1),
       );
     }),
   );
@@ -33,15 +33,17 @@ layer("055_OrchestrationV2", (it) => {
         [58, "WebhookRelayDeliveries"],
         [59, "McpAppModelContext"],
         [60, "ThreadSnapshotWindowIndexes"],
+        [61, "PullRequestReviewGuides"],
+        [62, "ThreadFailureLookupIndex"],
         // Spindle fork migrations (FORK.md "Migrations").
-        [61, "RepairUpstreamMigrationsAfterFork"],
-        [62, "RepairThreadTitleStateColumn"],
-        [63, "RepairOrchestrationV2AfterFork"],
-        [64, "ProjectionThreadsParentThreadId"],
-        [65, "RepairThreadBranchPullRequestColumn"],
-        [66, "RepairPullRequestFilesViewedTable"],
-        [67, "RepairThreadAutoSettleColumn"],
-        [68, "RepairUpstream57To60AfterFork"],
+        [63, "RepairUpstreamMigrationsAfterFork"],
+        [64, "RepairThreadTitleStateColumn"],
+        [65, "RepairOrchestrationV2AfterFork"],
+        [66, "ProjectionThreadsParentThreadId"],
+        [67, "RepairThreadBranchPullRequestColumn"],
+        [68, "RepairPullRequestFilesViewedTable"],
+        [69, "RepairThreadAutoSettleColumn"],
+        [70, "RepairUpstream57To60AfterFork"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -68,14 +70,16 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 58, name: "WebhookRelayDeliveries" },
         { migration_id: 59, name: "McpAppModelContext" },
         { migration_id: 60, name: "ThreadSnapshotWindowIndexes" },
-        { migration_id: 61, name: "RepairUpstreamMigrationsAfterFork" },
-        { migration_id: 62, name: "RepairThreadTitleStateColumn" },
-        { migration_id: 63, name: "RepairOrchestrationV2AfterFork" },
-        { migration_id: 64, name: "ProjectionThreadsParentThreadId" },
-        { migration_id: 65, name: "RepairThreadBranchPullRequestColumn" },
-        { migration_id: 66, name: "RepairPullRequestFilesViewedTable" },
-        { migration_id: 67, name: "RepairThreadAutoSettleColumn" },
-        { migration_id: 68, name: "RepairUpstream57To60AfterFork" },
+        { migration_id: 61, name: "PullRequestReviewGuides" },
+        { migration_id: 62, name: "ThreadFailureLookupIndex" },
+        { migration_id: 63, name: "RepairUpstreamMigrationsAfterFork" },
+        { migration_id: 64, name: "RepairThreadTitleStateColumn" },
+        { migration_id: 65, name: "RepairOrchestrationV2AfterFork" },
+        { migration_id: 66, name: "ProjectionThreadsParentThreadId" },
+        { migration_id: 67, name: "RepairThreadBranchPullRequestColumn" },
+        { migration_id: 68, name: "RepairPullRequestFilesViewedTable" },
+        { migration_id: 69, name: "RepairThreadAutoSettleColumn" },
+        { migration_id: 70, name: "RepairUpstream57To60AfterFork" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

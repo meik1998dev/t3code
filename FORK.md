@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `c77a7b7eeb` (2026-10-10, `fix(web): align compact button touch targets (#17748)`, v0.0.46 nightly).
+- Last synced upstream commit: `339179f50a` (2026-10-14, `feat(pr): delete branches after merge or close (#19257)`, v0.0.46 nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -36,28 +36,33 @@ Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 61     | `061_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 62     | `062_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 63     | `063_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 64     | `064_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 65     | `065_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 66     | `066_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 67     | `067_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 68     | `068_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 63     | `063_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 64     | `064_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 65     | `065_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 66     | `066_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 67     | `067_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 68     | `068_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 69     | `069_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 70     | `070_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–60. Fork databases recorded 55–60 under fork names before upstream took
-those ids, so they skip upstream's. 63 runs upstream 55 (only when `orchestration_v2_events`
-is missing; upstream 55 is not idempotent) and 56. 68 runs upstream 57 (only when
-`scheduled_tasks.webhook_token` is missing; it adds columns without a check) and 58–60. Both
-rename the ledger rows to upstream's names, so a fork database's ledger matches a fresh one.
-The v0.0.46 sync moved the fork's old 57–60 to 64–67; fork databases run them a second time,
-which is safe because each one checks first. Fresh databases run upstream 1–60 and the fork's
-61–68 do nothing harmful.
-Older history: 67 reruns upstream 54, 66 replays upstream 53, 62 adds `title_state_json` for
-databases that recorded the fork's own 52, and 61 reapplies upstream 50–51 for databases that
-recorded the fork's old 50–54. 64 keeps `projection_threads.parent_thread_id`; the v1 thread
-importer (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"`
-when old threads are copied into the new orchestrator on first start.
+Upstream owns 1–62. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+`Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
+up) stops the server. A repair migration cannot fix that, because the check runs before any
+migration. So a clash is now fixed by `reconcileForkMigrationLedger.ts`, which runs before the
+check: on a database whose ledger has the fork's `61_RepairUpstreamMigrationsAfterFork`, it
+applies upstream 61–62 safely (62 only when its index is missing) and moves the fork rows
+61–68 to 63–70. Nothing runs twice, and the ledger then matches a fresh database. Fresh
+databases run upstream 1–62 and the fork's 63–70 do nothing harmful.
+Older history: the v0.0.46 sync moved the fork's old 57–60 up; 70 runs upstream 57 (only when
+`scheduled_tasks.webhook_token` is missing) and 58–60, and 65 runs upstream 55 (only when
+`orchestration_v2_events` is missing) and 56. Both rename ledger rows to upstream's names.
+69 reruns upstream 54, 68 replays upstream 53, 64 adds `title_state_json` for databases that
+recorded the fork's own 52, and 63 reapplies upstream 50–51 for databases that recorded the
+fork's old 50–54. 66 keeps `projection_threads.parent_thread_id`; the v1 thread importer
+(`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
+threads are copied into the new orchestrator on first start. Databases still on a ledger from
+before the v0.0.46 sync (fork names at 55–60) now stop at the startup check; start the
+v0.0.46 fork build on them once first.
 
 On every sync where upstream adds a migration numbered below the fork's last one, or where
 numbers clash:
@@ -65,9 +70,9 @@ numbers clash:
 1. Take upstream's files and numbers as they are.
 2. Move fork migrations to numbers after upstream's last one. Keep them idempotent
    (`IF NOT EXISTS`, or a `PRAGMA table_info` check).
-3. For each upstream migration a fork database skipped, add an idempotent repair migration
-   after it, like `055`. Upstream data migrations (not only `ADD COLUMN`) need a repair that
-   runs the same logic safely twice.
+3. Update `reconcileForkMigrationLedger.ts`: apply each upstream migration a fork database
+   skipped, safely twice, then move the fork ledger rows to their new ids. It must run before
+   the startup check, so a repair migration is no longer enough.
 4. Test on a `VACUUM INTO` copy of `~/.t3/userdata/state.sqlite`, never on the live file.
 
 ## Hot files

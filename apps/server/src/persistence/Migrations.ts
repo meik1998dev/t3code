@@ -74,14 +74,17 @@ import Migration0057 from "./Migrations/057_ScheduledTaskWebhooks.ts";
 import Migration0058 from "./Migrations/058_WebhookRelayDeliveries.ts";
 import Migration0059 from "./Migrations/059_McpAppModelContext.ts";
 import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
-import Migration0061 from "./Migrations/061_RepairUpstreamMigrationsAfterFork.ts";
-import Migration0062 from "./Migrations/062_RepairThreadTitleStateColumn.ts";
-import Migration0063 from "./Migrations/063_RepairOrchestrationV2AfterFork.ts";
-import Migration0064 from "./Migrations/064_ProjectionThreadsParentThreadId.ts";
-import Migration0065 from "./Migrations/065_RepairThreadBranchPullRequestColumn.ts";
-import Migration0066 from "./Migrations/066_RepairPullRequestFilesViewedTable.ts";
-import Migration0067 from "./Migrations/067_RepairThreadAutoSettleColumn.ts";
-import Migration0068 from "./Migrations/068_RepairUpstream57To60AfterFork.ts";
+import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
+import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
+import Migration0063 from "./Migrations/063_RepairUpstreamMigrationsAfterFork.ts";
+import Migration0064 from "./Migrations/064_RepairThreadTitleStateColumn.ts";
+import Migration0065 from "./Migrations/065_RepairOrchestrationV2AfterFork.ts";
+import Migration0066 from "./Migrations/066_ProjectionThreadsParentThreadId.ts";
+import Migration0067 from "./Migrations/067_RepairThreadBranchPullRequestColumn.ts";
+import Migration0068 from "./Migrations/068_RepairPullRequestFilesViewedTable.ts";
+import Migration0069 from "./Migrations/069_RepairThreadAutoSettleColumn.ts";
+import Migration0070 from "./Migrations/070_RepairUpstream57To60AfterFork.ts";
+import { reconcileForkMigrationLedger } from "./reconcileForkMigrationLedger.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -156,18 +159,18 @@ export const migrationEntries = [
   [58, "WebhookRelayDeliveries", Migration0058],
   [59, "McpAppModelContext", Migration0059],
   [60, "ThreadSnapshotWindowIndexes", Migration0060],
-  // Spindle fork migrations. 61 and 62 were recorded as 55 and 56 before
-  // upstream took those ids; 63 then applies upstream's 55 and 56 to those
-  // databases. 64-67 were recorded as 57-60 before upstream took those ids;
-  // 68 applies upstream's 57-60 to those databases. See FORK.md "Migrations".
-  [61, "RepairUpstreamMigrationsAfterFork", Migration0061],
-  [62, "RepairThreadTitleStateColumn", Migration0062],
-  [63, "RepairOrchestrationV2AfterFork", Migration0063],
-  [64, "ProjectionThreadsParentThreadId", Migration0064],
-  [65, "RepairThreadBranchPullRequestColumn", Migration0065],
-  [66, "RepairPullRequestFilesViewedTable", Migration0066],
-  [67, "RepairThreadAutoSettleColumn", Migration0067],
-  [68, "RepairUpstream57To60AfterFork", Migration0068],
+  [61, "PullRequestReviewGuides", Migration0061],
+  [62, "ThreadFailureLookupIndex", Migration0062],
+  // Spindle fork migrations, recorded at 61-68 before upstream took 61-62.
+  // reconcileForkMigrationLedger moves those rows here. See FORK.md "Migrations".
+  [63, "RepairUpstreamMigrationsAfterFork", Migration0063],
+  [64, "RepairThreadTitleStateColumn", Migration0064],
+  [65, "RepairOrchestrationV2AfterFork", Migration0065],
+  [66, "ProjectionThreadsParentThreadId", Migration0066],
+  [67, "RepairThreadBranchPullRequestColumn", Migration0067],
+  [68, "RepairPullRequestFilesViewedTable", Migration0068],
+  [69, "RepairThreadAutoSettleColumn", Migration0069],
+  [70, "RepairUpstream57To60AfterFork", Migration0070],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -180,6 +183,48 @@ const makeMigrationLoader = (throughId?: number) =>
         .map(([id, name, migration]) => [`${id}_${name}`, migration]),
     ),
   );
+
+// V2's schema migrations start at 55 after the legacy schema migrations.
+const FIRST_V2_MIGRATION_ID = 55;
+
+/**
+ * Fail before migrating when the migrator would skip one of V2's own
+ * migrations. It skips every id up to the highest recorded one, whatever name
+ * was recorded, so a database that took a V2 id for another migration would
+ * start without V2's schema and fail on first use. Earlier ids keep the
+ * warning below: databases with a site-local migration there still work.
+ */
+const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
+  throughId?: number,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (tables.length === 0) return;
+  const recorded = yield* sql<{
+    readonly migration_id: number;
+    readonly name: string;
+  }>`SELECT migration_id, name FROM effect_sql_migrations`;
+  const latestRecordedId = Math.max(0, ...recorded.map((row) => row.migration_id));
+  const recordedNames = new Map(recorded.map((row) => [row.migration_id, row.name]));
+  const skipped = migrationEntries.flatMap(([id, name]) => {
+    if (
+      id < FIRST_V2_MIGRATION_ID ||
+      id > latestRecordedId ||
+      (throughId !== undefined && id > throughId)
+    )
+      return [];
+    const recordedName = recordedNames.get(id);
+    if (recordedName === name) return [];
+    return [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
+  });
+  if (skipped.length === 0) return;
+  return yield* new Migrator.MigrationError({
+    kind: "BadState",
+    message: `This database's migration history would skip required schema migrations: ${skipped.join(", ")}. The migrator skips every id up to the highest recorded id (${latestRecordedId}), regardless of name. It was probably written by a different build. Start the build that wrote it, or report this migration history so an upgrade path can be added.`,
+  });
+});
 
 /**
  * Migrator run function - no schema dumping needed
@@ -204,12 +249,16 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
-  const previewMigrations =
-    toMigrationInclusive === undefined || toMigrationInclusive >= 55
-      ? yield* reconcileV2PreviewMigration()
-      : [];
+  const includesV2 =
+    toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
+  const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
+  const forkMigrations = includesV2 ? yield* reconcileForkMigrationLedger() : [];
+  if (includesV2) {
+    yield* assertV2MigrationsCanRun(toMigrationInclusive);
+  }
   const executedMigrations = [
     ...previewMigrations,
+    ...forkMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
