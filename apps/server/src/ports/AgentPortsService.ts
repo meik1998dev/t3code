@@ -32,6 +32,7 @@ import {
   type AgentPortsScope,
   type AgentPortStopInput,
   type AgentPortStopResult,
+  type AgentPortsUsage,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
@@ -212,6 +213,55 @@ export function parseLsofCwds(stdout: string): ReadonlyMap<number, string> {
   return cwds;
 }
 
+export interface CpuTicks {
+  readonly idle: number;
+  readonly total: number;
+}
+
+/**
+ * `/proc/stat` line 1: `cpu  user nice system idle iowait irq softirq steal …`.
+ * `guest`/`guest_nice` are already counted inside `user`/`nice`, so they are
+ * left out. Idle time includes `iowait`.
+ */
+export function parseProcStatCpu(stdout: string): CpuTicks | null {
+  const line = stdout.split("\n")[0]?.trim() ?? "";
+  if (!line.startsWith("cpu ")) return null;
+  const values: Array<number> = [];
+  for (const raw of line.split(/\s+/).slice(1)) {
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isInteger(value) || value < 0) return null;
+    values.push(value);
+  }
+  if (values.length < 5) return null;
+  const idle = (values[3] ?? 0) + (values[4] ?? 0);
+  const total = values.slice(0, 8).reduce((sum, value) => sum + value, 0);
+  return total > 0 ? { idle, total } : null;
+}
+
+/** `/proc/meminfo`: used share of RAM, from `MemTotal` and `MemAvailable`. */
+export function parseProcMeminfo(stdout: string): number | null {
+  const total = /^MemTotal:\s+(\d+)\s+kB$/m.exec(stdout)?.[1];
+  const available = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(stdout)?.[1];
+  if (total === undefined || available === undefined) return null;
+  const totalKb = Number(total);
+  const availableKb = Number(available);
+  if (!Number.isFinite(totalKb) || totalKb <= 0 || !Number.isFinite(availableKb)) return null;
+  return clampPercent((1 - Math.min(availableKb, totalKb) / totalKb) * 100);
+}
+
+/** `df -P -k /`: the Capacity column (`63%`) of the root filesystem. */
+export function parseDfCapacity(stdout: string): number | null {
+  const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+  const capacity = lines[1]?.trim().split(/\s+/)[4];
+  if (capacity === undefined || !capacity.endsWith("%")) return null;
+  const percent = Number.parseInt(capacity, 10);
+  return Number.isInteger(percent) && percent >= 0 && percent <= 100 ? percent : null;
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value * 10) / 10));
+}
+
 export function isDescendantOf(
   pid: number,
   ancestorPid: number,
@@ -322,18 +372,72 @@ export const make = Effect.gen(function* () {
 
   const probeCwds = platform === "linux" ? procCwds : lsofCwds;
 
+  // CPU is a delta, so the previous scan is kept in memory. It is one service
+  // per server, which is one environment, so the numbers never cross machines.
+  let lastCpuSample: CpuTicks | null = null;
+  let lastCpuPercent: number | null = null;
+
+  const readHostUsage = Effect.fn("AgentPortsService.readHostUsage")(function* () {
+    if (platform !== "linux") return null;
+    const stat = yield* fileSystem
+      .readFileString("/proc/stat")
+      .pipe(Effect.orElseSucceed(() => ""));
+    const meminfo = yield* fileSystem
+      .readFileString("/proc/meminfo")
+      .pipe(Effect.orElseSucceed(() => ""));
+    // `-P` forces one line per filesystem, so a long device name cannot push
+    // the Capacity column apart. Linux only, like the rest of this branch.
+    const dfStdout = yield* runProbe("df", "df", ["-P", "-k", "/"]);
+
+    const cpu = parseProcStatCpu(stat);
+    let cpuPercent = lastCpuPercent;
+    if (cpu !== null) {
+      if (lastCpuSample !== null && cpu.total > lastCpuSample.total) {
+        const totalDelta = cpu.total - lastCpuSample.total;
+        const idleDelta = Math.max(0, cpu.idle - lastCpuSample.idle);
+        cpuPercent = clampPercent((1 - idleDelta / totalDelta) * 100);
+        lastCpuPercent = cpuPercent;
+      }
+      lastCpuSample = cpu;
+    }
+    const memoryPercent = parseProcMeminfo(meminfo);
+    const diskPercent = dfStdout === null ? null : parseDfCapacity(dfStdout);
+    if (cpuPercent === null && memoryPercent === null && diskPercent === null) return null;
+    return { cpuPercent, memoryPercent, diskPercent } satisfies AgentPortsUsage;
+  });
+
   const list = Effect.fn("AgentPortsService.list")(function* (input: AgentPortsListInput) {
     const scannedAt = DateTime.formatIso(yield* DateTime.now);
     const scope: AgentPortsScope = input.scope ?? "agent";
+    const usage = yield* readHostUsage();
+    const usageField = usage === null ? {} : { usage };
     if (platform === "win32") {
-      return { ports: [], scannedAt, scope, supported: false } satisfies AgentPortsList;
+      return {
+        ports: [],
+        scannedAt,
+        scope,
+        supported: false,
+        ...usageField,
+      } satisfies AgentPortsList;
     }
     const sockets = yield* probeListeners;
     if (sockets === null) {
-      return { ports: [], scannedAt, scope, supported: false } satisfies AgentPortsList;
+      return {
+        ports: [],
+        scannedAt,
+        scope,
+        supported: false,
+        ...usageField,
+      } satisfies AgentPortsList;
     }
     if (sockets.length === 0) {
-      return { ports: [], scannedAt, scope, supported: true } satisfies AgentPortsList;
+      return {
+        ports: [],
+        scannedAt,
+        scope,
+        supported: true,
+        ...usageField,
+      } satisfies AgentPortsList;
     }
 
     const psStdout = yield* runProbe("ps", "ps", ["-A", "-o", "pid=,ppid=,args="]);
@@ -370,7 +474,7 @@ export const make = Effect.gen(function* () {
       });
     }
     ports.sort((a, b) => a.port - b.port || a.pid - b.pid);
-    return { ports, scannedAt, scope, supported: true } satisfies AgentPortsList;
+    return { ports, scannedAt, scope, supported: true, ...usageField } satisfies AgentPortsList;
   });
 
   const stop = Effect.fn("AgentPortsService.stop")(function* (input: AgentPortStopInput) {
