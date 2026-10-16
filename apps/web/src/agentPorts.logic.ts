@@ -6,6 +6,7 @@
 import {
   AGENT_PORTS_CWD_ROOTS_MAX_ITEMS,
   type AgentPort,
+  type AgentPortsUsage,
   type EnvironmentId,
   type ProjectId,
   type ThreadId,
@@ -150,4 +151,18 @@ export function formatAgentPortCwd(cwd: string | null): string | null {
   if (cwd === null) return null;
   const trimmed = trimSeparators(cwd);
   return trimmed.split(/[\\/]/).at(-1) || trimmed;
+}
+
+/**
+ * One line of host usage for an environment header, e.g.
+ * `CPU 12% · RAM 48% · Disk 63%`. Parts the server could not read are left
+ * out; absent usage (macOS, Windows, an old server) renders nothing.
+ */
+export function formatAgentPortsUsage(usage: AgentPortsUsage | undefined): string | null {
+  if (usage === undefined) return null;
+  const parts: Array<string> = [];
+  if (usage.cpuPercent !== null) parts.push(`CPU ${Math.round(usage.cpuPercent)}%`);
+  if (usage.memoryPercent !== null) parts.push(`RAM ${Math.round(usage.memoryPercent)}%`);
+  if (usage.diskPercent !== null) parts.push(`Disk ${Math.round(usage.diskPercent)}%`);
+  return parts.length === 0 ? null : parts.join(" · ");
 }

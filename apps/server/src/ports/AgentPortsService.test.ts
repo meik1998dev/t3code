@@ -68,6 +68,28 @@ const PROC_CWDS: Record<string, string> = {
   "/proc/6220/cwd": "/",
 };
 
+// cpu  user nice system idle iowait irq softirq steal guest guest_nice
+const PROC_STAT = "cpu  100 0 100 800 50 0 0 0 0 0\ncpu0 100 0 100 800 50 0 0 0 0 0\n";
+// Same counters after one more scan: 250 more jiffies, 100 of them idle → 60% busy.
+const PROC_STAT_AFTER = "cpu  200 0 150 900 50 0 0 0 0 0\n";
+const PROC_MEMINFO = [
+  "MemTotal:        1000000 kB",
+  "MemFree:          400000 kB",
+  "MemAvailable:     520000 kB",
+  "Buffers:           20000 kB",
+  "",
+].join("\n");
+const DF_OUTPUT = [
+  "Filesystem     1024-blocks      Used Available Capacity Mounted on",
+  "/dev/sda1         41152512  25900000  15252512      63% /",
+  "",
+].join("\n");
+
+const DEFAULT_PROC_FILES: Record<string, string> = {
+  "/proc/stat": PROC_STAT,
+  "/proc/meminfo": PROC_MEMINFO,
+};
+
 const okResult = (stdout: string): ProcessRunner.ProcessRunOutput => ({
   stdout,
   stderr: "",
@@ -84,6 +106,7 @@ const makeLayer = (input: {
   readonly run?: ProcessRunner.ProcessRunner["Service"]["run"];
   readonly calls?: Array<ReadonlyArray<string>>;
   readonly signals?: Array<readonly [number, string]>;
+  readonly readFile?: (path: string) => string | undefined;
 }) =>
   AgentPortsService.layer.pipe(
     Layer.provide(
@@ -95,6 +118,7 @@ const makeLayer = (input: {
               input.calls?.push([request.command, ...request.args]);
               if (request.command === "ps") return Effect.succeed(okResult(PS_TABLE));
               if (request.command === "ss") return Effect.succeed(okResult(SS_LISTENERS));
+              if (request.command === "df") return Effect.succeed(okResult(DF_OUTPUT));
               if (request.args.includes("cwd")) return Effect.succeed(okResult(LSOF_CWDS));
               return Effect.succeed(okResult(LSOF_LISTENERS));
             }),
@@ -111,6 +135,18 @@ const makeLayer = (input: {
                     pathOrDescriptor: path,
                   }),
                 ),
+          readFileString: (path) => {
+            const content = input.readFile ? input.readFile(path) : DEFAULT_PROC_FILES[path];
+            if (content !== undefined) return Effect.succeed(content);
+            return Effect.fail(
+              PlatformError.systemError({
+                module: "FileSystem",
+                method: "readFileString",
+                _tag: "NotFound",
+                pathOrDescriptor: path,
+              }),
+            );
+          },
         }),
         Layer.succeed(HostProcess.Platform, input.platform ?? "darwin"),
         Layer.succeed(AgentPortsService.AgentPortsServerPid, SERVER_PID),
@@ -162,6 +198,33 @@ describe("AgentPortsService parsers", () => {
     assert.isTrue(AgentPortsService.isInsideRoot("/code/app/apps/web", "/code/app"));
     assert.isTrue(AgentPortsService.isInsideRoot("/code/app/", "/code/app"));
     assert.isFalse(AgentPortsService.isInsideRoot("/code/app-old", "/code/app"));
+  });
+
+  it("reads cumulative CPU jiffies, counting iowait as idle", () => {
+    assert.deepEqual(AgentPortsService.parseProcStatCpu(PROC_STAT), {
+      idle: 850,
+      total: 1050,
+    });
+    assert.deepEqual(AgentPortsService.parseProcStatCpu(PROC_STAT_AFTER), {
+      idle: 950,
+      total: 1300,
+    });
+  });
+
+  it("turns MemTotal and MemAvailable into a used share", () => {
+    assert.equal(AgentPortsService.parseProcMeminfo(PROC_MEMINFO), 48);
+  });
+
+  it("reads the df capacity column", () => {
+    assert.equal(AgentPortsService.parseDfCapacity(DF_OUTPUT), 63);
+  });
+
+  it("returns null for unreadable host usage input", () => {
+    assert.isNull(AgentPortsService.parseProcStatCpu(""));
+    assert.isNull(AgentPortsService.parseProcStatCpu("cpu"));
+    assert.isNull(AgentPortsService.parseProcMeminfo("MemTotal: 1 kB"));
+    assert.isNull(AgentPortsService.parseDfCapacity(""));
+    assert.isNull(AgentPortsService.parseDfCapacity("Filesystem\n/dev/sda1\n"));
   });
 });
 
@@ -238,6 +301,32 @@ describe("AgentPortsService.list", () => {
     );
     assert.isFalse(calls.some((call) => call[0] === "lsof"));
   });
+
+  it("reports CPU, memory and disk usage on Linux, with CPU from the second scan", async () => {
+    const files: Record<string, string> = {
+      "/proc/stat": PROC_STAT,
+      "/proc/meminfo": PROC_MEMINFO,
+    };
+    const result = await Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      const first = yield* service.list({ cwdRoots: [] });
+      files["/proc/stat"] = PROC_STAT_AFTER;
+      const second = yield* service.list({ cwdRoots: [] });
+      return { first, second };
+    }).pipe(
+      Effect.provide(makeLayer({ platform: "linux", readFile: (path) => files[path] })),
+      Effect.runPromise,
+    );
+    assert.deepEqual(result.first.usage, { cpuPercent: null, memoryPercent: 48, diskPercent: 63 });
+    assert.deepEqual(result.second.usage, { cpuPercent: 60, memoryPercent: 48, diskPercent: 63 });
+  });
+
+  it("leaves usage out on macOS", () =>
+    Effect.gen(function* () {
+      const service = yield* AgentPortsService.AgentPortsService;
+      const result = yield* service.list({ cwdRoots: [] });
+      assert.isUndefined(result.usage);
+    }).pipe(Effect.provide(makeLayer({})), Effect.runPromise));
 
   it("reports unsupported on Windows without running anything", () =>
     Effect.gen(function* () {

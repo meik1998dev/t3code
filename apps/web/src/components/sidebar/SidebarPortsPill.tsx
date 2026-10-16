@@ -28,6 +28,7 @@ import {
   collectAgentPortCwdRoots,
   formatAgentPortCommand,
   formatAgentPortCwd,
+  formatAgentPortsUsage,
   resolveAgentPortOwner,
   type AgentPortOwner,
 } from "../../agentPorts.logic";
@@ -250,6 +251,7 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
 
   const ports = query.data?.ports ?? [];
   const count = ports.length;
+  const usageLine = formatAgentPortsUsage(query.data?.usage);
 
   const status = !connected
     ? "offline"
@@ -267,15 +269,20 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
 
   return (
     <section aria-label={`${environment.label} ports`} className="flex flex-col gap-0.5">
-      <header className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">
-        <span className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
-          {environment.label}
-        </span>
-        {status !== null ? (
-          <span className="shrink-0 text-2xs text-muted-foreground">{status}</span>
-        ) : (
-          <span className="shrink-0 text-2xs text-muted-foreground">{count}</span>
-        )}
+      <header className="flex flex-col gap-0.5 px-1 pt-1 pb-0.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+            {environment.label}
+          </span>
+          {status !== null ? (
+            <span className="shrink-0 text-2xs text-muted-foreground">{status}</span>
+          ) : (
+            <span className="shrink-0 text-2xs text-muted-foreground">{count}</span>
+          )}
+        </div>
+        {usageLine !== null ? (
+          <span className="truncate text-2xs tabular-nums text-muted-foreground">{usageLine}</span>
+        ) : null}
       </header>
       {ports.map((port) => (
         <AgentPortRow

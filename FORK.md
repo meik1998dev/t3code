@@ -325,6 +325,23 @@ Host <hostname>.local
 - Warning: both sides change. Ship the server with `deploy.sh` and build a new DMG; an old server
   answers the RPC with "unavailable" in the popover, nothing else breaks.
 
+### Host usage in the ports popover (#44 follow-up)
+
+- What: each environment header in the "Agent ports" popover shows a small line with the host's
+  CPU, RAM and disk usage, e.g. `CPU 12% · RAM 48% · Disk 63%`. Linux servers read `/proc/stat`
+  (CPU, compared with the previous scan), `/proc/meminfo` (RAM) and `df -P -k /` (root disk). macOS
+  and Windows send nothing, so a local Mac shows no line. No new button, popover, RPC or polling:
+  the numbers ride on `agentPorts.list`, which the popover already refreshes every 4 s.
+- Key files: `packages/contracts/src/agentPorts.ts` (`AgentPortsUsage`, optional `usage`),
+  `apps/server/src/ports/AgentPortsService.ts` (`parseProcStatCpu`, `parseProcMeminfo`,
+  `parseDfCapacity`, `readHostUsage`), `apps/web/src/agentPorts.logic.ts`
+  (`formatAgentPortsUsage`), `apps/web/src/components/sidebar/SidebarPortsPill.tsx`.
+- Tests: `AgentPortsService.test.ts`, `agentPorts.logic.test.ts`.
+- Check: open the popover against the VPS; the environment header shows CPU/RAM/Disk. CPU is blank
+  on the first scan and fills in on the next 4 s tick. A Mac environment shows no line.
+- Warning: both sides change. An old server omits `usage` and the line simply does not render.
+- Drop when: upstream shows host resources in the app on its own.
+
 ### Sidebar look (#6, #8, #22, #23)
 
 - What: taller sidebar rows, and sidebar text one step smaller than the center panel. The

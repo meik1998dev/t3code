@@ -12,6 +12,7 @@ import {
   collectAgentPortCwdRoots,
   formatAgentPortCommand,
   formatAgentPortCwd,
+  formatAgentPortsUsage,
   resolveAgentPortOwner,
 } from "./agentPorts.logic";
 
@@ -153,5 +154,18 @@ describe("formatting", () => {
     );
     expect(isAgentPortLoopbackOnly("127.0.0.1")).toBe(true);
     expect(isAgentPortLoopbackOnly("*")).toBe(false);
+  });
+
+  it("formats host usage, skipping parts the server could not read", () => {
+    expect(formatAgentPortsUsage({ cpuPercent: 12.4, memoryPercent: 48, diskPercent: 63 })).toBe(
+      "CPU 12% · RAM 48% · Disk 63%",
+    );
+    expect(formatAgentPortsUsage({ cpuPercent: null, memoryPercent: 48, diskPercent: 63 })).toBe(
+      "RAM 48% · Disk 63%",
+    );
+    expect(
+      formatAgentPortsUsage({ cpuPercent: null, memoryPercent: null, diskPercent: null }),
+    ).toBe(null);
+    expect(formatAgentPortsUsage(undefined)).toBeNull();
   });
 });

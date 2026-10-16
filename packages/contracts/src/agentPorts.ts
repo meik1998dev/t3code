@@ -69,6 +69,21 @@ export const AgentPortStopResult = Schema.Struct({
 });
 export type AgentPortStopResult = typeof AgentPortStopResult.Type;
 
+/** Percent of a host resource in use, 0–100. */
+const HostUsagePercent = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+
+/**
+ * Live host usage, read by Linux servers only (macOS and Windows leave it
+ * out). Each field is null until its source is readable; `cpuPercent` also
+ * needs two scans, so the first one after a restart reports null.
+ */
+export const AgentPortsUsage = Schema.Struct({
+  cpuPercent: Schema.NullOr(HostUsagePercent),
+  memoryPercent: Schema.NullOr(HostUsagePercent),
+  diskPercent: Schema.NullOr(HostUsagePercent),
+});
+export type AgentPortsUsage = typeof AgentPortsUsage.Type;
+
 export const AgentPortsList = Schema.Struct({
   ports: Schema.Array(AgentPort),
   scannedAt: IsoDateTime,
@@ -76,6 +91,8 @@ export const AgentPortsList = Schema.Struct({
   scope: AgentPortsScope,
   /** False on platforms without lsof (Windows); `ports` is empty then. */
   supported: Schema.Boolean,
+  /** Absent where the server cannot read host usage (macOS, Windows). */
+  usage: Schema.optionalKey(AgentPortsUsage),
 });
 export type AgentPortsList = typeof AgentPortsList.Type;
 
