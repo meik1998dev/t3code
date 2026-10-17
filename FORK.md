@@ -17,6 +17,9 @@ and when to drop it because upstream does the same thing.
 3. `git merge pingdotgg/main`. `rerere` is on, so a conflict fixed once is reused next time.
 4. For each conflict, find the entry below. Keep, merge, or drop the fork side.
 5. Run the tests named in the touched entries: `vp test run <files>`.
+   Then open a new thread in a dev build. Upstream's web code relies on the React Compiler
+   caching: fork code the compiler cannot compile (for example `try/finally`) makes it skip
+   the whole component, and upstream hooks then loop ("Too many re-renders", React #301).
 6. Run each touched entry's "Check" in the app.
 7. Update "Last synced upstream commit" above and any changed entries. Open the PR.
 8. After merge: `git tag sync/<upstream-version> && git push origin sync/<upstream-version>`.
@@ -246,7 +249,7 @@ Host <hostname>.local
   **Fork to new workspace** (worktree at the message's checkpoint) was dropped in the v0.0.45 sync
   because the user did not use it; the compaction variants from #32/#34/#35 stay dropped.
 - Key files: `packages/client-runtime/src/{forkTranscript,state/fullThreadHistory}.ts`,
-  `apps/web/src/components/ChatView.tsx` (`onForkMessage`),
+  `apps/web/src/components/ChatView.tsx` (`onForkMessage`, no `try/finally`: see Sync step 5),
   `apps/web/src/components/chat/{MessagesTimeline,MessagesTimeline.logic}.ts{x,}`,
   `apps/web/src/state/threads.ts` (`loadFullThreadHistory`).
 - Tests: `forkTranscript.test.ts`, `MessagesTimeline.logic.test.ts`.

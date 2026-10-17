@@ -366,7 +366,11 @@ import { vcsEnvironment } from "../state/vcs";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useProjectClone } from "../state/projectClones";
 import { projectCloneDisplayName, projectCloneProgressSummary } from "@t3tools/contracts";
-import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
+import {
+  type EnvironmentPresentation,
+  useEnvironments,
+  usePrimaryEnvironment,
+} from "../state/environments";
 import {
   resolveThreadDetailRef,
   useEnvironmentSupportsServerBrowser,
@@ -565,6 +569,7 @@ const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
 // broadcast to all shell subscribers.
 const VISIT_DISPATCH_THROTTLE_MS = 10_000;
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
+const EMPTY_AUTO_UPDATE_ENVIRONMENTS: ReadonlyArray<EnvironmentPresentation> = [];
 function useDraftHeroLayoutTransition(
   isDraftHeroState: boolean,
   animationsActive: boolean,
@@ -2284,7 +2289,7 @@ export default function ChatView(props: ChatViewProps) {
         const environment = environmentById.get(environmentId);
         return environment ? [environment] : [];
       })
-    : [];
+    : EMPTY_AUTO_UPDATE_ENVIRONMENTS;
   const autoBalanceUpdateBanner = useAutoBalanceUpdateBanner(autoUpdateEnvironments);
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchDismissKey =
@@ -7778,46 +7783,48 @@ export default function ChatView(props: ChatViewProps) {
       composerRef.current?.addDroppedFolders(folders),
   );
 
-  const onForkMessage = useStableCallback(async (messageId: MessageId) => {
-    if (!activeThread || !activeProjectRef || isWorking || isForkingMessage) return;
-
-    setIsForkingMessage(true);
-    try {
-      const sourceProjection = await loadFullThreadHistory(routeThreadRef);
-      const transcript = buildForkTranscript(
-        sourceProjection.thread.title,
-        sourceProjection.messages.map((message) => ({ kind: "message", message })),
-        messageId,
-      );
-      if (transcript === null) {
-        toastManager.add({
-          type: "error",
-          title: "Could not fork chat",
-          description: "The selected message is not in the saved chat history yet.",
-        });
-        return;
-      }
-
-      const fork = await handleNewThread(activeProjectRef, {
-        branch: activeThread.branch,
-        worktreePath: activeThread.worktreePath,
-        envMode: activeThread.worktreePath ? "worktree" : "local",
-      });
-      if (!fork) return;
-      setComposerDraftModelSelection(fork.draftId, activeThread.modelSelection, {
-        explicit: true,
-        replaceOptions: true,
-      });
-      setComposerDraftPrompt(fork.draftId, transcript);
-    } catch (error) {
+  // Kept free of try/finally: the React Compiler cannot compile that, and a
+  // skipped ChatView loses the caching its hooks rely on (render loop).
+  const forkThreadFromMessage = async (messageId: MessageId) => {
+    if (!activeThread || !activeProjectRef) return;
+    const sourceProjection = await loadFullThreadHistory(routeThreadRef);
+    const transcript = buildForkTranscript(
+      sourceProjection.thread.title,
+      sourceProjection.messages.map((message) => ({ kind: "message", message })),
+      messageId,
+    );
+    if (transcript === null) {
       toastManager.add({
         type: "error",
         title: "Could not fork chat",
-        description: chatActionErrorMessage(error),
+        description: "The selected message is not in the saved chat history yet.",
       });
-    } finally {
-      setIsForkingMessage(false);
+      return;
     }
+    const fork = await handleNewThread(activeProjectRef, {
+      branch: activeThread.branch,
+      worktreePath: activeThread.worktreePath,
+      envMode: activeThread.worktreePath ? "worktree" : "local",
+    });
+    if (!fork) return;
+    setComposerDraftModelSelection(fork.draftId, activeThread.modelSelection, {
+      explicit: true,
+      replaceOptions: true,
+    });
+    setComposerDraftPrompt(fork.draftId, transcript);
+  };
+  const onForkMessage = useStableCallback((messageId: MessageId) => {
+    if (!activeThread || !activeProjectRef || isWorking || isForkingMessage) return;
+    setIsForkingMessage(true);
+    void forkThreadFromMessage(messageId)
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "Could not fork chat",
+          description: chatActionErrorMessage(error),
+        });
+      })
+      .then(() => setIsForkingMessage(false));
   });
 
   if (!activeThread) {
