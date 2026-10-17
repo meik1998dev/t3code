@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `cfafb4bb54` (2026-10-16, `fix(codex): a slow but healthy Codex no longer shows as Unavailable (#15945)`, v0.1.1 nightly).
+- Last synced upstream commit: `2fbd4318fc` (2026-10-17, `chore(web): lint rejects "use memo" directives (#20843)`, v0.1.1 nightly).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -286,6 +286,10 @@ Host <hostname>.local
   `apps/web/src/routes/_chat.pull-requests.tsx`.
 - Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
 - Check: pick two projects in each filter. Only those threads and pull requests show.
+- Sync note: upstream compiles the sidebar and the pull requests page with the React Compiler
+  and no manual `useMemo`/`useCallback`. The fork's scope lives in the same plain style: the PR
+  page's `usePullRequestScope` reads `projectIds`, and the sidebar passes the sorted scope keys
+  as `projectScopeKey` to `useSidebarThreads`.
 - Warning: the sidebar trigger is upstream's icon-only header button. Do not put a label or
   chevron inside it; they get clipped next to Search. The selection shows as check marks in the
   popup and in the button's tooltip.
