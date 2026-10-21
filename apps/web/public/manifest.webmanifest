@@ -3,6 +3,8 @@
   "short_name": "Spindle",
   "description": "A focused workspace for your coding agents.",
   "id": "/",
+  "name": "T3 Code",
+  "short_name": "T3 Code",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

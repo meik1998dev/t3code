@@ -242,8 +242,8 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
     const profile = Option.getOrNull(environment.entry.profile);
     return resolveRemoteOpenState({
       target: environment.entry.target,
-      sshAlias:
-        profile !== null && profile._tag === "SshConnectionProfile" ? profile.target.alias : null,
+      sshTarget:
+        profile !== null && profile._tag === "SshConnectionProfile" ? profile.target : null,
       remoteOpenTargets: environment.serverConfig?.remoteOpenTargets,
       isDesktopRenderer: window.desktopBridge !== undefined,
     });

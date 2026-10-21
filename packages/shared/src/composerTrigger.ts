@@ -45,6 +45,23 @@ function isWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\t" || char === "\r";
 }
 
+/**
+ * A slash word with a second slash, such as `/tmp/build.sh`, is a path, not a
+ * command. The whole word counts, so a caret before the second slash still sees it.
+ */
+export function isPathWord(
+  text: string,
+  wordStart: number,
+  cursor: number,
+  isWhitespaceChar: (char: string) => boolean,
+): boolean {
+  let wordEnd = cursor;
+  while (wordEnd < text.length && !isWhitespaceChar(text[wordEnd] ?? "")) {
+    wordEnd += 1;
+  }
+  return text.slice(wordStart + 1, wordEnd).includes("/");
+}
+
 export function detectComposerTrigger(
   text: string,
   cursorInput: number,
@@ -73,6 +90,7 @@ export function detectComposerTrigger(
 
   const token = text.slice(tokenStart, cursor);
   if (token.startsWith("/")) {
+    if (isPathWord(text, tokenStart, cursor, wsCheck)) return null;
     return {
       kind: "slash-command",
       query: token.slice(1),

@@ -30,7 +30,6 @@ import {
   writePullRequestListSnapshot,
   rankPullRequestMatches,
   rankPullRequestsBlockedOnAuthor,
-  rankPullRequestsBlockedOnReviewer,
   rankPullRequestsByMergeReadiness,
   scorePullRequestMatch,
   sortPullRequestGroups,
@@ -870,19 +869,6 @@ describe("blocked-on-me ranking", () => {
         newerFailing,
       ]).map((row) => row.number),
     ).toEqual([1, 3, 9, 2, 5, 6, 4, 8, 7]);
-  });
-
-  it("ranks reviewer work with open rows first, newest first", () => {
-    const olderOpen = entry({ number: 1, updatedAt: "2026-08-01T00:00:00Z" });
-    const newerOpen = entry({ number: 2, updatedAt: "2026-08-02T00:00:00Z" });
-    const olderFinished = entry({ number: 3, state: "merged", updatedAt: "2026-08-01T00:00:00Z" });
-    const newerFinished = entry({ number: 4, state: "closed", updatedAt: "2026-08-03T00:00:00Z" });
-
-    expect(
-      rankPullRequestsBlockedOnReviewer([newerFinished, newerOpen, olderFinished, olderOpen]).map(
-        (row) => row.number,
-      ),
-    ).toEqual([2, 1, 4, 3]);
   });
 
   it("ranks blocked groups according to their involvement", () => {

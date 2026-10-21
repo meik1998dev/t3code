@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `2fbd4318fc` (2026-10-17, `chore(web): lint rejects "use memo" directives (#20843)`, v0.1.1 nightly).
+- Last synced upstream commit: `448b8a9186` (2026-10-21, `fix(server): t3 pair in a worktree no longer falls back to the live install`, v0.1.1).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -39,32 +39,34 @@ Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 63     | `063_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 64     | `064_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 65     | `065_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 66     | `066_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 67     | `067_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 68     | `068_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 69     | `069_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 70     | `070_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 68     | `068_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 69     | `069_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 70     | `070_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 71     | `071_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 72     | `072_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 73     | `073_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 74     | `074_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 75     | `075_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–62. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+Upstream owns 1–67. Since upstream added a startup check (`assertV2MigrationsCanRun` in
 `Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
 up) stops the server. A repair migration cannot fix that, because the check runs before any
 migration. So a clash is now fixed by `reconcileForkMigrationLedger.ts`, which runs before the
-check: on a database whose ledger has the fork's `61_RepairUpstreamMigrationsAfterFork`, it
-applies upstream 61–62 safely (62 only when its index is missing) and moves the fork rows
-61–68 to 63–70. Nothing runs twice, and the ledger then matches a fresh database. Fresh
-databases run upstream 1–62 and the fork's 63–70 do nothing harmful.
-Older history: the v0.0.46 sync moved the fork's old 57–60 up; 70 runs upstream 57 (only when
-`scheduled_tasks.webhook_token` is missing) and 58–60, and 65 runs upstream 55 (only when
-`orchestration_v2_events` is missing) and 56. Both rename ledger rows to upstream's names.
-69 reruns upstream 54, 68 replays upstream 53, 64 adds `title_state_json` for databases that
-recorded the fork's own 52, and 63 reapplies upstream 50–51 for databases that recorded the
-fork's old 50–54. 66 keeps `projection_threads.parent_thread_id`; the v1 thread importer
-(`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
-threads are copied into the new orchestrator on first start. Databases still on a ledger from
-before the v0.0.46 sync (fork names at 55–60) now stop at the startup check; start the
+check: it normalises the fork block onto 68–75 wherever an earlier generation recorded it (61–68
+from the v0.0.46 sync, 63–70 from the v0.1.1 sync), and applies the upstream migrations that
+generation skipped, safely twice. Nothing runs twice, and the ledger then matches a fresh
+database. Fresh databases run upstream 1–67 and the fork's 68–75 do nothing harmful.
+Older history: the v0.1.1 sync added upstream 63–67 (drop unused V1 projections, canonicalise
+thread PR links, Codex usage index, settled-timestamp repair, webhook dedupe) below the fork's
+block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up;
+75 runs upstream 57 (only when `scheduled_tasks.webhook_token` is missing) and 58–60, and 70 runs
+upstream 55 (only when `orchestration_v2_events` is missing) and 56. Both rename ledger rows to
+upstream's names. 74 reruns upstream 54, 73 replays upstream 53, 69 adds `title_state_json` for
+databases that recorded the fork's own 52, and 68 reapplies upstream 50–51 for databases that
+recorded the fork's old 50–54. 71 keeps `projection_threads.parent_thread_id`; the v1 thread
+importer (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"`
+when old threads are copied into the new orchestrator on first start. Databases still on a ledger
+from before the v0.0.46 sync (fork names at 55–60) now stop at the startup check; start the
 v0.0.46 fork build on them once first.
 
 On every sync where upstream adds a migration numbered below the fork's last one, or where
@@ -82,12 +84,15 @@ numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                | Entries                                      |
-| --------------------------------------------------- | -------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`              | Message fork                                 |
-| `apps/web/src/components/chat/MessagesTimeline.tsx` | Message fork, Branding                       |
-| `apps/web/src/components/Sidebar.tsx`               | Agent threads, Sidebar filter, Sidebar style |
-| `apps/web/src/index.css`                            | Sidebar style, Radius, Quieter tool rows     |
+| File                                                      | Entries                                      |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`                    | Message fork                                 |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                       |
+| `apps/web/src/components/chat/TimelineUserMessageRow.tsx` | Message fork, Branding                       |
+| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style |
+| `apps/web/src/components/sidebar/SidebarThreadRow.tsx`    | Agent threads, Sidebar style, Branding       |
+| `apps/web/src/components/pullRequest/PullRequestsPage.tsx` | Sidebar filter                              |
+| `apps/web/src/index.css`                                  | Sidebar style, Radius, Quieter tool rows     |
 | `apps/server/src/ws.ts`                             | Agent ports, GitHub account                  |
 | `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                    |
 | `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks |
@@ -230,7 +235,8 @@ Host <hostname>.local
   `mcp/toolkits/project/handlers.ts` (`t3_thread_launch`), `mcp/toolkits/orchestrator/{handlers,tools}.ts`,
   `packages/contracts/src/orchestratorMcp.ts` (`routingNotes`), `orchestration-v2/legacy/LegacyV1ThreadImporter.ts`
   (v1 `parent_thread_id` → `createdBy: "agent"`), `packages/client-runtime/src/state/models.ts`
-  (`createdBy` on the client shell), web `Sidebar.tsx`/`LegacySidebar.tsx`, mobile `thread-list-v2-items.tsx`.
+  (`createdBy` on the client shell), web `sidebar/SidebarThreadRow.tsx` (the mark moved there when
+  upstream extracted the row on 2026-10-21), mobile `thread-list-v2-items.tsx`.
 - Tests: `apps/server/src/mcp/threadStartLimit.test.ts`, `OrchestratorMcpToolkit.integration.test.ts`
   (`routingNotes`).
 - Check: from a person-started thread, ask the agent for a separate thread; it appears with the
@@ -250,6 +256,9 @@ Host <hostname>.local
   because the user did not use it; the compaction variants from #32/#34/#35 stay dropped.
 - Key files: `packages/client-runtime/src/{forkTranscript,state/fullThreadHistory}.ts`,
   `apps/web/src/components/ChatView.tsx` (`onForkMessage`, no `try/finally`: see Sync step 5),
+  `apps/web/src/components/chat/{MessagesTimeline,timelineRowContext,TimelineUserMessageRow}.tsx`
+  (`onForkMessage` and the `MessageForkMenu` action, which upstream's 2026-10-21 sync moved out of
+  `MessagesTimeline.tsx` into the user-message row),
   `apps/web/src/components/chat/{MessagesTimeline,MessagesTimeline.logic}.ts{x,}`,
   `apps/web/src/state/threads.ts` (`loadFullThreadHistory`).
 - Tests: `forkTranscript.test.ts`, `MessagesTimeline.logic.test.ts`.
@@ -285,9 +294,13 @@ Host <hostname>.local
 
 - What: filter the sidebar and the pull request list by several projects at once.
 - Key files: `apps/web/src/components/Sidebar.logic.ts`, `Sidebar.tsx`,
+  `components/pullRequest/{PullRequestsPage.tsx,usePullRequestListView.ts}` (the page body; since
+  the 2026-10-21 sync `_chat.pull-requests.tsx` only validates search),
   `components/pullRequest/{PullRequestListFilters.tsx,pullRequestList.logic.ts,pullRequestListPreferences.ts}`,
   `apps/web/src/routes/_chat.pull-requests.tsx`.
-- Tests: `Sidebar.logic.test.ts`, `PullRequestListFilters.test.tsx`, `pullRequestList.logic.test.ts`.
+- Tests: `Sidebar.logic.test.ts`, `pullRequestList.logic.test.ts`. (Upstream deleted
+  `PullRequestListFilters.test.tsx` on 2026-10-21 and the new rules reject the element-walking
+  style it used, so the multi-select itself is covered by the logic tests only.)
 - Check: pick two projects in each filter. Only those threads and pull requests show.
 - Sync note: upstream compiles the sidebar and the pull requests page with the React Compiler
   and no manual `useMemo`/`useCallback`. The fork's scope lives in the same plain style: the PR
