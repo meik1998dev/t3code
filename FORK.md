@@ -84,18 +84,18 @@ numbers clash:
 
 Many fork entries touch these files. Expect conflicts here on each sync.
 
-| File                                                      | Entries                                      |
-| --------------------------------------------------------- | -------------------------------------------- |
-| `apps/web/src/components/ChatView.tsx`                    | Message fork                                 |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`       | Message fork, Branding                       |
-| `apps/web/src/components/chat/TimelineUserMessageRow.tsx` | Message fork, Branding                       |
-| `apps/web/src/components/Sidebar.tsx`                     | Agent threads, Sidebar filter, Sidebar style |
-| `apps/web/src/components/sidebar/SidebarThreadRow.tsx`    | Agent threads, Sidebar style, Branding       |
-| `apps/web/src/components/pullRequest/PullRequestsPage.tsx` | Sidebar filter                              |
-| `apps/web/src/index.css`                                  | Sidebar style, Radius, Quieter tool rows     |
-| `apps/server/src/ws.ts`                             | Agent ports, GitHub account                  |
-| `apps/server/src/persistence/Migrations.ts`         | [Migrations](#migrations)                    |
-| `apps/server/src/pullRequest/PullRequestService.ts` | GitHub account per repo, Pull request stacks |
+| File                                                       | Entries                                      |
+| ---------------------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/components/ChatView.tsx`                     | Message fork                                 |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`        | Message fork, Branding                       |
+| `apps/web/src/components/chat/TimelineUserMessageRow.tsx`  | Message fork, Branding                       |
+| `apps/web/src/components/Sidebar.tsx`                      | Agent threads, Sidebar filter, Sidebar style |
+| `apps/web/src/components/sidebar/SidebarThreadRow.tsx`     | Agent threads, Sidebar style, Branding       |
+| `apps/web/src/components/pullRequest/PullRequestsPage.tsx` | Sidebar filter                               |
+| `apps/web/src/index.css`                                   | Sidebar style, Radius, Quieter tool rows     |
+| `apps/server/src/ws.ts`                                    | Agent ports, GitHub account                  |
+| `apps/server/src/persistence/Migrations.ts`                | [Migrations](#migrations)                    |
+| `apps/server/src/pullRequest/PullRequestService.ts`        | GitHub account per repo, Pull request stacks |
 
 ## Remote server (VPS) deploy
 
@@ -132,12 +132,20 @@ Move it into `scripts/` when it stabilises.
    launcher (`run-t3.sh`), which drops its native `t3` there and starts it on 3774. Those
    folders stay `chattr +i` (locked) all the time, deploys included.
 4. Point the systemd unit at the slot and restart: `ExecStart=/usr/local/bin/node
-~/spindle/runtime/<version>/node_modules/t3/dist/bin.mjs serve`, then
+   ~/spindle/runtime/<version>/node_modules/t3/dist/bin.mjs serve`, then
    `systemctl --user daemon-reload && systemctl --user restart t3code`. Since upstream 0.0.42 the
    launcher (`t3 __service-launcher`, protocol 3) only starts a standalone `t3` executable, so the
    old `~/.t3/runtime/service-launcher.mjs` and `service-state.json` are no longer used; the
    server runs unmanaged (no self-update, which the rules below forbid anyway). Keep the runtime's
    `node_modules` — `node-pty` is compiled there.
+   - Since upstream 0.1.x the leftover `service-state.json` **blocks startup**: the ownership
+     guard (`apps/server/src/serverOwnership.ts`, `olderBootServiceHome`) reads the unit's
+     `T3CODE_HOME` base dir, finds `runtime/service-state.json` with `activeVersion: "0.0.42"`,
+     and exits with `OlderBootServiceError` (status 78, `Restart=always` loops). Delete the file
+     on the first 0.1.x deploy; `deploy.sh` does it now.
+   - Wait for readiness instead of a fixed sleep. Migrations on the 4 GB VPS database took about
+     3.5 minutes on the 0.1.1 deploy, so a 10-second health check prints `http 000` while the
+     server is still migrating. `deploy.sh` polls `/` for up to 10 minutes.
 
 ### Which side needs a rebuild
 
@@ -516,3 +524,19 @@ Host <hostname>.local
 - Check: after a build, `grep -a -c relay.t3.codes Spindle.app/Contents/Resources/app.asar`
   inside the mounted DMG is above 0.
 - Drop it when: never, while the fork builds its own desktop app.
+
+### Desktop build needs Xcode's `actool` on PATH (sync/v0.1.1)
+
+- What: upstream 0.1.x packages the app from `assets/<channel>/app-icon.icon` (Icon Composer)
+  instead of a `.icns`, and electron-builder compiles it with `actool`. That tool only ships
+  inside Xcode, so a Mac whose `xcode-select` points at the Command Line Tools fails the DMG
+  step with `Failed to check actool version. Is Xcode 26 or higher installed?` even with Xcode
+  installed. Make it reachable for the build:
+  `PATH="/Applications/Xcode.app/Contents/Developer/usr/bin:$PATH" vp run dist:desktop:dmg`,
+  or switch the machine once with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+- Key files: `assets/{prod,nightly,dev}/app-icon.icon`, `scripts/build-desktop-artifact.ts`
+  (`mac.icon` in the generated builder config).
+- Check: the DMG step logs no `actool` error and finishes with the `T3-Code-<version>-arm64.dmg`
+  artifact list.
+- Warning: the guard lives in `app-builder-lib`, so a dependency bump can change which tools it
+  needs. Upstream CI uses Xcode 26; keep the local Xcode at 26 or newer.
