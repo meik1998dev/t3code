@@ -4,14 +4,14 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import repairUpstreamMigrations from "./Migrations/068_RepairUpstreamMigrationsAfterFork.ts";
-import repairThreadTitleState from "./Migrations/069_RepairThreadTitleStateColumn.ts";
-import repairOrchestrationV2 from "./Migrations/070_RepairOrchestrationV2AfterFork.ts";
-import parentThreadId from "./Migrations/071_ProjectionThreadsParentThreadId.ts";
-import repairBranchPullRequest from "./Migrations/072_RepairThreadBranchPullRequestColumn.ts";
-import repairFilesViewed from "./Migrations/073_RepairPullRequestFilesViewedTable.ts";
-import repairAutoSettle from "./Migrations/074_RepairThreadAutoSettleColumn.ts";
-import repairUpstream57To60 from "./Migrations/075_RepairUpstream57To60AfterFork.ts";
+import repairUpstreamMigrations from "./Migrations/070_RepairUpstreamMigrationsAfterFork.ts";
+import repairThreadTitleState from "./Migrations/071_RepairThreadTitleStateColumn.ts";
+import repairOrchestrationV2 from "./Migrations/072_RepairOrchestrationV2AfterFork.ts";
+import parentThreadId from "./Migrations/073_ProjectionThreadsParentThreadId.ts";
+import repairBranchPullRequest from "./Migrations/074_RepairThreadBranchPullRequestColumn.ts";
+import repairFilesViewed from "./Migrations/075_RepairPullRequestFilesViewedTable.ts";
+import repairAutoSettle from "./Migrations/076_RepairThreadAutoSettleColumn.ts";
+import repairUpstream57To60 from "./Migrations/077_RepairUpstream57To60AfterFork.ts";
 
 const FORK_MIGRATIONS = [
   ["RepairUpstreamMigrationsAfterFork", repairUpstreamMigrations],
@@ -41,8 +41,8 @@ const assertNormalized = Effect.fn(function* (forkFirstId: number) {
   const forkRows = ledger.filter((row) => FORK_MIGRATIONS.some(([name]) => name === row.name));
   assert.deepStrictEqual(
     forkRows.map((row) => row.migration_id),
-    Array.from({ length: FORK_MIGRATIONS.length }, (_, index) => 68 + index),
-    `fork rows recorded at ${forkFirstId} were not moved onto 68-75`,
+    Array.from({ length: FORK_MIGRATIONS.length }, (_, index) => 70 + index),
+    `fork rows recorded at ${forkFirstId} were not moved onto 70-77`,
   );
   assert.deepStrictEqual(yield* runMigrations(), []);
 });
@@ -53,7 +53,9 @@ const schemaNames = Effect.fn(function* () {
     SELECT name FROM sqlite_master WHERE name IN (
       'pull_request_review_guides',
       'orchestration_v2_projection_turn_items_failed_error_idx',
-      'scheduled_task_webhook_replay_keys'
+      'scheduled_task_webhook_replay_keys',
+      'orchestration_v2_projection_turn_items_stop_request_idx',
+      'orchestration_v2_message_search'
     )
   `;
   return rows.map((row) => row.name).sort();
@@ -66,7 +68,7 @@ const freshDatabase = <A, E>(name: string, body: () => Effect.Effect<A, E, SqlCl
     it.effect(name, body);
   });
 
-freshDatabase("moves fork rows 61-68 to 68-75 and applies upstream 61-67", () =>
+freshDatabase("moves fork rows 61-68 to 70-77 and applies upstream 61-69", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* runMigrations({ toMigrationInclusive: 60 });
@@ -79,10 +81,12 @@ freshDatabase("moves fork rows 61-68 to 68-75 and applies upstream 61-67", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      [61, 62, 63, 64, 65, 66, 67],
+      [61, 62, 63, 64, 65, 66, 67, 68, 69],
     );
     assert.deepStrictEqual(yield* schemaNames(), [
+      "orchestration_v2_message_search",
       "orchestration_v2_projection_turn_items_failed_error_idx",
+      "orchestration_v2_projection_turn_items_stop_request_idx",
       "pull_request_review_guides",
       "scheduled_task_webhook_replay_keys",
     ]);
@@ -90,7 +94,7 @@ freshDatabase("moves fork rows 61-68 to 68-75 and applies upstream 61-67", () =>
   }),
 );
 
-freshDatabase("moves fork rows 63-70 to 68-75 and applies upstream 63-67", () =>
+freshDatabase("moves fork rows 63-70 to 70-77 and applies upstream 63-69", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* runMigrations({ toMigrationInclusive: 60 });
@@ -109,8 +113,35 @@ freshDatabase("moves fork rows 63-70 to 68-75 and applies upstream 63-67", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      [63, 64, 65, 66, 67],
+      [63, 64, 65, 66, 67, 68, 69],
     );
     yield* assertNormalized(63);
+  }),
+);
+
+freshDatabase("moves fork rows 68-75 to 70-77 and applies upstream 68-69", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    // A fork database as the v0.1.1 ledger fix left it: upstream 1-67 are
+    // recorded, and the fork block sits on 68-75.
+    yield* runMigrations({ toMigrationInclusive: 67 });
+    for (const [, migration] of FORK_MIGRATIONS) yield* migration;
+    for (const [id, name] of forkLedger(68)) {
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
+    }
+
+    const ran = yield* runMigrations();
+    assert.deepStrictEqual(
+      ran.map(([id]) => id),
+      [68, 69],
+    );
+    assert.deepStrictEqual(yield* schemaNames(), [
+      "orchestration_v2_message_search",
+      "orchestration_v2_projection_turn_items_failed_error_idx",
+      "orchestration_v2_projection_turn_items_stop_request_idx",
+      "pull_request_review_guides",
+      "scheduled_task_webhook_replay_keys",
+    ]);
+    yield* assertNormalized(68);
   }),
 );

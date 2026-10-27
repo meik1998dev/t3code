@@ -28,30 +28,29 @@ export function createFullThreadHistoryCommand<R, E>(
 ) {
   return createEnvironmentCommand(runtime, {
     label: "environment-data:threads:full-snapshot",
-    execute: (threadId: ThreadId) =>
-      Effect.gen(function* () {
-        const supervisor = yield* EnvironmentSupervisor;
-        const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-        if (Option.isNone(prepared)) {
-          return yield* new FullThreadHistoryError({
-            message: "Reconnect the environment to load this chat's history.",
-          });
-        }
-        const signer = yield* Effect.serviceOption(ManagedRelay.ManagedRelayDpopSigner);
-        const remoteAuthorization = yield* Effect.serviceOption(
-          RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
-        );
-        const snapshot = yield* fetchEnvironmentThreadSnapshot({
-          prepared: prepared.value,
-          threadId,
-          signer,
-          remoteAuthorization,
-        }).pipe(
-          Effect.mapError(
-            () => new FullThreadHistoryError({ message: "Could not load the full chat history." }),
-          ),
-        );
-        return snapshot.projection satisfies OrchestrationV2ThreadProjection;
-      }),
+    execute: Effect.fn("FullThreadHistory.execute")(function* (threadId: ThreadId) {
+      const supervisor = yield* EnvironmentSupervisor;
+      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+      if (Option.isNone(prepared)) {
+        return yield* new FullThreadHistoryError({
+          message: "Reconnect the environment to load this chat's history.",
+        });
+      }
+      const signer = yield* Effect.serviceOption(ManagedRelay.ManagedRelayDpopSigner);
+      const remoteAuthorization = yield* Effect.serviceOption(
+        RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
+      );
+      const snapshot = yield* fetchEnvironmentThreadSnapshot({
+        prepared: prepared.value,
+        threadId,
+        signer,
+        remoteAuthorization,
+      }).pipe(
+        Effect.mapError(
+          () => new FullThreadHistoryError({ message: "Could not load the full chat history." }),
+        ),
+      );
+      return snapshot.projection satisfies OrchestrationV2ThreadProjection;
+    }),
   });
 }

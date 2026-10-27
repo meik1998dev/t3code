@@ -26,8 +26,9 @@ import {
   mergePullRequestDiffStats,
   narrowPullRequestsToFilters,
   partitionPullRequestsWithPriority,
-  readPullRequestListSnapshot,
-  writePullRequestListSnapshot,
+  pullRequestAuthorChoices,
+  selectedPullRequestAuthor,
+  pullRequestLabelChoices,
   rankPullRequestMatches,
   rankPullRequestsBlockedOnAuthor,
   rankPullRequestsByMergeReadiness,
@@ -45,6 +46,7 @@ import {
   pullRequestOverrideAfterAction,
   reusePullRequestEntries,
   settlePullRequestOverrides,
+  findProjectForRepository,
 } from "./pullRequestList.logic";
 import {
   pullRequestListPreferences,
@@ -60,7 +62,7 @@ function entry(
 ) {
   return {
     environmentId: "env-1",
-    provider: "github",
+    provider: SourceControlProviderKind.make("github"),
     host: "github.com",
     projectId: "project-1",
     projectTitle: "t3code",
@@ -1014,104 +1016,6 @@ describe("partitioning with the hosts' own priority reads", () => {
   });
 });
 
-describe("the list snapshot across a reload", () => {
-  const makeStorage = () => {
-    const held = new Map<string, string>();
-    return {
-      getItem: (key: string) => held.get(key) ?? null,
-      setItem: (key: string, value: string) => void held.set(key, value),
-    };
-  };
-  const data = {
-    entries: [entry({ number: 1 })],
-    viewers: { "github.com": "Bilal" },
-    providers: [],
-    errors: [{ projectId: "project-1", message: "boom" }],
-    truncated: true,
-    nextCursors: { "pingdotgg/t3code": "cursor-1" },
-  } as never;
-
-  it("hydrates the retained rows so ghosts never replace them", () => {
-    const storage = makeStorage();
-    writePullRequestListSnapshot(storage, "env-1", { scope: "env-1:open:all::", data });
-    const snapshot = readPullRequestListSnapshot(storage, "env-1");
-    expect(snapshot?.scope).toBe("env-1:open:all::");
-    expect(snapshot?.data.entries.map((item) => item.number)).toEqual([1]);
-  });
-
-  it("carries neither stale failures nor stale cursors", () => {
-    const storage = makeStorage();
-    writePullRequestListSnapshot(storage, "env-1", { scope: "s", data });
-    const snapshot = readPullRequestListSnapshot(storage, "env-1");
-    expect(snapshot?.data.errors).toEqual([]);
-    expect(snapshot?.data.nextCursors).toEqual({});
-  });
-
-  it("answers nothing for another environment", () => {
-    const storage = makeStorage();
-    writePullRequestListSnapshot(storage, "env-1", { scope: "s", data });
-    expect(readPullRequestListSnapshot(storage, "env-2")).toBeNull();
-  });
-
-  it("rejects a snapshot whose rows do not decode as entries", () => {
-    const storage = makeStorage();
-    storage.setItem(
-      "t3.pullRequests.list:env-1",
-      JSON.stringify({ scope: "s", data: { entries: [null] } }),
-    );
-    expect(readPullRequestListSnapshot(storage, "env-1")).toBeNull();
-    storage.setItem(
-      "t3.pullRequests.list:env-1",
-      JSON.stringify({ scope: "s", data: { entries: [{ host: "github.com" }] } }),
-    );
-    expect(readPullRequestListSnapshot(storage, "env-1")).toBeNull();
-  });
-
-  it("shrugs off corrupt storage and no storage at all", () => {
-    const storage = makeStorage();
-    storage.setItem("t3.pullRequests.list:env-1", "{not json");
-    expect(readPullRequestListSnapshot(storage, "env-1")).toBeNull();
-    expect(readPullRequestListSnapshot(undefined, "env-1")).toBeNull();
-  });
-
-  it("caps the accumulated rows but keeps the whole host set", () => {
-    const storage = makeStorage();
-    const manyEntries = Array.from({ length: 120 }, (_, index) => entry({ number: index + 1 }));
-    const viewers = { "github.com": "Bilal", "gitlab.com": "Bilal" };
-    const providers = [
-      {
-        host: "github.com",
-        kind: "github",
-        searchesOnHost: true,
-        projectCount: 1,
-        configured: true,
-        detail: null,
-      },
-      {
-        host: "gitlab.com",
-        kind: "gitlab",
-        searchesOnHost: true,
-        projectCount: 1,
-        configured: true,
-        detail: null,
-      },
-    ];
-    const accumulated = {
-      entries: manyEntries,
-      viewers,
-      providers,
-      errors: [],
-      truncated: true,
-      nextCursors: {},
-    } as never;
-    writePullRequestListSnapshot(storage, "env-1", { scope: "s", data: accumulated });
-    const snapshot = readPullRequestListSnapshot(storage, "env-1");
-    expect(snapshot?.data.entries).toHaveLength(99);
-    expect(snapshot?.data.viewers).toEqual(viewers);
-    expect(snapshot?.data.providers).toEqual(providers);
-  });
-});
-
 describe("remembered pull request list controls", () => {
   const makeStorage = () => {
     const held = new Map<string, string>();
@@ -1655,10 +1559,11 @@ describe("pull request quick actions", () => {
     ...(actions === undefined ? {} : { actions }),
   });
 
-  it("offers what each host reports, and GitHub's legacy set when a server reports none", () => {
+  it("offers what each host reports, and the host's own set when a server reports none", () => {
     const actionsOf = pullRequestHostActions([
       summary("bitbucket.org", "bitbucket", ["merge", "close"]),
       summary("github.com", "github"),
+      summary("gitlab.com", "gitlab"),
     ]);
     const bitbucket = actionsOf({
       host: "bitbucket.org",
@@ -1673,6 +1578,11 @@ describe("pull request quick actions", () => {
       "close",
       "ready",
     ]);
+    const gitlab = actionsOf({
+      host: "gitlab.com",
+      provider: SourceControlProviderKind.make("gitlab"),
+    });
+    expect(pullRequestQuickActions({ state: "open", isDraft: false }, gitlab)).toEqual([]);
   });
 });
 
@@ -1694,5 +1604,144 @@ describe("refresh page size", () => {
 
   it("asks for the whole host where one search reads every repository", () => {
     expect(largestPullRequestReadCount(twoPagesAcrossFourRepositories("github"))).toBe(792);
+  });
+});
+
+describe("findProjectForRepository", () => {
+  it("resolves Azure bare names using matching project and environment scope", () => {
+    const azure = (id: string, environmentId: string, path: string) => ({
+      id,
+      environmentId,
+      repositoryIdentity: {
+        canonicalKey: `dev.azure.com/${path}`,
+        locator: { source: "git-remote" as const, remoteName: "origin", remoteUrl: "" },
+        provider: SourceControlProviderKind.make("azure-devops"),
+        displayName: path,
+        owner: "contoso",
+        name: path.split("/").at(-1)!,
+      },
+    });
+    const payments = azure("p1", ENV_1, "contoso/payments/_git/api");
+    const billing = azure("p2", ENV_1, "contoso/billing/_git/api");
+    const remoteBilling = azure("p2", ENV_2, "contoso/billing/_git/api");
+    const unrelated = azure("p3", ENV_2, "contoso/billing/_git/web");
+    const projects = [payments, billing, remoteBilling, unrelated];
+
+    expect(findProjectForRepository(projects, { repository: "api" })).toBe(payments);
+    expect(
+      findProjectForRepository(projects, {
+        repository: "api",
+        scopedProjectId: "p2",
+        scopedEnvironmentId: ENV_2,
+      }),
+    ).toBe(remoteBilling);
+    expect(
+      findProjectForRepository(projects, {
+        repository: "api",
+        scopedProjectId: "p3",
+        scopedEnvironmentId: ENV_2,
+      }),
+    ).toBe(payments);
+  });
+
+  it("keeps repository matches on the selected environment when project IDs overlap", () => {
+    const project = (id: string, environmentId: string, repository: string) => ({
+      id,
+      environmentId,
+      repositoryIdentity: {
+        canonicalKey: `github.com/${repository}`,
+        locator: { source: "git-remote" as const, remoteName: "origin", remoteUrl: "" },
+        provider: SourceControlProviderKind.make("github"),
+        displayName: repository,
+      },
+    });
+    const unrelated = project("p1", ENV_1, "acme/web");
+    const local = project("p2", ENV_1, "acme/api");
+    const remote = project("p1", ENV_2, "acme/api");
+    const projects = [unrelated, local, remote];
+
+    expect(findProjectForRepository(projects, { repository: "acme/api" })).toBe(local);
+    expect(
+      findProjectForRepository(projects, {
+        repository: "acme/api",
+        selectedEnvironmentId: ENV_2,
+      }),
+    ).toBe(remote);
+    expect(
+      findProjectForRepository(projects, {
+        repository: "acme/web",
+        selectedEnvironmentId: ENV_2,
+      }),
+    ).toBeUndefined();
+    expect(
+      findProjectForRepository(projects, {
+        repository: "acme/api",
+        selectedEnvironmentId: "env-connecting",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("filter picker choices", () => {
+  const actor = (login: string, name: string | null = null) => ({ login, name, avatarUrl: null });
+
+  it("offers authors the host found that no loaded row carries, after the loaded ones", () => {
+    const loaded = [
+      { actor: actor("julius", "Julius"), count: 4, mergedCount: 3 },
+      { actor: actor("theo"), count: 1, mergedCount: 0 },
+    ];
+
+    const choices = pullRequestAuthorChoices(
+      loaded,
+      [actor("Julius"), actor("juliana", "Juliana")],
+      "jul",
+    );
+
+    expect(choices.map((choice) => [choice.actor.login, choice.count])).toEqual([
+      ["julius", 4],
+      ["juliana", 0],
+    ]);
+  });
+
+  it("keeps showing an author picked from the host's search once the search clears", () => {
+    const loaded = [{ actor: actor("julius"), count: 4, mergedCount: 3 }];
+    const hosted = [actor("Juliana", "Juliana")];
+
+    expect(selectedPullRequestAuthor(loaded, hosted, "juliana")?.actor).toEqual(
+      actor("Juliana", "Juliana"),
+    );
+    expect(selectedPullRequestAuthor(loaded, [], "juliana")?.actor.login).toBe("juliana");
+    expect(selectedPullRequestAuthor(loaded, hosted, "JULIUS")?.count).toBe(4);
+    expect(selectedPullRequestAuthor(loaded, hosted, undefined)).toBeUndefined();
+  });
+
+  it("puts the host's authors after the first loaded matches rather than after all of them", () => {
+    const loaded = Array.from({ length: 40 }, (_, index) => ({
+      actor: actor(`dev-${index}`),
+      count: 1,
+      mergedCount: 0,
+    }));
+
+    const choices = pullRequestAuthorChoices(loaded, [actor("dev-from-host")], "dev");
+
+    expect(choices.slice(0, 30).map((choice) => choice.actor.login)).toContain("dev-from-host");
+  });
+
+  it("keeps a loaded label's count when only the host's search found it", () => {
+    const loaded = [{ name: "size:XL", color: "d93f0b", count: 7 }];
+
+    const choices = pullRequestLabelChoices(
+      loaded,
+      [
+        { name: "size:XL", color: "d93f0b" },
+        { name: "bug", color: null },
+      ],
+      "xl-ish",
+    );
+
+    expect(choices).toEqual([
+      { name: "size:XL", color: "d93f0b", count: 7 },
+      { name: "bug", color: null, count: 0 },
+    ]);
   });
 });

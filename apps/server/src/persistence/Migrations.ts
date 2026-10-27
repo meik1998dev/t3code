@@ -70,14 +70,16 @@ import Migration0064 from "./Migrations/064_CanonicalizeThreadPullRequestLinks.t
 import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
-import Migration0068 from "./Migrations/068_RepairUpstreamMigrationsAfterFork.ts";
-import Migration0069 from "./Migrations/069_RepairThreadTitleStateColumn.ts";
-import Migration0070 from "./Migrations/070_RepairOrchestrationV2AfterFork.ts";
-import Migration0071 from "./Migrations/071_ProjectionThreadsParentThreadId.ts";
-import Migration0072 from "./Migrations/072_RepairThreadBranchPullRequestColumn.ts";
-import Migration0073 from "./Migrations/073_RepairPullRequestFilesViewedTable.ts";
-import Migration0074 from "./Migrations/074_RepairThreadAutoSettleColumn.ts";
-import Migration0075 from "./Migrations/075_RepairUpstream57To60AfterFork.ts";
+import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
+import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
+import Migration0070 from "./Migrations/070_RepairUpstreamMigrationsAfterFork.ts";
+import Migration0071 from "./Migrations/071_RepairThreadTitleStateColumn.ts";
+import Migration0072 from "./Migrations/072_RepairOrchestrationV2AfterFork.ts";
+import Migration0073 from "./Migrations/073_ProjectionThreadsParentThreadId.ts";
+import Migration0074 from "./Migrations/074_RepairThreadBranchPullRequestColumn.ts";
+import Migration0075 from "./Migrations/075_RepairPullRequestFilesViewedTable.ts";
+import Migration0076 from "./Migrations/076_RepairThreadAutoSettleColumn.ts";
+import Migration0077 from "./Migrations/077_RepairUpstream57To60AfterFork.ts";
 import { reconcileForkMigrationLedger } from "./reconcileForkMigrationLedger.ts";
 
 const migrationEntries = [
@@ -149,16 +151,18 @@ const migrationEntries = [
   [65, "CodexUsageNativeTurnIndex", Migration0065],
   [66, "RepairClientSettlementTimestamps", Migration0066],
   [67, "WebhookDedupe", Migration0067],
-  // Spindle fork migrations, recorded at 61-68 before upstream took 61-67.
+  [68, "ShellStopRequestIndex", Migration0068],
+  [69, "ThreadMessageSearch", Migration0069],
+  // Spindle fork migrations, recorded at 61-68, 63-70 or 68-75 by earlier syncs.
   // reconcileForkMigrationLedger moves those rows here. See FORK.md "Migrations".
-  [68, "RepairUpstreamMigrationsAfterFork", Migration0068],
-  [69, "RepairThreadTitleStateColumn", Migration0069],
-  [70, "RepairOrchestrationV2AfterFork", Migration0070],
-  [71, "ProjectionThreadsParentThreadId", Migration0071],
-  [72, "RepairThreadBranchPullRequestColumn", Migration0072],
-  [73, "RepairPullRequestFilesViewedTable", Migration0073],
-  [74, "RepairThreadAutoSettleColumn", Migration0074],
-  [75, "RepairUpstream57To60AfterFork", Migration0075],
+  [70, "RepairUpstreamMigrationsAfterFork", Migration0070],
+  [71, "RepairThreadTitleStateColumn", Migration0071],
+  [72, "RepairOrchestrationV2AfterFork", Migration0072],
+  [73, "ProjectionThreadsParentThreadId", Migration0073],
+  [74, "RepairThreadBranchPullRequestColumn", Migration0074],
+  [75, "RepairPullRequestFilesViewedTable", Migration0075],
+  [76, "RepairThreadAutoSettleColumn", Migration0076],
+  [77, "RepairUpstream57To60AfterFork", Migration0077],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -174,12 +178,7 @@ const makeMigrationLoader = (throughId?: number) =>
 
 const FIRST_V2_MIGRATION_ID = 55;
 
-/**
- * Fail before migrating when the migrator would skip one of V2's own
- * migrations. It skips every id up to the highest recorded one, whatever name
- * was recorded, so a database that took a V2 id for another migration would
- * start without V2's schema and fail on first use.
- */
+// Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
   throughId?: number,
 ) {

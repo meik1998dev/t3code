@@ -50,7 +50,11 @@ export const make = Effect.gen(function* () {
     { capacity: ACCOUNT_CACHE_CAPACITY, timeToLive: () => ACCOUNT_CACHE_TTL },
   );
 
-  return GitHubAccount.of({ accountKeyFor: (cwd) => Cache.get(accountCache, cwd) });
+  return GitHubAccount.of({
+    accountKeyFor: Effect.fn("GitHubAccount.accountKeyFor")(function* (cwd: string) {
+      return yield* Cache.get(accountCache, cwd);
+    }),
+  });
 });
 
 export const layer = Layer.effect(GitHubAccount, make);

@@ -50,10 +50,7 @@ describe("GitHubAccount", () => {
       );
       const account = yield* makeAccount;
       const service = GitHubAccount.scopeToRepositoryAccounts(account, {
-        read: (_input: { readonly cwd: string }) =>
-          Effect.gen(function* () {
-            return yield* RepositoryGitHubAccount;
-          }),
+        read: (_input: { readonly cwd: string }) => Effect.service(RepositoryGitHubAccount),
         label: "unchanged",
       });
 

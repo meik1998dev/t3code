@@ -344,7 +344,10 @@ export const make = Effect.gen(function* () {
   const ssListeners = Effect.suspend(() => runProbe("ss", "ss", ["-ltnpH"])).pipe(
     Effect.map((stdout) => (stdout === null ? null : parseSsListeners(stdout))),
     // Old images without iproute2 still have lsof.
-    Effect.flatMap((sockets) => (sockets === null ? lsofListeners : Effect.succeed(sockets))),
+    Effect.filterOrElse(
+      (sockets) => sockets !== null,
+      () => lsofListeners,
+    ),
   );
 
   const probeListeners = platform === "linux" ? ssListeners : lsofListeners;
@@ -355,7 +358,7 @@ export const make = Effect.gen(function* () {
       (pid) =>
         fileSystem.readLink(`/proc/${pid}/cwd`).pipe(
           Effect.map((cwd) => [pid, cwd] as const),
-          Effect.catch(() => Effect.succeed(null)),
+          Effect.orElseSucceed(() => null),
         ),
       { concurrency: 8 },
     ).pipe(
@@ -497,9 +500,7 @@ export const make = Effect.gen(function* () {
     }
     yield* Effect.sleep(STOP_GRACE_PERIOD);
     if (processControl.isAlive(target.pid)) {
-      yield* Effect.try(() => processControl.signal(target.pid, "SIGKILL")).pipe(
-        Effect.catch(() => Effect.void),
-      );
+      yield* Effect.try(() => processControl.signal(target.pid, "SIGKILL")).pipe(Effect.ignore);
     }
     return { stopped: true } satisfies AgentPortStopResult;
   });
@@ -513,13 +514,14 @@ export const layer = Layer.effect(AgentPortsService, make);
 export const layerTest = Layer.succeed(
   AgentPortsService,
   AgentPortsService.of({
-    list: () =>
+    list: Effect.fn("AgentPortsService.list")(() =>
       Effect.succeed({
         ports: [],
         scannedAt: "1970-01-01T00:00:00.000Z",
         scope: "agent" as const,
         supported: true,
       }),
-    stop: () => Effect.succeed({ stopped: false }),
+    ),
+    stop: Effect.fn("AgentPortsService.stop")(() => Effect.succeed({ stopped: false })),
   }),
 );

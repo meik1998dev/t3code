@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `448b8a9186` (2026-10-21, `fix(server): t3 pair in a worktree no longer falls back to the live install`, v0.1.1).
+- Last synced upstream commit: `96fc7b9551` (2026-10-27, `refactor(web): the new design is the only design, with no toggle`, v0.1.3 + 20).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -30,8 +30,8 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If the fork and upstream both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This already happened four times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51,
-fork 53 hid upstream 53, and fork 57–60 hid upstream 57–60. A fourth case needs no clash: upstream added 54 after fork databases had
+This already happened five times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51,
+fork 53 hid upstream 53, fork 57–60 hid upstream 57–60, and fork 68–69 hid upstream 68–69. A fourth case needs no clash: upstream added 54 after fork databases had
 recorded 59, and the runner only runs IDs above the latest recorded one, so they skipped it.
 The repair migrations below make both upgrade paths safe.
 
@@ -39,35 +39,40 @@ Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 68     | `068_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 69     | `069_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 70     | `070_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 71     | `071_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 72     | `072_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 73     | `073_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 74     | `074_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 75     | `075_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 70     | `070_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 71     | `071_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 72     | `072_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 73     | `073_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 74     | `074_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 75     | `075_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 76     | `076_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 77     | `077_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–67. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+Upstream owns 1–69. Since upstream added a startup check (`assertV2MigrationsCanRun` in
 `Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
 up) stops the server. A repair migration cannot fix that, because the check runs before any
 migration. So a clash is now fixed by `reconcileForkMigrationLedger.ts`, which runs before the
-check: it normalises the fork block onto 68–75 wherever an earlier generation recorded it (61–68
-from the v0.0.46 sync, 63–70 from the v0.1.1 sync), and applies the upstream migrations that
-generation skipped, safely twice. Nothing runs twice, and the ledger then matches a fresh
-database. Fresh databases run upstream 1–67 and the fork's 68–75 do nothing harmful.
+check: it normalises the fork block onto 70–77 wherever an earlier generation recorded it (61–68
+from the v0.0.46 sync, 63–70 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix), and
+applies the upstream migrations that generation skipped, safely twice. Nothing runs twice, and
+the ledger then matches a fresh database. Fresh databases run upstream 1–69 and the fork's 70–77
+do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are left to the migrator and the
+startup check, because the replays need the V2 tables those ledgers do not have yet.
+The v0.1.3 sync added upstream 68 (stop-request index) and 69 (FTS5 message search, which
+indexes every finished message on first run; about 15 s on a copy of the 4.6 GB Mac database).
 Older history: the v0.1.1 sync added upstream 63–67 (drop unused V1 projections, canonicalise
 thread PR links, Codex usage index, settled-timestamp repair, webhook dedupe) below the fork's
-block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up;
-75 runs upstream 57 (only when `scheduled_tasks.webhook_token` is missing) and 58–60, and 70 runs
-upstream 55 (only when `orchestration_v2_events` is missing) and 56. Both rename ledger rows to
-upstream's names. 74 reruns upstream 54, 73 replays upstream 53, 69 adds `title_state_json` for
-databases that recorded the fork's own 52, and 68 reapplies upstream 50–51 for databases that
-recorded the fork's old 50–54. 71 keeps `projection_threads.parent_thread_id`; the v1 thread
-importer (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"`
-when old threads are copied into the new orchestrator on first start. Databases still on a ledger
-from before the v0.0.46 sync (fork names at 55–60) now stop at the startup check; start the
-v0.0.46 fork build on them once first.
+block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up.
+Under today's numbers: 77 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
+missing) and 58–60, and 72 runs upstream 55 (only when `orchestration_v2_events` is missing)
+and upstream 56. Both rename ledger rows to upstream's names. 76 reruns upstream 54, 75 replays upstream 53,
+71 adds `title_state_json` for databases that recorded the fork's own 52, and 70 reapplies
+upstream 50–51 for databases that recorded the fork's old 50–54. 73 keeps
+`projection_threads.parent_thread_id`; the v1 thread importer
+(`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
+threads are copied into the new orchestrator on first start. Databases still on a ledger from
+before the v0.0.46 sync (fork names at 55–60) now stop at the startup check; start the v0.0.46
+fork build on them once first.
 
 On every sync where upstream adds a migration numbered below the fork's last one, or where
 numbers clash:
@@ -99,7 +104,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 61–68)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 70–77)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
@@ -107,10 +112,10 @@ same in the app, so the gap shows up late as "No skills found" or no per-repo PR
 
 Learned on 2026-09-12 while setting up a root-login VPS (Ubuntu 24.04, Node 22).
 
-Since the v0.0.45 sync (new orchestrator) the repo's dev tooling needs Node 24
-(`engines.node ^24.13.1` in the root `package.json`); build on the Mac with
-`PATH=/opt/homebrew/opt/node@24/bin:$PATH`. The server package still accepts Node 22.16+, so the
-VPS keeps Node 22. The first start copies
+Since the v0.1.3 sync the root `package.json` pins Node 26.12.1 (`engines.node`; it was
+`^24.13.1` from v0.0.45). Build on the Mac with that Node. `pnpm install`, typecheck and tests
+still ran on Node 22.23 for the sync, except one upstream date-format test that needs newer ICU.
+The server package still accepts Node 22.16+, so the VPS keeps Node 22. The first start copies
 `userdata/state.sqlite` into a new `userdata/statev2.sqlite` once and runs from the copy, so the
 old file stays as a rollback point for the previous build.
 
@@ -180,7 +185,7 @@ Move it into `scripts/` when it stabilises.
   `$HOME/.claude/skills` is discovered a second time as a "project" root
   (`apps/server/src/provider/Drivers/ClaudeSkills.ts`). Possible fork fix: validate the field
   and show a warning in the provider card.
-- Database: migration 55 repairs databases that previously ran the fork's clashing 50–54
+- Database: migration 70 repairs databases that previously ran the fork's clashing 50–54
   sequence. Test upgrades on a snapshot before each deploy; see [Migrations](#migrations).
 - Check after each deploy: `~/.t3/userdata/logs/boot-service.log` prints "Spindle", the
   `$` picker lists user skills inside a worktree thread, and a repo with `gh.account` set
@@ -235,9 +240,10 @@ Host <hostname>.local
   so the fork's own toolkit is gone. The fork adds three things on top of upstream's tools:
   (1) a one-level limit: a thread an agent started (`createdBy: "agent"`) or a delegated child
   (`lineage.relationshipToParent: "subagent"`) cannot launch, create, delegate or schedule new
-  threads; it can still read, rename and link pull requests. (2) Settings → thread routing notes
-  are returned as `routingNotes` by `orchestrator_capabilities`, and its tool description tells
-  agents to follow them. (3) Web and mobile mark threads with `createdBy === "agent"`.
+  threads; it can still read, rename and link pull requests. (2) Settings → Threads → thread
+  routing notes are returned as `routingNotes` by `orchestrator_capabilities`, and its tool
+  description tells agents to follow them. Upstream cut tool copy hard in v0.1.3 and CI now fails
+  when agent context grows past main, so keep the fork's addition to one short sentence. (3) Web and mobile mark threads with `createdBy === "agent"`.
 - Key files: `apps/server/src/mcp/threadStartLimit.ts`, `mcp/OrchestratorMcpService.ts`
   (`delegateTask`, `createThreads`, `scheduleTask`, `updateScheduledTask`),
   `mcp/toolkits/project/handlers.ts` (`t3_thread_launch`), `mcp/toolkits/orchestrator/{handlers,tools}.ts`,
@@ -310,6 +316,10 @@ Host <hostname>.local
   `PullRequestListFilters.test.tsx` on 2026-10-21 and the new rules reject the element-walking
   style it used, so the multi-select itself is covered by the logic tests only.)
 - Check: pick two projects in each filter. Only those threads and pull requests show.
+- Sync note (v0.1.3): upstream widens the sidebar scope to show a thread opened from history,
+  a link or the palette, and no longer clears a missing scope key. The fork resolves each stored
+  key, builds the chosen groups, and on a widening writes back an empty key list. Thread search
+  receives the project ids of all scoped groups.
 - Sync note: upstream compiles the sidebar and the pull requests page with the React Compiler
   and no manual `useMemo`/`useCallback`. The fork's scope lives in the same plain style: the PR
   page's `usePullRequestScope` reads `projectIds`, and the sidebar passes the sorted scope keys
@@ -417,11 +427,15 @@ Host <hostname>.local
   too (`gitHubGraphQlClient.ts` `batchKey`), so two accounts never share one GraphQL batch.
 - Since the 2026-10-10 sync the GitHub code lives in `packages/source-control-github`, which may
   only reach the server through `SourceControlHost`. `GitHubAccount` reads `git config` through
-  `SourceControlHost.process`. `driver.ts` uses `makeWithRepositoryAccounts`, and the server's
-  `builtInDrivers.ts` uses `GitHubPullRequestApi.layerWithRepositoryAccounts`. Upstream's plain
-  `layer` stays unwrapped: its test host stops on any unexpected `git` call.
+  `SourceControlHost.process`. Since the v0.1.3 sync each driver builds its own services and the
+  package exports only `driver` and `definition`, so `driver.ts` is the one wiring point: its
+  `services` use `GitHubPullRequestApi.layerWithRepositoryAccounts` and its `sourceControl` uses
+  `makeWithRepositoryAccounts`. The server's `builtInDrivers.ts` no longer carries fork code.
+  Upstream's plain `layer` stays unwrapped: its test host stops on any unexpected `git` call.
+  Server tests cannot import package internals any more, so the account error is tested twice:
+  the provider mapping in `GitHubPullRequestProvider.test.ts`, the list error in
+  `PullRequestService.test.ts` with a fake provider.
 - Key files: `packages/source-control-github/src/server/{GitHubAccount,GitHubCredentials,GitHubSourceControlProvider,GitHubPullRequestApi,GitHubPullRequestProvider,driver}.ts`,
-  `apps/server/src/sourceControl/builtInDrivers.ts`,
   `apps/server/src/pullRequest/{PullRequestProvider,PullRequestService}.ts`,
   `docs/user/source-control.md`.
 - Tests: `GitHubAccount.test.ts`, `GitHubCredentials.test.ts`, `PullRequestService.test.ts`.
@@ -456,11 +470,12 @@ Host <hostname>.local
 - Key files: `apps/web/src/index.css`, `chat/{ChatComposer,ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
 - Check: the composer and cards have the smaller radius, and the input corners match the composer frame.
 - The composer glass backdrop is drawn with `clip-path: shape()`, so its corners cannot inherit
-  `rounded-*`. `ComposerSurface.tsx` now defines `--chat-composer-corner` (`--radius-3xl`) and
-  `--chat-composer-strip-corner` (`--radius-2xl`) plus their `*-control` bezier offsets
-  (`corner * 0.4477`), and the shape, the seam polygon and the strip use those instead of the
-  old literal `22px`/`9.85px`/`16px`/`7.16px`. Upstream's literals were also 2px off its own
-  `rounded-3xl`, so take upstream's shape on a conflict and re-apply the variables.
+  `rounded-*`. `ComposerSurface.tsx` defines `--chat-composer-corner` (`--radius-2xl`, since
+  upstream's v0.1.3 design moved the composer from `rounded-3xl` to `rounded-2xl`) and its
+  `--chat-composer-corner-control` bezier offset (`corner * 0.4477`); the shape uses those instead
+  of upstream's literal `16px`/`7.16px`. The seam polygon keeps upstream's `22px` literal: in the
+  new shape it follows the drawer inset, not the corner. On a conflict, take upstream's shape and
+  re-apply the variables.
 - Warning: upstream often changes radius tokens. Take upstream's token names, then set the fork values again.
 
 ### Branch names in the code font (#10)
@@ -488,6 +503,11 @@ Host <hostname>.local
 - Check: the menu bar, window title, and About panel say `Spindle`; a `-nightly` version says `Spindle (Nightly)`.
 - Warning: the app bundle is `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
   the first install. User data is not affected (it lives under `~/.t3`).
+- Warning: the fork also says `Spindle` in many UI strings, the agent instructions, and the Codex
+  client name (`CodexProvider.ts`). Upstream's recorded Codex replay fixtures expect
+  `clientInfo.name: "T3 Code"`, so Codex replay tests such as
+  `OrchestratorMcpToolkit.integration.test.ts` fail on the fork with a frame mismatch. New
+  upstream strings arrive as `T3 Code`; the fork renames them only where a sync conflicts.
 
 ### Hide "Add action" until a project has actions (direct commit)
 
