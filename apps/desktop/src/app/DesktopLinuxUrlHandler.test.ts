@@ -227,7 +227,7 @@ describe("DesktopLinuxUrlHandler", () => {
       assert.include(
         recorded.files[0]?.content,
         DesktopLinuxUrlHandler.renderUrlHandlerDesktopEntry({
-          displayName: "T3 Code (Alpha)",
+          displayName: "Spindle (Alpha)",
           execTarget: process.execPath,
           scheme: "t3code",
           iconPath: "/home/alice/.local/share/icons/com.t3tools.T3Code.desktop.png",
@@ -532,6 +532,16 @@ const registerWithRealFileSystem = (run: ThemeIconRun) =>
     ),
   );
 
+// The two spellings are one file on a case-insensitive filesystem (macOS), so the Linux
+// behaviour can only be asserted where names are distinct.
+const isCaseInsensitiveFileSystem = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-case-check-" });
+  yield* fileSystem.writeFile(path.join(directory, "a"), new Uint8Array([0]));
+  return yield* fileSystem.exists(path.join(directory, "A"));
+});
+
 const themeIconFixture = (source: Uint8Array) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -560,6 +570,7 @@ const iconCacheRuns = (run: ThemeIconRun) =>
 it.layer(NodeServices.layer)("DesktopLinuxUrlHandler theme icons", (it) => {
   it.effect("installs both app id spellings without creating an icon cache", () =>
     Effect.gen(function* () {
+      if (yield* isCaseInsensitiveFileSystem) return;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const icon = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
@@ -589,6 +600,7 @@ it.layer(NodeServices.layer)("DesktopLinuxUrlHandler theme icons", (it) => {
 
   it.effect("replaces same-length stale icons and refreshes an existing cache once", () =>
     Effect.gen(function* () {
+      if (yield* isCaseInsensitiveFileSystem) return;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const fixture = yield* themeIconFixture(new Uint8Array([1, 2, 3]));

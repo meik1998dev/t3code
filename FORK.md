@@ -261,6 +261,15 @@ Host <hostname>.local
   agent mark. Ask that child to start another thread; it gets `capability_denied`. Change routing
   notes in Settings and confirm `orchestrator_capabilities` returns the new text.
 - Drop when: upstream adds a depth limit and routing preferences of its own.
+- Sync note (v0.1.6): `agentContextBudget.json` is 47570 bytes after the routing-notes sentence
+  (upstream is 47538). Raise it only with the fork's addition; run the evals before cutting text.
+
+### Local agent worktrees are not test inputs (direct commit)
+
+- What: `.claude/worktrees/` is gitignored and excluded from Vitest collection, so stale local
+  worktrees cannot contribute duplicate tests or older code to this checkout's runs.
+- Key files: `.gitignore`, `vite.config.ts` (`TEST_EXCLUDE`).
+- Check: `git status` lists no `.claude/worktrees`, and `vp test run` collects only this tree.
 
 ## Transcripts
 
@@ -514,7 +523,8 @@ Host <hostname>.local
   which is `T3 Code (Alpha)` on real installs).
 - Check: the menu bar, window title, and About panel say `Spindle`; a `-nightly` version says `Spindle (Nightly)`.
 - Sync note (v0.1.6): upstream removed `linuxWmClass` from `DesktopEnvironment`; its test no
-  longer asserts it.
+  longer asserts it. The two Linux icon-spelling tests skip on a case-insensitive filesystem
+  (macOS), where both names are the same file.
 - Warning: the app bundle is `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
   the first install. User data is not affected (it lives under `~/.t3`).
 - Warning: the fork also says `Spindle` in many UI strings, the agent instructions, and the Codex
