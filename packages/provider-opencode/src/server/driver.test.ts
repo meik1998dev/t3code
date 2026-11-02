@@ -61,11 +61,13 @@ const layer = Layer.mergeAll(
   Layer.succeed(OpenCodeRuntime.OpenCodeRuntime, openCode2Runtime),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
+// Keep service discovery from attaching this suite to a real `opencode serve --service`.
+const emptyStateHome = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-opencode-state-"));
 const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) =>
   OpenCodeDriver.create({
     instanceId: ProviderInstanceId.make("opencode-test"),
     displayName: undefined,
-    environment: [],
+    environment: [{ name: "XDG_STATE_HOME", value: emptyStateHome, sensitive: false }],
     enabled: true,
     config: { ...OpenCodeDriver.defaultConfig(), ...config },
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));

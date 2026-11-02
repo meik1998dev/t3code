@@ -4,8 +4,12 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
+import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as P from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 import * as HttpClientError from "effect/http/HttpClientError";
 
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
@@ -47,6 +51,32 @@ export const serverEnvironment = (
   const { OPENCODE_SERVER_PASSWORD: _inherited, ...rest } = environment;
   return { ...rest, OPENCODE_PASSWORD: Redacted.value(password) };
 };
+
+const ServiceDescriptor = Schema.Struct({
+  url: Schema.String,
+  password: Schema.String,
+});
+const decodeServiceDescriptor = Schema.decodeOption(Schema.fromJsonString(ServiceDescriptor));
+
+// `opencode serve --service` writes this descriptor under XDG_STATE_HOME for its clients.
+const discoverService = Effect.fn("OpenCode2Server.discoverService")(function* (
+  environment: NodeJS.ProcessEnv,
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+) {
+  const home = environment.HOME?.trim();
+  const stateHome =
+    environment.XDG_STATE_HOME?.trim() ||
+    (home === undefined || home.length === 0 ? undefined : path.join(home, ".local", "state"));
+  if (stateHome === undefined) return Option.none<typeof ServiceDescriptor.Type>();
+
+  const raw = yield* fs
+    .readFileString(path.join(stateHome, "opencode", "service.json"))
+    .pipe(Effect.option);
+  if (Option.isNone(raw)) return Option.none<typeof ServiceDescriptor.Type>();
+
+  return decodeServiceDescriptor(raw.value);
+});
 
 const httpFailureOf = (cause: unknown): HttpClientError.HttpClientError | undefined => {
   if (HttpClientError.isHttpClientError(cause)) return cause;
@@ -117,6 +147,8 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   readonly environment: NodeJS.ProcessEnv;
 }) {
   const opencode = yield* OpenCode2Client.OpenCode2Client;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const connectTo = Effect.fn("OpenCode2Server.connectTo")(function* (
     url: string,
     password: Redacted.Redacted,
@@ -154,13 +186,44 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     environment: serverEnvironment(input.environment, password),
     verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
   });
+
+  const connectToService = Effect.gen(function* () {
+    const descriptor = yield* discoverService(input.environment, fs, path);
+    if (Option.isNone(descriptor)) return Option.none<OpenCode2Connection>();
+    return yield* connectTo(
+      descriptor.value.url,
+      Redacted.make(descriptor.value.password),
+      true,
+    ).pipe(
+      Effect.asSome,
+      Effect.catch(() => Effect.succeedNone),
+    );
+  });
+
+  const withManaged = <A, E, R>(use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>) =>
+    owner.withServer((server) =>
+      latest?.url === server.url
+        ? use(latest)
+        : Effect.die(new Error("OpenCode 2 server was lent before verification.")),
+    );
+
   return OpenCode2Server.of({
-    withConnection: Effect.fn("OpenCode2Server.withConnection")(function (use) {
-      return owner.withServer((server) =>
-        latest?.url === server.url
-          ? use(latest)
-          : Effect.die(new Error("OpenCode 2 server was lent before verification.")),
-      );
-    }),
+    withConnection: Effect.fn("OpenCode2Server.withConnection")(
+      <A, E, R>(use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>) =>
+        Effect.suspend(() => {
+          if (latest !== undefined) return use(latest);
+          return connectToService.pipe(
+            Effect.flatMap((discovered) =>
+              Option.match(discovered, {
+                onNone: () => withManaged(use),
+                onSome: (connection) =>
+                  Effect.sync(() => {
+                    latest = connection;
+                  }).pipe(Effect.andThen(use(connection))),
+              }),
+            ),
+          );
+        }),
+    ),
   });
 });

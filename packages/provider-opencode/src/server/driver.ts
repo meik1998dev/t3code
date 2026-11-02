@@ -272,6 +272,8 @@ export const OpenCodeDriver: ProviderDriver<
       environment: processEnv,
     }).pipe(
       Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, openCodeRuntime),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, pathService),
       Effect.provideService(
         OpenCode2Client.OpenCode2Client,
         yield* OpenCode2Client.make.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),

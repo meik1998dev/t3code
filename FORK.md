@@ -221,16 +221,23 @@ Host <hostname>.local
 
 ### OpenCode 2 cold model catalog (direct commit)
 
-- What: a cold managed OpenCode 2 server can take ~10 s to list models on a large data store.
-  Upstream's 5 s loader timeout returned an empty catalog ("did not list any models"), so the
-  fork waits 90 s, keeps the managed server warm for 5 minutes, and still returns as soon as two
-  reads agree.
-- Key files: `packages/provider-opencode/src/server/status.ts` (`OPENCODE2_CATALOG_TIMEOUT`),
-  `packages/provider-opencode/src/server/OpenCodeServerOwner.ts` (`OPENCODE_SERVER_IDLE_TTL`).
-- Tests: `packages/provider-opencode/src/server/status.test.ts` ("waits past five seconds for a
-  cold OpenCode 2 catalog"), `driver.test.ts` (empty-catalog recovery).
-- Check: on the VPS, Settings → Providers → Refresh; OpenCode lists 69 models after a cold start.
-- Drop when: upstream raises the timeout or uses the already-running OpenCode service.
+- What: a cold managed OpenCode 2 server can take ~10 s to list models on a large data store, and
+  on the VPS it fails outright with `Location plugins did not finish activating`. Upstream's 5 s
+  loader timeout returned an empty catalog ("did not list any models"). The fork now connects to
+  the already-running `opencode serve --service` advertised in `$XDG_STATE_HOME/opencode/service.json`
+  (or `~/.local/state/opencode/service.json`) before spawning a managed server. The managed path
+  still waits 90 s, keeps the server warm for 5 minutes, and returns as soon as two reads agree.
+- Key files: `packages/provider-opencode/src/server/v2/OpenCode2Server.ts`
+  (`discoverService`), `packages/provider-opencode/src/server/driver.ts` (provides `FileSystem`
+  and `Path`), `packages/provider-opencode/src/server/status.ts`
+  (`OPENCODE2_CATALOG_TIMEOUT`), `packages/provider-opencode/src/server/OpenCodeServerOwner.ts`
+  (`OPENCODE_SERVER_IDLE_TTL`).
+- Tests: `packages/provider-opencode/src/server/v2/OpenCode2Server.test.ts` (service discovery),
+  `packages/provider-opencode/src/server/status.test.ts` ("waits past five seconds for a cold
+  OpenCode 2 catalog"), `driver.test.ts` (empty-catalog recovery).
+- Check: on the VPS, restart T3 and open Settings → Providers; OpenCode lists 69 models without a
+  manual Refresh, even while its managed server would still be cold.
+- Drop when: upstream uses the already-running OpenCode service or fixes the managed cold start.
 
 ### Shared runtime state and Refresh (direct commit)
 

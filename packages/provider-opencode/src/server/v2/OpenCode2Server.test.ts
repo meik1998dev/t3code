@@ -176,6 +176,60 @@ server.listen(0, "127.0.0.1", () => {
 });
 `;
 
+describe("OpenCode2Server service discovery", () => {
+  it.effect("uses the service advertised in the OpenCode state directory", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const stateHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-opencode2-state-" });
+      yield* fs.makeDirectory(path.join(stateHome, "opencode"));
+      yield* fs.writeFileString(
+        path.join(stateHome, "opencode", "service.json"),
+        JSON.stringify({
+          id: "service-id",
+          version: "2.2.5",
+          url: "http://127.0.0.1:49374",
+          pid: 123,
+          password: "service-secret",
+        }),
+      );
+
+      const server = yield* OpenCode2Server.make({
+        binaryPath: "/does/not/exist/opencode",
+        serverUrl: "",
+        serverPassword: "",
+        directory: "/project",
+        environment: { XDG_STATE_HOME: stateHome },
+      });
+      const connection = yield* server.withConnection((current) => Effect.succeed(current));
+      assert.strictEqual(connection.url, "http://127.0.0.1:49374");
+      assert.strictEqual(connection.version, "2.2.5");
+      assert.strictEqual(connection.external, true);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          OpenCode2Client.layer.pipe(
+            Layer.provide(
+              layerServerReplying({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                  version: "2.2.5",
+                  pid: 123,
+                  urls: [],
+                  paths: { tmp: "/tmp" },
+                }),
+              }),
+            ),
+          ),
+          OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layerTest)),
+        ).pipe(Layer.provideMerge(NodeServices.layer)),
+      ),
+    ),
+  );
+});
+
 describe("OpenCode2Server spawned server", () => {
   it.live("is ready once /api/info accepts the generated password", () =>
     Effect.gen(function* () {
@@ -200,7 +254,11 @@ describe("OpenCode2Server spawned server", () => {
         serverUrl: "",
         serverPassword: "",
         directory,
-        environment: { ...(yield* HostProcess.Environment), OPENCODE_SERVER_PASSWORD: "ambient" },
+        environment: {
+          ...(yield* HostProcess.Environment),
+          XDG_STATE_HOME: directory,
+          OPENCODE_SERVER_PASSWORD: "ambient",
+        },
       });
       const first = yield* server.withConnection((connection) => Effect.succeed(connection));
       const second = yield* server.withConnection((connection) => Effect.succeed(connection));
