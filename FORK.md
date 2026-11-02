@@ -138,6 +138,8 @@ Move it into `scripts/` when it stabilises.
    install into `~/.t3/runtime/versions/<version>`: that folder belongs to the upstream SSH
    launcher (`run-t3.sh`), which drops its native `t3` there and starts it on 3774. Those
    folders stay `chattr +i` (locked) all the time, deploys included.
+   Since v0.1.6 upstream installs `node-pty@1.2.0-beta.18`; the fork's patch targets beta.15 and
+   `deploy.sh` skips it. Port the patch if terminal behavior regresses.
 4. Point the systemd unit at the slot and restart: `ExecStart=/usr/local/bin/node
    ~/spindle/runtime/<version>/node_modules/t3/dist/bin.mjs serve`, then
    `systemctl --user daemon-reload && systemctl --user restart t3code`. Since upstream 0.0.42 the
@@ -216,6 +218,17 @@ Host <hostname>.local
 - On conflict: take upstream's `AGENTS.md`, then add the section back at the end.
 
 ## Agents and providers
+
+### OpenCode 2 cold model catalog (direct commit)
+
+- What: a cold managed OpenCode 2 server can take ~10 s to list models on a large data store.
+  Upstream's 5 s loader timeout returned an empty catalog ("did not list any models"), so the
+  fork waits 30 s and still returns as soon as two reads agree.
+- Key files: `packages/provider-opencode/src/server/status.ts` (`OPENCODE2_CATALOG_TIMEOUT`).
+- Tests: `packages/provider-opencode/src/server/status.test.ts` ("waits past five seconds for a
+  cold OpenCode 2 catalog"), `driver.test.ts` (empty-catalog recovery).
+- Check: on the VPS, Settings → Providers → Refresh; OpenCode lists 69 models after a cold start.
+- Drop when: upstream raises the timeout or uses the already-running OpenCode service.
 
 ### Shared runtime state and Refresh (direct commit)
 

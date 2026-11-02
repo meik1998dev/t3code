@@ -10,6 +10,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -21,6 +22,7 @@ import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
 import {
   checkOpenCodeProviderStatus,
   loadOpenCode2Workspace,
+  makeOpenCode2ModelLoader,
   type OpenCode2Model,
   type OpenCode2Workspace,
 } from "./status.ts";
@@ -1073,5 +1075,26 @@ it.effect("reads a fresh OpenCode 2 directory again once its scan has ended", ()
     NodeAssert.equal(reads.length, 1);
     yield* Deferred.succeed(scanEnded, undefined);
     NodeAssert.deepEqual(yield* Fiber.join(load), scanned);
+  }),
+);
+
+it.effect("waits past five seconds for a cold OpenCode 2 catalog", () =>
+  Effect.gen(function* () {
+    let reads = 0;
+    const model: OpenCode2Model = {
+      providerID: "opencode-go",
+      id: "deepseek-v4.1-flash",
+      name: "DeepSeek V4.1 Flash",
+      variants: [],
+    };
+    const load = yield* makeOpenCode2ModelLoader(
+      Effect.sync(() => {
+        reads += 1;
+        return reads >= 30 ? [model] : [];
+      }),
+    );
+    const fiber = yield* Effect.forkChild(load);
+    yield* TestClock.adjust("10 seconds");
+    NodeAssert.deepEqual(yield* Fiber.join(fiber), [model]);
   }),
 );

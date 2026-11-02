@@ -480,6 +480,10 @@ const catalogFingerprint = (models: ReadonlyArray<OpenCode2Model>) =>
     .toSorted()
     .join("\n");
 
+// A cold OpenCode 2 catalog can take ~10 s on a large data store; five seconds reported every
+// model missing. The loader still returns as soon as two reads agree.
+const OPENCODE2_CATALOG_TIMEOUT = "30 seconds";
+
 /** A cold server can list a partial catalog; two agreeing reads reduce that startup race. */
 export const makeOpenCode2ModelLoader = <E>(
   list: Effect.Effect<ReadonlyArray<OpenCode2Model>, E>,
@@ -501,7 +505,7 @@ export const makeOpenCode2ModelLoader = <E>(
           schedule: Schedule.spaced("250 millis"),
         }),
         Effect.catch((error) => (latest.length > 0 ? Effect.succeed(latest) : Effect.fail(error))),
-        Effect.timeoutOption("5 seconds"),
+        Effect.timeoutOption(OPENCODE2_CATALOG_TIMEOUT),
         Effect.map((loaded) => {
           // Fresh progress may still be partial, but a warm cache must not freeze slow catalogs.
           if (loaded._tag === "Some") lastLoaded = loaded.value;
