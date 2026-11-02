@@ -1,16 +1,7 @@
 /**
- * Sidebar footer button that lists the ports agent sessions opened on every
- * connected environment. Each environment's server does the detection
- * (see `apps/server/src/ports/AgentPortsService.ts`); this popover groups the
- * results per environment, names the thread or project behind each port, and
- * opens or tunnels it.
- *
- * The "All ports" switch asks the same scan to keep system listeners as well
- * (a distro postgres, another service). Those rows are read-only: the stop
- * button is agent-only, on the client and again on the server.
- *
- * Queries are mounted only while the popover is open, so the 4 s polling
- * stops as soon as it closes.
+ * Lists the ports agent sessions opened on every connected environment. The server does the
+ * detection; this popover groups rows per environment and opens or tunnels them. The "All"
+ * switch adds read-only system rows, and queries run only while the popover is open.
  */
 import {
   agentPortLocalUrl,
@@ -22,7 +13,7 @@ import {
 import * as Schema from "effect/Schema";
 import { CopyIcon, EthernetPortIcon, ExternalLinkIcon, SquareIcon } from "lucide-react";
 import * as Option from "effect/Option";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useState } from "react";
 
 import {
   collectAgentPortCwdRoots,
@@ -90,7 +81,7 @@ const AgentPortRow = memo(function AgentPortRow({
     remoteHost === null ? null : agentPortTunnelCommand({ port: port.port, sshHost: remoteHost });
   const canOpenHere = remote.mode === "local-exec" || threadRef !== null;
 
-  const handleOpen = useCallback(() => {
+  const handleOpen = () => {
     if (canOpenHere) {
       void openLink(url, threadRef === null ? {} : { threadRef }).catch(() => {
         toastManager.add({ type: "error", title: `Could not open ${url}` });
@@ -98,17 +89,17 @@ const AgentPortRow = memo(function AgentPortRow({
       return;
     }
     if (tunnel !== null) copyText("Tunnel command", tunnel);
-  }, [canOpenHere, openLink, threadRef, tunnel, url]);
+  };
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = () => {
     if (tunnel !== null) {
       copyText("Tunnel command", tunnel);
       return;
     }
     copyText("URL", url);
-  }, [tunnel, url]);
+  };
 
-  const handleStop = useCallback(() => {
+  const handleStop = () => {
     if (isStopping) return;
     setIsStopping(true);
     void stopPort({
@@ -130,7 +121,7 @@ const AgentPortRow = memo(function AgentPortRow({
         });
       })
       .finally(() => setIsStopping(false));
-  }, [cwdRoots, environmentId, isStopping, port.pid, port.port, stopPort]);
+  };
 
   const canStop = port.origin !== "system";
   const owned = ownerLabel(owner, port.cwd);
@@ -231,14 +222,11 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   const projects = useProjects();
   const threads = useThreadShells();
   const connected = environment.connection.phase === "connected";
-  const cwdRoots = useMemo(
-    () => collectAgentPortCwdRoots({ environmentId, projects, threads }),
-    [environmentId, projects, threads],
-  );
+  const cwdRoots = collectAgentPortCwdRoots({ environmentId, projects, threads });
   const query = useEnvironmentQuery(
     connected ? agentPortsEnvironment.list({ environmentId, input: { cwdRoots, scope } }) : null,
   );
-  const remote = useMemo(() => {
+  const remote = (() => {
     const profile = Option.getOrNull(environment.entry.profile);
     return resolveRemoteOpenState({
       target: environment.entry.target,
@@ -247,7 +235,7 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
       remoteOpenTargets: environment.serverConfig?.remoteOpenTargets,
       isDesktopRenderer: window.desktopBridge !== undefined,
     });
-  }, [environment]);
+  })();
 
   const ports = query.data?.ports ?? [];
   const count = ports.length;
@@ -310,7 +298,7 @@ export function SidebarPortsPill() {
       type="button"
       aria-label={tooltip}
       className={cn(
-        "inline-flex size-8 cursor-pointer items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
+        "inline-flex size-8 cursor-pointer items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",
         open
           ? "bg-sidebar-control-surface text-sidebar-foreground"
           : "text-(--sidebar-icon-color) hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
@@ -349,7 +337,7 @@ export function SidebarPortsPill() {
                         type="button"
                         aria-pressed={showAll}
                         className={cn(
-                          "cursor-pointer rounded px-1.5 py-0.5 text-2xs outline-hidden ring-ring focus-visible:ring-2",
+                          "cursor-pointer rounded px-1.5 py-0.5 text-2xs outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset",
                           showAll
                             ? "bg-sidebar-control-surface text-sidebar-foreground"
                             : "text-muted-foreground hover:text-sidebar-foreground",

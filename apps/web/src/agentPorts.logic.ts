@@ -44,7 +44,7 @@ function trimSeparators(path: string): string {
   return path.slice(0, end);
 }
 
-export function isPathInside(path: string, root: string): boolean {
+function isPathInside(path: string, root: string): boolean {
   const normalizedRoot = trimSeparators(root);
   if (normalizedRoot.length === 0) return false;
   const normalizedPath = trimSeparators(path);

@@ -9,7 +9,7 @@ import {
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 /** Polling cadence while the ports popover is open. */
-export const AGENT_PORTS_REFRESH_INTERVAL_MS = 4_000;
+const AGENT_PORTS_REFRESH_INTERVAL_MS = 4_000;
 
 /**
  * Listening ports that agent sessions opened on one environment. The query is

@@ -19,7 +19,7 @@ import type {
   PullRequestState,
 } from "@t3tools/contracts";
 
-import { toSortableTimestamp } from "../../lib/threadSort";
+import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { PullRequestListSort } from "./pullRequestListPreferences";
 
 export interface EnvironmentPullRequestEntry extends PullRequestListEntry {
@@ -474,11 +474,16 @@ export function partitionPullRequestsWithPriority<Entry extends PullRequestListE
       others.push(entry);
     }
   }
-  const byRecency = (left: Entry, right: Entry) => right.updatedAt.localeCompare(left.updatedAt);
   return (
     [
-      { key: "authored", entries: [...authoredByKey.values()].toSorted(byRecency) },
-      { key: "reviewRequested", entries: [...reviewByKey.values()].toSorted(byRecency) },
+      {
+        key: "authored",
+        entries: [...authoredByKey.values()].toSorted(comparePullRequestsByRecency),
+      },
+      {
+        key: "reviewRequested",
+        entries: [...reviewByKey.values()].toSorted(comparePullRequestsByRecency),
+      },
       { key: "others", entries: others },
     ] as const
   )
@@ -569,7 +574,7 @@ export function mergePullRequestLists(
   return {
     viewers,
     providers: [...providers.values()],
-    entries: entries.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    entries: entries.toSorted(comparePullRequestsByRecency),
     errors,
     truncated,
     nextCursors,
@@ -586,16 +591,9 @@ export interface PullRequestPartitionsSnapshot {
 }
 
 /**
- * The project scope to actually ask for. A project id in the URL outlives the environment it came
- * from, and one from elsewhere narrows the listing to nothing — an empty page with no visible
- * filter explaining it, since the switcher has no such project to show as selected. So an id the
- * environment does not have is dropped, and a scope left with nothing is every project again.
- *
- * Until `projectsKnown`, the ids are kept rather than dropped: an environment that has not
- * reported yet is not the same as one without the project, and dropping first would show every
- * project's pull requests for a moment before narrowing back down.
- *
- * Duplicates are folded so the scope reads the same however the URL spelled it.
+ * The project scope to actually ask for. An id this environment does not have is dropped, and a
+ * scope left with nothing means every project. Until `projectsKnown`, ids are kept: an
+ * environment that has not reported yet is not the same as one without the project.
  */
 export function resolveProjectScope<Id extends string>(
   projectIds: ReadonlyArray<Id> | undefined,
@@ -681,11 +679,9 @@ export function resolveScopedProjectIdsByEnvironment<Id extends string, Project 
 
 /**
  * The server a saved selection names, before its project is looked up against it. Still
- * connecting is not the same as gone: a server the workspace already knows about is kept named
- * here even while it has nothing to answer with yet, so the lookup that follows finds nothing
- * under it rather than falling through to a different server's project of the same id. Only a
- * name outside the workspace's whole catalog falls back to the page's own scope, which is what
- * lets a link to a server since removed still resolve by project id alone.
+ * connecting is not the same as gone: a known server keeps its name while it has nothing to
+ * answer with yet. Only a name outside the whole catalog falls back to the page's own scope,
+ * which still lets a link to a removed server resolve by project id alone.
  */
 export function resolveSelectedEnvironmentId<Id extends string>(
   namedEnvironmentId: Id | undefined,
@@ -722,7 +718,7 @@ export function rankPullRequestMatches<Entry extends PullRequestListEntry>(
   if (query.trim().length === 0) return entries;
   return entries.toSorted((left, right) => {
     const byScore = scorePullRequestMatch(right, query) - scorePullRequestMatch(left, query);
-    return byScore !== 0 ? byScore : right.updatedAt.localeCompare(left.updatedAt);
+    return byScore !== 0 ? byScore : comparePullRequestsByRecency(left, right);
   });
 }
 
@@ -743,24 +739,29 @@ export function rankPullRequestsByMergeReadiness<Entry extends PullRequestListEn
     if (byTier !== 0) return byTier;
     const measured = Number(hasMeasuredSize(right)) - Number(hasMeasuredSize(left));
     const sized = left.additions + left.deletions - (right.additions + right.deletions);
-    return measured || sized || right.updatedAt.localeCompare(left.updatedAt);
+    return measured || sized || comparePullRequestsByRecency(left, right);
   });
+}
+
+export function comparePullRequestsByRecency(
+  left: PullRequestListEntry,
+  right: PullRequestListEntry,
+) {
+  const leftUpdated = toSortableTimestamp(left.updatedAt);
+  const rightUpdated = toSortableTimestamp(right.updatedAt);
+  const measured = Number(leftUpdated === null) - Number(rightUpdated === null);
+  if (measured !== 0) return measured;
+  if (leftUpdated === null || rightUpdated === null) return 0;
+  return rightUpdated - leftUpdated;
 }
 
 function rankByTierThenRecency<Entry extends PullRequestListEntry>(
   entries: ReadonlyArray<Entry>,
   tier: (entry: Entry) => number,
 ): ReadonlyArray<Entry> {
-  const timestamp = (entry: Entry) => toSortableTimestamp(entry.updatedAt);
   return entries.toSorted((left, right) => {
     const byTier = tier(left) - tier(right);
-    if (byTier !== 0) return byTier;
-    const leftUpdated = timestamp(left);
-    const rightUpdated = timestamp(right);
-    const measured = Number(leftUpdated === null) - Number(rightUpdated === null);
-    if (measured !== 0) return measured;
-    if (leftUpdated === null || rightUpdated === null) return 0;
-    return rightUpdated - leftUpdated;
+    return byTier !== 0 ? byTier : comparePullRequestsByRecency(left, right);
   });
 }
 

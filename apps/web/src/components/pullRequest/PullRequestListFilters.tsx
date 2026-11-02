@@ -474,13 +474,10 @@ export type PullRequestProjectOption = ProjectFaviconProject & { readonly id: Pr
 
 /**
  * Several projects at once, since a reader watching two repositories wants both lists and not
- * two visits. "All projects" is the way back out, and is also what an empty selection means:
- * narrowing to nothing would be an empty page with a filter that reads as if it were on.
- *
- * Projects that could not be read are sunk to the bottom and cannot be picked, so a selection
- * never contains a row that can only answer with its own failure.
+ * two visits. "All projects" is the way back out, and is also what an empty selection means.
+ * Projects that could not be read sink to the bottom and cannot be picked.
  */
-export function PullRequestProjectFilter({
+function PullRequestProjectFilter({
   projects,
   selected,
   unavailable,

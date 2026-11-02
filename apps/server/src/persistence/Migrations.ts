@@ -72,14 +72,22 @@ import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts"
 import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
 import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
 import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
-import Migration0070 from "./Migrations/070_RepairUpstreamMigrationsAfterFork.ts";
-import Migration0071 from "./Migrations/071_RepairThreadTitleStateColumn.ts";
-import Migration0072 from "./Migrations/072_RepairOrchestrationV2AfterFork.ts";
-import Migration0073 from "./Migrations/073_ProjectionThreadsParentThreadId.ts";
-import Migration0074 from "./Migrations/074_RepairThreadBranchPullRequestColumn.ts";
-import Migration0075 from "./Migrations/075_RepairPullRequestFilesViewedTable.ts";
-import Migration0076 from "./Migrations/076_RepairThreadAutoSettleColumn.ts";
-import Migration0077 from "./Migrations/077_RepairUpstream57To60AfterFork.ts";
+import Migration0070 from "./Migrations/070_PeerLinks.ts";
+import Migration0071 from "./Migrations/071_PeerLinkFence.ts";
+import Migration0072 from "./Migrations/072_WaitingLinkRequestIndex.ts";
+import Migration0073 from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
+import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
+import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
+import Migration0078 from "./Migrations/078_RepairUpstreamMigrationsAfterFork.ts";
+import Migration0079 from "./Migrations/079_RepairThreadTitleStateColumn.ts";
+import Migration0080 from "./Migrations/080_RepairOrchestrationV2AfterFork.ts";
+import Migration0081 from "./Migrations/081_ProjectionThreadsParentThreadId.ts";
+import Migration0082 from "./Migrations/082_RepairThreadBranchPullRequestColumn.ts";
+import Migration0083 from "./Migrations/083_RepairPullRequestFilesViewedTable.ts";
+import Migration0084 from "./Migrations/084_RepairThreadAutoSettleColumn.ts";
+import Migration0085 from "./Migrations/085_RepairUpstream57To60AfterFork.ts";
 import { reconcileForkMigrationLedger } from "./reconcileForkMigrationLedger.ts";
 
 const migrationEntries = [
@@ -153,16 +161,24 @@ const migrationEntries = [
   [67, "WebhookDedupe", Migration0067],
   [68, "ShellStopRequestIndex", Migration0068],
   [69, "ThreadMessageSearch", Migration0069],
-  // Spindle fork migrations, recorded at 61-68, 63-70 or 68-75 by earlier syncs.
+  [70, "PeerLinks", Migration0070],
+  [71, "PeerLinkFence", Migration0071],
+  [72, "WaitingLinkRequestIndex", Migration0072],
+  [73, "ActiveTurnItemIndexes", Migration0073],
+  [74, "ExcludeAttachmentPlaceholdersFromSearch", Migration0074],
+  [75, "SubagentDeliveryState", Migration0075],
+  [76, "ProjectionProjectsPinArchive", Migration0076],
+  [77, "RepairBooleanSettledOverride", Migration0077],
+  // Spindle fork migrations, recorded at 61-68, 63-70, 68-75 or 70-77 by earlier syncs.
   // reconcileForkMigrationLedger moves those rows here. See FORK.md "Migrations".
-  [70, "RepairUpstreamMigrationsAfterFork", Migration0070],
-  [71, "RepairThreadTitleStateColumn", Migration0071],
-  [72, "RepairOrchestrationV2AfterFork", Migration0072],
-  [73, "ProjectionThreadsParentThreadId", Migration0073],
-  [74, "RepairThreadBranchPullRequestColumn", Migration0074],
-  [75, "RepairPullRequestFilesViewedTable", Migration0075],
-  [76, "RepairThreadAutoSettleColumn", Migration0076],
-  [77, "RepairUpstream57To60AfterFork", Migration0077],
+  [78, "RepairUpstreamMigrationsAfterFork", Migration0078],
+  [79, "RepairThreadTitleStateColumn", Migration0079],
+  [80, "RepairOrchestrationV2AfterFork", Migration0080],
+  [81, "ProjectionThreadsParentThreadId", Migration0081],
+  [82, "RepairThreadBranchPullRequestColumn", Migration0082],
+  [83, "RepairPullRequestFilesViewedTable", Migration0083],
+  [84, "RepairThreadAutoSettleColumn", Migration0084],
+  [85, "RepairUpstream57To60AfterFork", Migration0085],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

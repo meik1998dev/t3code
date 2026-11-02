@@ -1,16 +1,7 @@
 /**
- * Agent ports: TCP listeners that an agent session opened on an environment
- * (dev servers, preview builds, test databases started from a thread).
- *
- * The server keeps a listener when its process descends from the Spindle
- * server (agents and their shells are children of it) or when its working
- * directory lives under a project workspace or thread worktree. The second
- * rule catches servers that were detached (`nohup … &`) and reparented away
- * from the agent. Everything else on the machine is left out on purpose.
- *
- * `scope: "all"` keeps those leftovers too, tagged `system`, for the times a
- * user needs to see what already owns a port (a distro postgres, another
- * service). Stopping stays agent-only, so a system listener is read-only.
+ * Agent ports: TCP listeners an agent session opened on an environment. The server keeps a
+ * listener when its process descends from the Spindle server or its cwd is inside a project
+ * workspace/thread worktree; `scope: "all"` also keeps the rest as read-only `system` rows.
  */
 import * as Schema from "effect/Schema";
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";

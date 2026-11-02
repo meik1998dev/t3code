@@ -38,7 +38,7 @@ import {
 import type { PullRequestExpectedHost } from "./PullRequestListFilters";
 import type { PullRequestListPreferences, PullRequestListSort } from "./pullRequestListPreferences";
 import { assignProjectsToEnvironments } from "./pullRequestProjectAssignment.logic";
-import { pullRequestFilterProjects } from "./pullRequestProjectFilter.logic";
+import { pullRequestFilterProjects } from "@t3tools/client-runtime/pull-request-project-filter";
 import { pullRequestListEntryId } from "./pullRequestListGroups.logic";
 
 export interface PullRequestsSearch extends PullRequestListPreferences {
@@ -66,9 +66,7 @@ export function usePullRequestScope(search: PullRequestsSearch) {
   const allProjects = useProjects();
   const projectsKnown = useAllEnvironmentShellsBootstrapped();
   const capableEnvironments = environments
-    .filter(
-      (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
-    )
+    .filter((environment) => environment.serverConfig !== null)
     .toSorted((left, right) => left.environmentId.localeCompare(right.environmentId));
   const scopedEnvironmentId =
     capableEnvironments.find((environment) => environment.environmentId === search.environmentId)
@@ -135,14 +133,10 @@ export function usePullRequestScope(search: PullRequestsSearch) {
     readonly projectIds?: ReadonlyArray<ProjectId>;
   }> => {
     /**
-     * Which projects each server is asked about. Two servers holding the same repository would
-     * both list the same pull requests, so each repository is listed by one of them — the first,
-     * which is where the page's actions land — and the others are asked only for what is theirs
-     * alone.
-     *
-     * A scope of chosen projects skips the split entirely: each server is asked for the scoped
-     * projects it holds, and where two of them hold the same repository the reader picked both
-     * rows on purpose. Left alone while the projects are still arriving.
+     * Which projects each server is asked about. Two servers holding the same repository list
+     * it once, on the first, which is where the page's actions land. A scope of chosen projects
+     * skips the split: each server is asked for its scoped projects, and where two hold the same
+     * repository the reader picked both rows on purpose.
      */
     if (scopedProjectIds.length > 0) {
       return resolveScopedProjectIdsByEnvironment(
@@ -216,6 +210,7 @@ export function usePullRequestScope(search: PullRequestsSearch) {
 
 export function usePullRequestQueryFilters(search: PullRequestsSearch, typedQuery: string) {
   const [sentQuery, setSentQuery] = useState(typedQuery);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- debounce timer that sends the typed query after SEARCH_DEBOUNCE_MS
   useEffect(() => {
     const timer = window.setTimeout(() => setSentQuery(typedQuery), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);

@@ -1,27 +1,7 @@
 /**
- * AgentPortsService - lists TCP listeners that agent sessions opened on this
- * environment (dev servers, previews, test databases).
- *
- * Detection is live, no bookkeeping:
- *  1. Listeners with their pid: `ss -ltnpH` on Linux, `lsof -iTCP -sTCP:LISTEN`
- *     elsewhere. lsof 4.95 on Ubuntu skips processes whose name contains
- *     parentheses (`next-server (v16.0.3)`), so Linux uses iproute2.
- *  2. `ps -A -o pid=,ppid=,args=` gives the process tree and command lines.
- *  3. Working directory: `/proc/<pid>/cwd` on Linux, `lsof -a -p <pids> -d cwd`
- *     on macOS.
- *
- * A listener is kept when its process descends from this server process
- * (agents and their shells are children of it) — origin `agent-process` — or
- * when its cwd is inside one of the client's workspace roots, which catches
- * servers that were detached and reparented — origin `workspace`. The server's
- * own listeners and everything else on the machine are dropped.
- *
- * With `scope: "all"` nothing is dropped: the rest of the machine comes back
- * as origin `system` (this server included), so a user can see what already
- * holds a port. `stop` always re-scans in the agent scope, so those rows can
- * be read but never signalled.
- *
- * Windows has no lsof; the list is empty with `supported: false`.
+ * Lists TCP listeners agent sessions opened here, live: `ss -ltnpH` on Linux (lsof 4.95 skips
+ * processes whose name has parentheses, such as `next-server (v16.0.3)`), `lsof` elsewhere,
+ * `ps` for the process tree, and `/proc/<pid>/cwd` or `lsof -d cwd` for the folder.
  */
 import {
   AGENT_PORTS_COMMAND_MAX_LENGTH,
@@ -262,7 +242,7 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value * 10) / 10));
 }
 
-export function isDescendantOf(
+function isDescendantOf(
   pid: number,
   ancestorPid: number,
   parentByPid: ReadonlyMap<number, number>,
@@ -294,7 +274,7 @@ export function isInsideRoot(cwd: string, root: string): boolean {
   );
 }
 
-export function resolveAgentPortOrigin(input: {
+function resolveAgentPortOrigin(input: {
   readonly socket: ListeningSocket;
   readonly serverPid: number;
   readonly parentByPid: ReadonlyMap<number, number>;
@@ -311,7 +291,7 @@ export function resolveAgentPortOrigin(input: {
   return null;
 }
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const fileSystem = yield* FileSystem.FileSystem;
   const platform = yield* HostProcess.Platform;
@@ -509,19 +489,3 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(AgentPortsService, make);
-
-/** Nothing listening, for suites that only need the RPC surface to resolve. */
-export const layerTest = Layer.succeed(
-  AgentPortsService,
-  AgentPortsService.of({
-    list: Effect.fn("AgentPortsService.list")(() =>
-      Effect.succeed({
-        ports: [],
-        scannedAt: "1970-01-01T00:00:00.000Z",
-        scope: "agent" as const,
-        supported: true,
-      }),
-    ),
-    stop: Effect.fn("AgentPortsService.stop")(() => Effect.succeed({ stopped: false })),
-  }),
-);

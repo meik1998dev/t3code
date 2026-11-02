@@ -77,14 +77,38 @@ export function detectComposerTrigger(
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const linePrefix = text.slice(lineStart, cursor);
 
-  const modelMatch = /^\/model(?:\s+(.*))?$/.exec(linePrefix);
-  if (modelMatch) {
-    return {
-      kind: "slash-model",
-      query: (modelMatch[1] ?? "").trim(),
-      rangeStart: lineStart,
-      rangeEnd: cursor,
-    };
+  if (linePrefix.startsWith("/")) {
+    const commandMatch = /^\/(\S*)$/.exec(linePrefix);
+    if (commandMatch && isPathWord(text, lineStart, cursor, isWhitespaceChar ?? isWhitespace)) {
+      return null;
+    }
+    if (commandMatch) {
+      const commandQuery = commandMatch[1] ?? "";
+      if (commandQuery.toLowerCase() === "model") {
+        return {
+          kind: "slash-model",
+          query: "",
+          rangeStart: lineStart,
+          rangeEnd: cursor,
+        };
+      }
+      return {
+        kind: "slash-command",
+        query: commandQuery,
+        rangeStart: lineStart,
+        rangeEnd: cursor,
+      };
+    }
+
+    const modelMatch = /^\/model(?:\s+(.*))?$/i.exec(linePrefix);
+    if (modelMatch) {
+      return {
+        kind: "slash-model",
+        query: (modelMatch[1] ?? "").trim(),
+        rangeStart: lineStart,
+        rangeEnd: cursor,
+      };
+    }
   }
 
   const wsCheck = isWhitespaceChar ?? isWhitespace;

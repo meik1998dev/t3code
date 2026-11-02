@@ -1,7 +1,7 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import type { PullRequestMergeMethod } from "@t3tools/contracts";
 import { create } from "zustand";
-import { normalizeProjectPathForComparison } from "./lib/projectPaths";
+import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const THREAD_CHANGED_FILES_EXPANSION_VERSION = 2;
@@ -154,9 +154,8 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
         : {},
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
-    sidebarProjectScopeKeys: sanitizeProjectScopeKeys(
-      parsed.sidebarProjectScopeKeys,
-      parsed.sidebarProjectScopeKey,
+    sidebarProjectScopeKeys: sanitizeStringArray(
+      parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
     ),
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
@@ -232,6 +231,11 @@ export function persistState(state: UiState): void {
         threadLastVisitedAtById: state.threadLastVisitedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKeys: state.sidebarProjectScopeKeys,
+        // Older clients read only this field.
+        sidebarProjectScopeKey:
+          state.sidebarProjectScopeKeys.length === 1
+            ? (state.sidebarProjectScopeKeys[0] ?? null)
+            : null,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -330,27 +334,15 @@ function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): Ui
   };
 }
 
-// Reads the current array key and the single key written by older builds, so
-// a scoped sidebar survives the upgrade instead of silently resetting to all.
-function sanitizeProjectScopeKeys(value: unknown, legacyValue: unknown): string[] {
-  if (Array.isArray(value)) {
-    return [
-      ...new Set(
-        value.filter((entry): entry is string => typeof entry === "string" && entry !== ""),
-      ),
-    ];
-  }
-  const legacyKey = sanitizeOptionalKey(legacyValue);
-  return legacyKey === null ? [] : [legacyKey];
-}
-
 export function setSidebarProjectScopeKeys(
   state: UiState,
   projectKeys: readonly string[],
 ): UiState {
-  const nextKeys = sanitizeProjectScopeKeys(projectKeys, null);
-  const current = state.sidebarProjectScopeKeys;
-  if (current.length === nextKeys.length && current.every((key, i) => key === nextKeys[i])) {
+  const nextKeys = sanitizeStringArray(projectKeys);
+  if (
+    nextKeys.length === state.sidebarProjectScopeKeys.length &&
+    nextKeys.every((key, index) => key === state.sidebarProjectScopeKeys[index])
+  ) {
     return state;
   }
   return {

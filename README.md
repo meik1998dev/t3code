@@ -10,8 +10,8 @@ Spindle is a fork of [T3 Code](https://github.com/pingdotgg/t3code), with additi
 for agent-to-agent thread orchestration, checkpoint and compaction forks, task
 visibility and multi-project workflows.
 
-Works with your existing Claude Code, Codex, Cursor, Grok Build, OpenCode, and
-Antigravity subscriptions. Install and authenticate a provider before starting work.
+Works with your existing Claude Code, Codex, Cursor, Grok Build, OpenCode,
+Antigravity, and fx subscriptions. Install and authenticate a provider before starting work.
 
 ## Run from source
 

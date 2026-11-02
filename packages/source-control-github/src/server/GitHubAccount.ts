@@ -2,7 +2,6 @@ import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 
 import { RepositoryGitHubAccount } from "./GitHubCredentials.ts";
@@ -11,7 +10,7 @@ import { RepositoryGitHubAccount } from "./GitHubCredentials.ts";
  * Git config key naming the signed-in `gh` account a repository should use. Set per repository
  * with `git config gh.account <login>`; repositories without it use the host's account.
  */
-export const GITHUB_ACCOUNT_CONFIG_KEY = "gh.account";
+const GITHUB_ACCOUNT_CONFIG_KEY = "gh.account";
 const ACCOUNT_CACHE_CAPACITY = 256;
 const ACCOUNT_CACHE_TTL = Duration.seconds(30);
 
@@ -57,10 +56,8 @@ export const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(GitHubAccount, make);
-
 /** Runs `effect` with the credential of the repository's `gh.account`, when it names one. */
-export const withRepositoryAccount =
+const withRepositoryAccount =
   (account: GitHubAccount["Service"], cwd: string) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     account

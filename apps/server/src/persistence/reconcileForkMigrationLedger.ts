@@ -11,15 +11,19 @@ import RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettl
 import WebhookDedupe from "./Migrations/067_WebhookDedupe.ts";
 import ShellStopRequestIndex from "./Migrations/068_ShellStopRequestIndex.ts";
 import ThreadMessageSearch from "./Migrations/069_ThreadMessageSearch.ts";
+import PeerLinks from "./Migrations/070_PeerLinks.ts";
+import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
+import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
+import ActiveTurnItemIndexes from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import ExcludeAttachmentPlaceholdersFromSearch from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import SubagentDeliveryState from "./Migrations/075_SubagentDeliveryState.ts";
+import ProjectionProjectsPinArchive from "./Migrations/076_ProjectionProjectsPinArchive.ts";
+import RepairBooleanSettledOverride from "./Migrations/077_RepairBooleanSettledOverride.ts";
 
 // The runner only runs ids above the highest recorded one, so every upstream
 // migration numbered below the fork's block was skipped on a fork database.
-// This file is the one place that repairs that: apply the skipped upstream
-// migrations, then move the fork block onto the ids it owns in this build.
 // Each sync that takes upstream numbers again adds a generation here.
-//
-// Generations: fork rows at 61-68 (v0.0.46 sync), at 63-70 (v0.1.1 sync),
-// at 68-75 (v0.1.1 ledger fix), now 70-77. See FORK.md "Migrations".
+// Generations: 61-68, 63-70, 68-75, 70-77, now 78-85. See FORK.md "Migrations".
 const FORK_NAMES = [
   "RepairUpstreamMigrationsAfterFork",
   "RepairThreadTitleStateColumn",
@@ -30,7 +34,7 @@ const FORK_NAMES = [
   "RepairThreadAutoSettleColumn",
   "RepairUpstream57To60AfterFork",
 ] as const;
-const FORK_FIRST_ID = 70;
+const FORK_FIRST_ID = 78;
 const FORK_OLDEST_GENERATION_ID = 61;
 
 /**
@@ -152,6 +156,65 @@ export const reconcileForkMigrationLedger = Effect.fn("reconcileForkMigrationLed
           `;
         if (table.length === 0) yield* ThreadMessageSearch;
         applied.push([69, "ThreadMessageSearch"]);
+      }
+      if (!recorded.has("PeerLinks")) {
+        const table = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'peer_environment_links'
+          `;
+        if (table.length === 0) yield* PeerLinks;
+        applied.push([70, "PeerLinks"]);
+      }
+      if (!recorded.has("PeerLinkFence")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(peer_environment_links)
+          `;
+        if (!columns.some((column) => column.name === "fenced")) yield* PeerLinkFence;
+        applied.push([71, "PeerLinkFence"]);
+      }
+      if (!recorded.has("WaitingLinkRequestIndex")) {
+        const index = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'index'
+              AND name = 'orchestration_v2_projection_turn_items_waiting_link_idx'
+          `;
+        if (index.length === 0) yield* WaitingLinkRequestIndex;
+        applied.push([72, "WaitingLinkRequestIndex"]);
+      }
+      if (!recorded.has("ActiveTurnItemIndexes")) {
+        const index = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'index'
+              AND name = 'orchestration_v2_projection_turn_items_active_ordinal_idx'
+          `;
+        if (index.length === 0) yield* ActiveTurnItemIndexes;
+        applied.push([73, "ActiveTurnItemIndexes"]);
+      }
+      if (!recorded.has("ExcludeAttachmentPlaceholdersFromSearch")) {
+        yield* ExcludeAttachmentPlaceholdersFromSearch;
+        applied.push([74, "ExcludeAttachmentPlaceholdersFromSearch"]);
+      }
+      if (!recorded.has("SubagentDeliveryState")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(orchestration_v2_projection_subagents)
+          `;
+        if (!columns.some((column) => column.name === "completion_delivery_state")) {
+          yield* SubagentDeliveryState;
+        }
+        applied.push([75, "SubagentDeliveryState"]);
+      }
+      if (!recorded.has("ProjectionProjectsPinArchive")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(projection_projects)
+          `;
+        if (!columns.some((column) => column.name === "pinned_at")) {
+          yield* ProjectionProjectsPinArchive;
+        }
+        applied.push([76, "ProjectionProjectsPinArchive"]);
+      }
+      if (!recorded.has("RepairBooleanSettledOverride")) {
+        yield* RepairBooleanSettledOverride;
+        applied.push([77, "RepairBooleanSettledOverride"]);
       }
 
       // Highest id first so each move lands on an id the block released.

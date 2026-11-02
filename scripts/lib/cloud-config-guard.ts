@@ -2,7 +2,7 @@
 // T3 Connect UI at all (no sign-in, "Your cloud sign-in changed" on every remote
 // environment). It happened three times when a DMG was built in a worktree or clone
 // that had no `.env`, so the build now stops instead.
-import { loadRepoEnv, resolvePublicConfig } from "./public-config.ts";
+import { loadRepoEnv } from "./public-config.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -18,10 +18,10 @@ export function missingCloudPublicConfig({
   readonly baseEnv?: Environment;
 }): ReadonlyArray<string> {
   if (baseEnv[ALLOW_BUILD_WITHOUT_CLOUD_ENV] === "1") return [];
-  const config = resolvePublicConfig(loadRepoEnv({ repoRoot, baseEnv }));
+  const env = loadRepoEnv({ repoRoot, baseEnv });
   return [
-    ...(config.clerkPublishableKey ? [] : ["T3CODE_CLERK_PUBLISHABLE_KEY"]),
-    ...(config.clerkJwtTemplate ? [] : ["T3CODE_CLERK_JWT_TEMPLATE"]),
-    ...(config.relayUrl ? [] : ["T3CODE_RELAY_URL"]),
+    ...(env.T3CODE_CLERK_PUBLISHABLE_KEY ? [] : ["T3CODE_CLERK_PUBLISHABLE_KEY"]),
+    ...(env.T3CODE_CLERK_JWT_TEMPLATE ? [] : ["T3CODE_CLERK_JWT_TEMPLATE"]),
+    ...(env.T3CODE_RELAY_URL ? [] : ["T3CODE_RELAY_URL"]),
   ];
 }

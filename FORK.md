@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `96fc7b9551` (2026-10-27, `refactor(web): the new design is the only design, with no toggle`, v0.1.3 + 20).
+- Last synced upstream commit: `ac8dce0cc3` (2026-11-02, `fix(marketing): show 40k+ GitHub stars`, v0.1.6 + 360).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -28,46 +28,48 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 ## Migrations
 
-The migration runner tracks migrations by number only. If the fork and upstream both use a
+The migration runner tracks migrations by number only. If upstream and the fork both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This already happened five times: fork 48 hid upstream 48, fork 50–52 hid upstream 50–51,
-fork 53 hid upstream 53, fork 57–60 hid upstream 57–60, and fork 68–69 hid upstream 68–69. A fourth case needs no clash: upstream added 54 after fork databases had
-recorded 59, and the runner only runs IDs above the latest recorded one, so they skipped it.
-The repair migrations below make both upgrade paths safe.
+This happened with upstream 48, 50–53, 54, 57–60, 68–69 and 70–77. The repair migrations below
+and `reconcileForkMigrationLedger.ts` make both upgrade paths safe.
 
 Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 70     | `070_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 71     | `071_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 72     | `072_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 73     | `073_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 74     | `074_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 75     | `075_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 76     | `076_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 77     | `077_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 78     | `078_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 79     | `079_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 80     | `080_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 81     | `081_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 82     | `082_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 83     | `083_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 84     | `084_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 85     | `085_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–69. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+Upstream owns 1–77. Since upstream added a startup check (`assertV2MigrationsCanRun` in
 `Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
 up) stops the server. A repair migration cannot fix that, because the check runs before any
-migration. So a clash is now fixed by `reconcileForkMigrationLedger.ts`, which runs before the
-check: it normalises the fork block onto 70–77 wherever an earlier generation recorded it (61–68
-from the v0.0.46 sync, 63–70 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix), and
-applies the upstream migrations that generation skipped, safely twice. Nothing runs twice, and
-the ledger then matches a fresh database. Fresh databases run upstream 1–69 and the fork's 70–77
-do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are left to the migrator and the
-startup check, because the replays need the V2 tables those ledgers do not have yet.
-The v0.1.3 sync added upstream 68 (stop-request index) and 69 (FTS5 message search, which
-indexes every finished message on first run; about 15 s on a copy of the 4.6 GB Mac database).
+migration. So a clash is fixed by `reconcileForkMigrationLedger.ts`, which runs before the
+check: it normalises the fork block onto 78–85 wherever an earlier generation recorded it (61–68
+from the v0.0.46 sync, 63–70 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix, 70–77 from
+the v0.1.3 sync), and applies the upstream migrations that generation skipped, safely twice.
+Nothing runs twice, and the ledger then matches a fresh database. Fresh databases run upstream
+1–77 and the fork's 78–85 do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are
+left to the migrator and the startup check, because the replays need the V2 tables those
+ledgers do not have yet.
+The v0.1.6 sync added upstream 70–77 (peer links and their fence, waiting-link and active-turn
+indexes, attachment placeholders out of search, subagent delivery state, project pin/archive,
+and the boolean settled-override repair). The v0.1.3 sync added 68 (stop-request index) and 69
+(FTS5 message search, which indexes every finished message on first run; about 15 s on a copy of
+the 4.6 GB Mac database).
 Older history: the v0.1.1 sync added upstream 63–67 (drop unused V1 projections, canonicalise
 thread PR links, Codex usage index, settled-timestamp repair, webhook dedupe) below the fork's
 block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up.
-Under today's numbers: 77 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
-missing) and 58–60, and 72 runs upstream 55 (only when `orchestration_v2_events` is missing)
-and upstream 56. Both rename ledger rows to upstream's names. 76 reruns upstream 54, 75 replays upstream 53,
-71 adds `title_state_json` for databases that recorded the fork's own 52, and 70 reapplies
-upstream 50–51 for databases that recorded the fork's old 50–54. 73 keeps
+Under today's numbers: 85 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
+missing) and 58–60, and 80 runs upstream 55 (only when `orchestration_v2_events` is missing)
+and upstream 56. Both rename ledger rows to upstream's names. 84 reruns upstream 54, 83 replays
+upstream 53, 79 adds `title_state_json` for databases that recorded the fork's own 52, and 78
+reapplies upstream 50–51 for databases that recorded the fork's old 50–54. 81 keeps
 `projection_threads.parent_thread_id`; the v1 thread importer
 (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
 threads are copied into the new orchestrator on first start. Databases still on a ledger from
@@ -253,6 +255,8 @@ Host <hostname>.local
   upstream extracted the row on 2026-10-21), mobile `thread-list-v2-items.tsx`.
 - Tests: `apps/server/src/mcp/threadStartLimit.test.ts`, `OrchestratorMcpToolkit.integration.test.ts`
   (`routingNotes`).
+- Sync note (v0.1.6): `delegate_task` can target another environment. The one-level limit runs
+  before both the remote and local branches, so a child cannot delegate across environments either.
 - Check: from a person-started thread, ask the agent for a separate thread; it appears with the
   agent mark. Ask that child to start another thread; it gets `capability_denied`. Change routing
   notes in Settings and confirm `orchestrator_capabilities` returns the new text.
@@ -275,6 +279,9 @@ Host <hostname>.local
   `MessagesTimeline.tsx` into the user-message row),
   `apps/web/src/components/chat/{MessagesTimeline,MessagesTimeline.logic}.ts{x,}`,
   `apps/web/src/state/threads.ts` (`loadFullThreadHistory`).
+- Sync note (v0.1.6): the user-message row now builds one `messageActions` element for the
+  floated and inline layouts; the fork's `MessageForkMenu` sits in it next to the revert and
+  copy buttons.
 - Tests: `forkTranscript.test.ts`, `MessagesTimeline.logic.test.ts`.
 - Check: fork an earlier user message to a new chat and confirm the draft ends at that message
   and uses the same model. Confirm the menu has no workspace or compaction actions.
@@ -283,24 +290,21 @@ Host <hostname>.local
 ### Copy full transcript (#24)
 
 - What: the thread menu copies the full thread transcript. The full history comes from the
-  server's thread snapshot endpoint (`fetchEnvironmentThreadSnapshot`), not the bounded client
-  window.
+  server's unbounded thread snapshot endpoint, not the bounded client window.
 - Key files: `packages/client-runtime/src/{threadTranscript,state/fullThreadHistory}.ts`,
-  `apps/web/src/components/threadTranscriptCopy.ts`, `threadActionMenu.logic.ts`, `Sidebar.tsx`.
+  `apps/web/src/components/threadTranscriptCopy.ts`, `threadActionMenu.logic.ts`, `Sidebar.tsx`,
+  `apps/mobile/src/state/threads.ts`.
 - Tests: `threadTranscript.test.ts`, `threadActionMenu.logic.test.ts`.
 - Check: right-click a thread and copy the transcript. Paste shows all turns.
+- Sync note (v0.1.6): upstream replaced the old `fetchEnvironmentThreadSnapshot` helper with
+  the `ThreadSnapshotLoader` service, which returns only a bounded window. The fork's
+  `fetchFullThreadSnapshot` in `fullThreadHistory.ts` calls the same `threadSnapshot` endpoint
+  directly.
 - Warning: mobile `use-copy-thread-transcript.ts` is up to date but has no menu entry; it lost
-  its caller in an earlier sync.
+  its caller in an earlier sync. It is listed as a knip entry so the file stays.
 - Drop when: upstream adds a copy transcript action.
 
 ## Composer
-
-### Composer triggers anywhere (#12)
-
-- What: `/` and `@` open their menus in the middle of text, not only at the start.
-- Key files: `packages/shared/src/composerTrigger.ts`, `apps/web/src/composer-logic.ts`.
-- Tests: `composerTrigger.test.ts`, `composer-logic.test.ts`.
-- Check: type `please use /` in the middle of a sentence. The skills menu opens.
 
 ## Sidebar
 
@@ -320,6 +324,12 @@ Host <hostname>.local
   a link or the palette, and no longer clears a missing scope key. The fork resolves each stored
   key, builds the chosen groups, and on a widening writes back an empty key list. Thread search
   receives the project ids of all scoped groups.
+- Sync note (v0.1.6): upstream now supports multi-select itself (shift-click), keeps the popup
+  open with `useOrderWhileOpen`, and drops archived projects from the scope. The fork keeps its
+  plain-click toggle (`multiple` on the combobox) on upstream's array API:
+  `resolveSidebarProjectScopeKeys` from `sidebarProjectGrouping.ts`, `pickableProjectGroups`,
+  and the `data-selected={undefined}` rows. `resolveSidebarProjectScopeSelection` in
+  `Sidebar.logic.ts` maps the combobox value to the stored keys.
 - Sync note: upstream compiles the sidebar and the pull requests page with the React Compiler
   and no manual `useMemo`/`useCallback`. The fork's scope lives in the same plain style: the PR
   page's `usePullRequestScope` reads `projectIds`, and the sidebar passes the sorted scope keys
@@ -443,6 +453,11 @@ Host <hostname>.local
   (host, kind, account key), so `SupportedProject` carries `viewerAccountKey`, the project scan is
   an `Effect.forEach` that can call `api.getViewerAccountKey`, and the cache is `viewersByAccount`.
   Keep that shape and re-apply upstream's changes on top of it.
+- Sync note (v0.1.6): upstream added `GitHubAppAccess` and a `settings-first`
+  `GitHubCredentials.saved()` plus `isGitHubHost` validation. `GitHubCredentials.get` now checks
+  the repository account first, then `saved(host)`, then falls back to `hostChoice`. `driver.ts`
+  provides `GitHubAppAccess.layer` under `layerWithRepositoryAccounts`. `GitHubAccount`'s
+  `layer`, `GITHUB_ACCOUNT_CONFIG_KEY`, and `withRepositoryAccount` stay module-private.
 - Check: in a repo with `gh.account` set to a non-default account, the pull request list loads.
 - Drop when: upstream supports several `gh` accounts.
 
@@ -469,13 +484,10 @@ Host <hostname>.local
   or `(--var)` shorthands.
 - Key files: `apps/web/src/index.css`, `chat/{ChatComposer,ComposerBanner,ComposerSurface,ProposedPlanCard}.tsx`.
 - Check: the composer and cards have the smaller radius, and the input corners match the composer frame.
-- The composer glass backdrop is drawn with `clip-path: shape()`, so its corners cannot inherit
-  `rounded-*`. `ComposerSurface.tsx` defines `--chat-composer-corner` (`--radius-2xl`, since
-  upstream's v0.1.3 design moved the composer from `rounded-3xl` to `rounded-2xl`) and its
-  `--chat-composer-corner-control` bezier offset (`corner * 0.4477`); the shape uses those instead
-  of upstream's literal `16px`/`7.16px`. The seam polygon keeps upstream's `22px` literal: in the
-  new shape it follows the drawer inset, not the corner. On a conflict, take upstream's shape and
-  re-apply the variables.
+- The composer glass backdrop belongs to `Host` when a context row is present; upstream's
+  v0.1.6 design replaced the clip-path shape with `data-context-row` classes. The fork keeps
+  `--chat-composer-corner` (`--radius-2xl`) and `--chat-composer-inner-corner` for the input
+  surface. On a conflict, take upstream's classes and keep those variables.
 - Warning: upstream often changes radius tokens. Take upstream's token names, then set the fork values again.
 
 ### Branch names in the code font (#10)
@@ -501,6 +513,8 @@ Host <hostname>.local
   `scripts/build-desktop-artifact.test.ts` (the identity test also fixes the legacy user-data path,
   which is `T3 Code (Alpha)` on real installs).
 - Check: the menu bar, window title, and About panel say `Spindle`; a `-nightly` version says `Spindle (Nightly)`.
+- Sync note (v0.1.6): upstream removed `linuxWmClass` from `DesktopEnvironment`; its test no
+  longer asserts it.
 - Warning: the app bundle is `Spindle.app`. Remove the old `Spindle (Alpha).app` by hand after
   the first install. User data is not affected (it lives under `~/.t3`).
 - Warning: the fork also says `Spindle` in many UI strings, the agent instructions, and the Codex
@@ -509,13 +523,26 @@ Host <hostname>.local
   `OrchestratorMcpToolkit.integration.test.ts` fail on the fork with a frame mismatch. New
   upstream strings arrive as `T3 Code`; the fork renames them only where a sync conflicts.
 
+### Brand icons from one master SVG (direct commit)
+
+- What: every Spindle icon is generated from `assets/spindle/logo.svg` by
+  `scripts/export-brand-icons.ts` (`icons:export`, `icons:check`): desktop/iOS/Android/web/
+  favicon renditions, the three `app-icon.icon` projects, and `packages/shared/src/spindleMark.ts`.
+  Upstream's newer `scripts/export-android-icons.ts` is intentionally not used.
+- Key files: `scripts/export-brand-icons.ts`, `assets/spindle/logo.svg`,
+  `packages/shared/src/spindleMark.ts`, `apps/web/src/components/SpindleMark.tsx`,
+  `apps/mobile/src/components/SpindleMark.tsx`.
+- Tests: `scripts/spindle-brand-assets.test.ts`.
+- Check: `vp run icons:check` passes; `vp run icons:export` leaves the tree unchanged.
+- Drop when: upstream's Icon Composer exporter can render the Spindle master SVG.
+
 ### Hide "Add action" until a project has actions (direct commit)
 
 - Key files: `apps/web/src/components/chat/ThreadDetailsPanel.tsx`.
 - Check: a project with no actions (neither saved nor in a checked-in `t3.json`) shows no
   "Add action" in the thread details panel.
-- Upstream moved project actions from the chat header into the thread details panel. The guard
-  renders `ProjectScriptsControl` only when the project has saved scripts or `t3.json` scripts.
+- Upstream moved project actions into the thread details panel's Workspace section. The guard is
+  on `show.scripts`, which stays false when the project has neither saved nor `t3.json` scripts.
 
 ### Install instructions point at a checkout (sync/v0.0.42)
 
@@ -541,6 +568,8 @@ Host <hostname>.local
 - Key files: `scripts/lib/cloud-config-guard.ts`, `scripts/build-desktop-artifact.ts`
   (`buildDesktopArtifact`, `DesktopBuildCloudConfigMissingError`).
 - Tests: `scripts/lib/cloud-config-guard.test.ts`.
+- Sync note (v0.1.6): `resolvePublicConfig` became private in `public-config.ts`; the guard now
+  calls `loadRepoEnv` and checks the canonical keys it returns.
 - Check: after a build, `grep -a -c relay.t3.codes Spindle.app/Contents/Resources/app.asar`
   inside the mounted DMG is above 0.
 - Drop it when: never, while the fork builds its own desktop app.
