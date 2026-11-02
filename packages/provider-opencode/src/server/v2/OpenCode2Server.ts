@@ -189,14 +189,27 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
 
   const connectToService = Effect.gen(function* () {
     const descriptor = yield* discoverService(input.environment, fs, path);
-    if (Option.isNone(descriptor)) return Option.none<OpenCode2Connection>();
+    if (Option.isNone(descriptor)) {
+      yield* Effect.logDebug("No running OpenCode service descriptor found.");
+      return Option.none<OpenCode2Connection>();
+    }
     return yield* connectTo(
       descriptor.value.url,
       Redacted.make(descriptor.value.password),
       true,
     ).pipe(
+      Effect.tap((connection) =>
+        Effect.logInfo("Using the running OpenCode service.", {
+          url: connection.url,
+          version: connection.version,
+        }),
+      ),
       Effect.asSome,
-      Effect.catch(() => Effect.succeedNone),
+      Effect.catch((error) =>
+        Effect.logWarning("Could not use the running OpenCode service.", {
+          detail: OpenCodeRuntime.openCodeRuntimeErrorDetail(error),
+        }).pipe(Effect.andThen(Effect.succeedNone)),
+      ),
     );
   });
 
