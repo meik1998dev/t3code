@@ -77,7 +77,7 @@ it.effect("shares concurrent borrowers and closes after the idle TTL", () =>
         expect(yield* Ref.get(testRuntime.starts)).toBe(1);
         yield* Deferred.succeed(release, undefined);
         expect(yield* Fiber.join(fibers)).toEqual(["http://127.0.0.1:1", "http://127.0.0.1:1"]);
-        yield* TestClock.adjust(Duration.seconds(31));
+        yield* TestClock.adjust(Duration.seconds(301));
         yield* Deferred.await(testRuntime.closed);
         expect(yield* Ref.get(testRuntime.closes)).toBe(1);
       }),

@@ -8,7 +8,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 
-const OPENCODE_SERVER_IDLE_TTL = "30 seconds";
+const OPENCODE_SERVER_IDLE_TTL = "5 minutes";
 
 interface OpenCodeServerOwnerState {
   server: OpenCodeRuntime.OpenCodeServerProcess | null;

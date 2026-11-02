@@ -223,8 +223,10 @@ Host <hostname>.local
 
 - What: a cold managed OpenCode 2 server can take ~10 s to list models on a large data store.
   Upstream's 5 s loader timeout returned an empty catalog ("did not list any models"), so the
-  fork waits 30 s and still returns as soon as two reads agree.
-- Key files: `packages/provider-opencode/src/server/status.ts` (`OPENCODE2_CATALOG_TIMEOUT`).
+  fork waits 90 s, keeps the managed server warm for 5 minutes, and still returns as soon as two
+  reads agree.
+- Key files: `packages/provider-opencode/src/server/status.ts` (`OPENCODE2_CATALOG_TIMEOUT`),
+  `packages/provider-opencode/src/server/OpenCodeServerOwner.ts` (`OPENCODE_SERVER_IDLE_TTL`).
 - Tests: `packages/provider-opencode/src/server/status.test.ts` ("waits past five seconds for a
   cold OpenCode 2 catalog"), `driver.test.ts` (empty-catalog recovery).
 - Check: on the VPS, Settings → Providers → Refresh; OpenCode lists 69 models after a cold start.
