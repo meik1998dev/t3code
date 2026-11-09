@@ -285,8 +285,9 @@ Host <hostname>.local
   agent mark. Ask that child to start another thread; it gets `capability_denied`. Change routing
   notes in Settings and confirm `orchestrator_capabilities` returns the new text.
 - Drop when: upstream adds a depth limit and routing preferences of its own.
-- Sync note (v0.1.6): `agentContextBudget.json` is 47570 bytes after the routing-notes sentence
-  (upstream is 47538). Raise it only with the fork's addition; run the evals before cutting text.
+- Sync note (v0.1.7): `agentContextBudget.json` `mcpToolListJsonBytes` is 48265 after the
+  routing-notes sentence (upstream is 48233). A sync grows it with upstream's text, so the PR needs
+  the `agent-context-increase` label. Raise it only with the fork's addition; run the evals before cutting text.
 
 ### Local agent worktrees are not test inputs (direct commit)
 
