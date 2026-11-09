@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `ac8dce0cc3` (2026-11-02, `fix(marketing): show 40k+ GitHub stars`, v0.1.6 + 360).
+- Last synced upstream commit: `4f0b74e190` (2026-11-09, `feat(web): first run is one Welcome page instead of a 3-step wizard`, v0.1.7).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -30,33 +30,35 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If upstream and the fork both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This happened with upstream 48, 50–53, 54, 57–60, 68–69 and 70–77. The repair migrations below
+This happened with upstream 48, 50–53, 54, 57–60, 68–69, 70–77 and 78–80. The repair migrations below
 and `reconcileForkMigrationLedger.ts` make both upgrade paths safe.
 
 Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 78     | `078_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 79     | `079_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 80     | `080_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 81     | `081_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 82     | `082_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 83     | `083_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 84     | `084_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 85     | `085_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 81     | `081_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 82     | `082_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 83     | `083_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 84     | `084_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 85     | `085_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 86     | `086_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 87     | `087_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 88     | `088_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–77. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+Upstream owns 1–80. Since upstream added a startup check (`assertV2MigrationsCanRun` in
 `Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
 up) stops the server. A repair migration cannot fix that, because the check runs before any
 migration. So a clash is fixed by `reconcileForkMigrationLedger.ts`, which runs before the
-check: it normalises the fork block onto 78–85 wherever an earlier generation recorded it (61–68
+check: it normalises the fork block onto 81–88 wherever an earlier generation recorded it (61–68
 from the v0.0.46 sync, 63–70 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix, 70–77 from
-the v0.1.3 sync), and applies the upstream migrations that generation skipped, safely twice.
+the v0.1.3 sync, 78–85 from the v0.1.6 sync), and applies the upstream migrations that generation skipped, safely twice.
 Nothing runs twice, and the ledger then matches a fresh database. Fresh databases run upstream
-1–77 and the fork's 78–85 do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are
+1–80 and the fork's 81–88 do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are
 left to the migrator and the startup check, because the replays need the V2 tables those
 ledgers do not have yet.
+The v0.1.7 sync added upstream 78–80 (drop the unused event correlation index, delegated
+recovery indexes, scheduled-task thread mode) and moved the block from 78–85 to 81–88.
 The v0.1.6 sync added upstream 70–77 (peer links and their fence, waiting-link and active-turn
 indexes, attachment placeholders out of search, subagent delivery state, project pin/archive,
 and the boolean settled-override repair). The v0.1.3 sync added 68 (stop-request index) and 69
@@ -65,11 +67,11 @@ the 4.6 GB Mac database).
 Older history: the v0.1.1 sync added upstream 63–67 (drop unused V1 projections, canonicalise
 thread PR links, Codex usage index, settled-timestamp repair, webhook dedupe) below the fork's
 block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up.
-Under today's numbers: 85 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
-missing) and 58–60, and 80 runs upstream 55 (only when `orchestration_v2_events` is missing)
-and upstream 56. Both rename ledger rows to upstream's names. 84 reruns upstream 54, 83 replays
-upstream 53, 79 adds `title_state_json` for databases that recorded the fork's own 52, and 78
-reapplies upstream 50–51 for databases that recorded the fork's old 50–54. 81 keeps
+Under today's numbers: 88 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
+missing) and 58–60, and 83 runs upstream 55 (only when `orchestration_v2_events` is missing)
+and upstream 56. Both rename ledger rows to upstream's names. 87 reruns upstream 54, 86 replays
+upstream 53, 82 adds `title_state_json` for databases that recorded the fork's own 52, and 81
+reapplies upstream 50–51 for databases that recorded the fork's old 50–54. 84 keeps
 `projection_threads.parent_thread_id`; the v1 thread importer
 (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
 threads are copied into the new orchestrator on first start. Databases still on a ledger from
@@ -106,7 +108,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 70–77)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 81–88)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
@@ -366,8 +368,8 @@ Host <hostname>.local
   page's `usePullRequestScope` reads `projectIds`, and the sidebar passes the sorted scope keys
   as `projectScopeKey` to `useSidebarThreads`.
 - Warning: the sidebar trigger is upstream's icon-only header button. Do not put a label or
-  chevron inside it; they get clipped next to Search. The selection shows as check marks in the
-  popup and in the button's tooltip.
+  chevron inside it; they get clipped next to Search. The selection shows as upstream's badge on
+  each row's icon and in the button's tooltip (the fork's extra check icon was dropped in v0.1.7).
 
 ### Agent ports popover (#44, #45, #46)
 
@@ -583,7 +585,7 @@ Host <hostname>.local
   shows `curl https://t3.codes/install.sh`, `npx t3@latest`, Homebrew, winget, and AUR, all of which
   install upstream T3 Code instead of this fork.
 - Key files: `apps/marketing/src/pages/download.astro`, `README.md`, `docs/user/install.md`,
-  `docs/user/background-service.md`, `docs/user/welcome-wizard.md`.
+  `docs/user/background-service.md`, `docs/user/welcome-page.md`.
 - Check: open the download page. The Terminal section shows the checkout command, not `npx t3`.
 - Warning: this conflicts on every sync while upstream keeps improving its installers. Keep the
   fork side unless the fork starts publishing its own package or install script.

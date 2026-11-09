@@ -21,7 +21,13 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as ProcessRunner from "../processRunner.ts";
+
+class AgentPortSignalError extends Schema.TaggedError<AgentPortSignalError>()(
+  "AgentPortSignalError",
+  { pid: Schema.Number, signal: Schema.String, cause: Schema.Defect() },
+) {}
 
 export class AgentPortsService extends Context.Service<
   AgentPortsService,
@@ -467,7 +473,10 @@ const make = Effect.gen(function* () {
     if (target === undefined || target.pid === serverPid) {
       return { stopped: false } satisfies AgentPortStopResult;
     }
-    const signalled = yield* Effect.try(() => processControl.signal(target.pid, "SIGTERM")).pipe(
+    const signalled = yield* Effect.try({
+      try: () => processControl.signal(target.pid, "SIGTERM"),
+      catch: (cause) => new AgentPortSignalError({ pid: target.pid, signal: "SIGTERM", cause }),
+    }).pipe(
       Effect.as(true),
       Effect.catch((cause) =>
         Effect.logDebug("agent port SIGTERM failed", { pid: target.pid, cause }).pipe(
@@ -480,7 +489,10 @@ const make = Effect.gen(function* () {
     }
     yield* Effect.sleep(STOP_GRACE_PERIOD);
     if (processControl.isAlive(target.pid)) {
-      yield* Effect.try(() => processControl.signal(target.pid, "SIGKILL")).pipe(Effect.ignore);
+      yield* Effect.try({
+        try: () => processControl.signal(target.pid, "SIGKILL"),
+        catch: (cause) => new AgentPortSignalError({ pid: target.pid, signal: "SIGKILL", cause }),
+      }).pipe(Effect.ignore);
     }
     return { stopped: true } satisfies AgentPortStopResult;
   });

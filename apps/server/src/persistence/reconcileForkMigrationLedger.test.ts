@@ -4,14 +4,14 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import repairUpstreamMigrations from "./Migrations/078_RepairUpstreamMigrationsAfterFork.ts";
-import repairThreadTitleState from "./Migrations/079_RepairThreadTitleStateColumn.ts";
-import repairOrchestrationV2 from "./Migrations/080_RepairOrchestrationV2AfterFork.ts";
-import parentThreadId from "./Migrations/081_ProjectionThreadsParentThreadId.ts";
-import repairBranchPullRequest from "./Migrations/082_RepairThreadBranchPullRequestColumn.ts";
-import repairFilesViewed from "./Migrations/083_RepairPullRequestFilesViewedTable.ts";
-import repairAutoSettle from "./Migrations/084_RepairThreadAutoSettleColumn.ts";
-import repairUpstream57To60 from "./Migrations/085_RepairUpstream57To60AfterFork.ts";
+import repairUpstreamMigrations from "./Migrations/081_RepairUpstreamMigrationsAfterFork.ts";
+import repairThreadTitleState from "./Migrations/082_RepairThreadTitleStateColumn.ts";
+import repairOrchestrationV2 from "./Migrations/083_RepairOrchestrationV2AfterFork.ts";
+import parentThreadId from "./Migrations/084_ProjectionThreadsParentThreadId.ts";
+import repairBranchPullRequest from "./Migrations/085_RepairThreadBranchPullRequestColumn.ts";
+import repairFilesViewed from "./Migrations/086_RepairPullRequestFilesViewedTable.ts";
+import repairAutoSettle from "./Migrations/087_RepairThreadAutoSettleColumn.ts";
+import repairUpstream57To60 from "./Migrations/088_RepairUpstream57To60AfterFork.ts";
 
 const FORK_MIGRATIONS = [
   ["RepairUpstreamMigrationsAfterFork", repairUpstreamMigrations],
@@ -41,8 +41,8 @@ const assertNormalized = Effect.fn(function* (forkFirstId: number) {
   const forkRows = ledger.filter((row) => FORK_MIGRATIONS.some(([name]) => name === row.name));
   assert.deepStrictEqual(
     forkRows.map((row) => row.migration_id),
-    Array.from({ length: FORK_MIGRATIONS.length }, (_, index) => 78 + index),
-    `fork rows recorded at ${forkFirstId} were not moved onto 78-85`,
+    Array.from({ length: FORK_MIGRATIONS.length }, (_, index) => 81 + index),
+    `fork rows recorded at ${forkFirstId} were not moved onto 81-88`,
   );
   assert.deepStrictEqual(yield* runMigrations(), []);
 });
@@ -59,7 +59,8 @@ const schemaNames = Effect.fn(function* () {
       'peer_environment_links',
       'orchestration_v2_projection_turn_items_waiting_link_idx',
       'orchestration_v2_projection_turn_items_active_ordinal_idx',
-      'orchestration_v2_projection_subagents_settled_idx'
+      'orchestration_v2_projection_subagents_settled_idx',
+      'orchestration_v2_projection_threads_subagent_result_idx'
     )
   `;
   return rows.map((row) => row.name).sort();
@@ -68,6 +69,7 @@ const schemaNames = Effect.fn(function* () {
 const EXPECTED_SCHEMA_NAMES = [
   "orchestration_v2_message_search",
   "orchestration_v2_projection_subagents_settled_idx",
+  "orchestration_v2_projection_threads_subagent_result_idx",
   "orchestration_v2_projection_turn_items_active_ordinal_idx",
   "orchestration_v2_projection_turn_items_failed_error_idx",
   "orchestration_v2_projection_turn_items_stop_request_idx",
@@ -84,7 +86,7 @@ const freshDatabase = <A, E>(name: string, body: () => Effect.Effect<A, E, SqlCl
     it.effect(name, body);
   });
 
-freshDatabase("moves fork rows 61-68 to 78-85 and applies upstream 61-77", () =>
+freshDatabase("moves fork rows 61-68 to 81-88 and applies upstream 61-80", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* runMigrations({ toMigrationInclusive: 60 });
@@ -97,14 +99,14 @@ freshDatabase("moves fork rows 61-68 to 78-85 and applies upstream 61-77", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      Array.from({ length: 17 }, (_, index) => 61 + index),
+      Array.from({ length: 20 }, (_, index) => 61 + index),
     );
     assert.deepStrictEqual(yield* schemaNames(), EXPECTED_SCHEMA_NAMES);
     yield* assertNormalized(61);
   }),
 );
 
-freshDatabase("moves fork rows 63-70 to 78-85 and applies upstream 63-77", () =>
+freshDatabase("moves fork rows 63-70 to 81-88 and applies upstream 63-80", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* runMigrations({ toMigrationInclusive: 60 });
@@ -123,13 +125,13 @@ freshDatabase("moves fork rows 63-70 to 78-85 and applies upstream 63-77", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      Array.from({ length: 15 }, (_, index) => 63 + index),
+      Array.from({ length: 18 }, (_, index) => 63 + index),
     );
     yield* assertNormalized(63);
   }),
 );
 
-freshDatabase("moves fork rows 68-75 to 78-85 and applies upstream 68-77", () =>
+freshDatabase("moves fork rows 68-75 to 81-88 and applies upstream 68-80", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     // A fork database as the v0.1.1 ledger fix left it: upstream 1-67 are
@@ -143,14 +145,14 @@ freshDatabase("moves fork rows 68-75 to 78-85 and applies upstream 68-77", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      Array.from({ length: 10 }, (_, index) => 68 + index),
+      Array.from({ length: 13 }, (_, index) => 68 + index),
     );
     assert.deepStrictEqual(yield* schemaNames(), EXPECTED_SCHEMA_NAMES);
     yield* assertNormalized(68);
   }),
 );
 
-freshDatabase("moves fork rows 70-77 to 78-85 and applies upstream 70-77", () =>
+freshDatabase("moves fork rows 70-77 to 81-88 and applies upstream 70-80", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     // A fork database as the v0.1.3 sync left it: upstream 1-69 are recorded,
@@ -164,9 +166,32 @@ freshDatabase("moves fork rows 70-77 to 78-85 and applies upstream 70-77", () =>
     const ran = yield* runMigrations();
     assert.deepStrictEqual(
       ran.map(([id]) => id),
-      Array.from({ length: 8 }, (_, index) => 70 + index),
+      Array.from({ length: 11 }, (_, index) => 70 + index),
     );
     assert.deepStrictEqual(yield* schemaNames(), EXPECTED_SCHEMA_NAMES);
     yield* assertNormalized(70);
+  }),
+);
+
+freshDatabase("moves fork rows 78-85 to 81-88 and applies upstream 78-80", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    // A fork database as the v0.1.6 sync left it: upstream 1-77 are recorded,
+    // and the fork block sits on 78-85.
+    yield* runMigrations({ toMigrationInclusive: 77 });
+    for (const [, migration] of FORK_MIGRATIONS) yield* migration;
+    for (const [id, name] of forkLedger(78)) {
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
+    }
+
+    const ran = yield* runMigrations();
+    assert.deepStrictEqual(
+      ran.map(([id]) => id),
+      [78, 79, 80],
+    );
+    assert.deepStrictEqual(yield* schemaNames(), EXPECTED_SCHEMA_NAMES);
+    const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(scheduled_tasks)`;
+    assert.isTrue(columns.some((column) => column.name === "thread_mode"));
+    yield* assertNormalized(78);
   }),
 );

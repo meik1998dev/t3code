@@ -19,11 +19,14 @@ import ExcludeAttachmentPlaceholdersFromSearch from "./Migrations/074_ExcludeAtt
 import SubagentDeliveryState from "./Migrations/075_SubagentDeliveryState.ts";
 import ProjectionProjectsPinArchive from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import RepairBooleanSettledOverride from "./Migrations/077_RepairBooleanSettledOverride.ts";
+import DropOrchestrationEventCorrelationIndex from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
+import DelegatedRecoveryIndexes from "./Migrations/079_DelegatedRecoveryIndexes.ts";
+import ScheduledTaskThreadMode from "./Migrations/080_ScheduledTaskThreadMode.ts";
 
 // The runner only runs ids above the highest recorded one, so every upstream
 // migration numbered below the fork's block was skipped on a fork database.
 // Each sync that takes upstream numbers again adds a generation here.
-// Generations: 61-68, 63-70, 68-75, 70-77, now 78-85. See FORK.md "Migrations".
+// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, now 81-88. See FORK.md "Migrations".
 const FORK_NAMES = [
   "RepairUpstreamMigrationsAfterFork",
   "RepairThreadTitleStateColumn",
@@ -34,7 +37,7 @@ const FORK_NAMES = [
   "RepairThreadAutoSettleColumn",
   "RepairUpstream57To60AfterFork",
 ] as const;
-const FORK_FIRST_ID = 78;
+const FORK_FIRST_ID = 81;
 const FORK_OLDEST_GENERATION_ID = 61;
 
 /**
@@ -215,6 +218,29 @@ export const reconcileForkMigrationLedger = Effect.fn("reconcileForkMigrationLed
       if (!recorded.has("RepairBooleanSettledOverride")) {
         yield* RepairBooleanSettledOverride;
         applied.push([77, "RepairBooleanSettledOverride"]);
+      }
+      // 78 drops its index with IF EXISTS, so it is safe to replay.
+      if (!recorded.has("DropOrchestrationEventCorrelationIndex")) {
+        yield* DropOrchestrationEventCorrelationIndex;
+        applied.push([78, "DropOrchestrationEventCorrelationIndex"]);
+      }
+      if (!recorded.has("DelegatedRecoveryIndexes")) {
+        const index = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'index'
+              AND name = 'orchestration_v2_projection_threads_subagent_result_idx'
+          `;
+        if (index.length === 0) yield* DelegatedRecoveryIndexes;
+        applied.push([79, "DelegatedRecoveryIndexes"]);
+      }
+      if (!recorded.has("ScheduledTaskThreadMode")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(scheduled_tasks)
+          `;
+        if (!columns.some((column) => column.name === "thread_mode")) {
+          yield* ScheduledTaskThreadMode;
+        }
+        applied.push([80, "ScheduledTaskThreadMode"]);
       }
 
       // Highest id first so each move lands on an id the block released.
