@@ -80,14 +80,17 @@ import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSea
 import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
-import Migration0078 from "./Migrations/078_RepairUpstreamMigrationsAfterFork.ts";
-import Migration0079 from "./Migrations/079_RepairThreadTitleStateColumn.ts";
-import Migration0080 from "./Migrations/080_RepairOrchestrationV2AfterFork.ts";
-import Migration0081 from "./Migrations/081_ProjectionThreadsParentThreadId.ts";
-import Migration0082 from "./Migrations/082_RepairThreadBranchPullRequestColumn.ts";
-import Migration0083 from "./Migrations/083_RepairPullRequestFilesViewedTable.ts";
-import Migration0084 from "./Migrations/084_RepairThreadAutoSettleColumn.ts";
-import Migration0085 from "./Migrations/085_RepairUpstream57To60AfterFork.ts";
+import Migration0078 from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
+import Migration0079 from "./Migrations/079_DelegatedRecoveryIndexes.ts";
+import Migration0080 from "./Migrations/080_ScheduledTaskThreadMode.ts";
+import Migration0081 from "./Migrations/081_RepairUpstreamMigrationsAfterFork.ts";
+import Migration0082 from "./Migrations/082_RepairThreadTitleStateColumn.ts";
+import Migration0083 from "./Migrations/083_RepairOrchestrationV2AfterFork.ts";
+import Migration0084 from "./Migrations/084_ProjectionThreadsParentThreadId.ts";
+import Migration0085 from "./Migrations/085_RepairThreadBranchPullRequestColumn.ts";
+import Migration0086 from "./Migrations/086_RepairPullRequestFilesViewedTable.ts";
+import Migration0087 from "./Migrations/087_RepairThreadAutoSettleColumn.ts";
+import Migration0088 from "./Migrations/088_RepairUpstream57To60AfterFork.ts";
 import { reconcileForkMigrationLedger } from "./reconcileForkMigrationLedger.ts";
 
 const migrationEntries = [
@@ -169,16 +172,19 @@ const migrationEntries = [
   [75, "SubagentDeliveryState", Migration0075],
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "RepairBooleanSettledOverride", Migration0077],
-  // Spindle fork migrations, recorded at 61-68, 63-70, 68-75 or 70-77 by earlier syncs.
+  [78, "DropOrchestrationEventCorrelationIndex", Migration0078],
+  [79, "DelegatedRecoveryIndexes", Migration0079],
+  [80, "ScheduledTaskThreadMode", Migration0080],
+  // Spindle fork migrations, recorded at 61-68, 63-70, 68-75, 70-77 or 78-85 by earlier syncs.
   // reconcileForkMigrationLedger moves those rows here. See FORK.md "Migrations".
-  [78, "RepairUpstreamMigrationsAfterFork", Migration0078],
-  [79, "RepairThreadTitleStateColumn", Migration0079],
-  [80, "RepairOrchestrationV2AfterFork", Migration0080],
-  [81, "ProjectionThreadsParentThreadId", Migration0081],
-  [82, "RepairThreadBranchPullRequestColumn", Migration0082],
-  [83, "RepairPullRequestFilesViewedTable", Migration0083],
-  [84, "RepairThreadAutoSettleColumn", Migration0084],
-  [85, "RepairUpstream57To60AfterFork", Migration0085],
+  [81, "RepairUpstreamMigrationsAfterFork", Migration0081],
+  [82, "RepairThreadTitleStateColumn", Migration0082],
+  [83, "RepairOrchestrationV2AfterFork", Migration0083],
+  [84, "ProjectionThreadsParentThreadId", Migration0084],
+  [85, "RepairThreadBranchPullRequestColumn", Migration0085],
+  [86, "RepairPullRequestFilesViewedTable", Migration0086],
+  [87, "RepairThreadAutoSettleColumn", Migration0087],
+  [88, "RepairUpstream57To60AfterFork", Migration0088],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
