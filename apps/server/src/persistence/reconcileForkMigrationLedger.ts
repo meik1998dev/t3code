@@ -22,11 +22,26 @@ import RepairBooleanSettledOverride from "./Migrations/077_RepairBooleanSettledO
 import DropOrchestrationEventCorrelationIndex from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
 import DelegatedRecoveryIndexes from "./Migrations/079_DelegatedRecoveryIndexes.ts";
 import ScheduledTaskThreadMode from "./Migrations/080_ScheduledTaskThreadMode.ts";
+import ProjectionMessageSearchText from "./Migrations/081_ProjectionMessageSearchText.ts";
+import TurnItemConversationIndex from "./Migrations/082_TurnItemConversationIndex.ts";
+import CommandReadIndexes from "./Migrations/083_CommandReadIndexes.ts";
+import LastExecutedRunIndex from "./Migrations/084_LastExecutedRunIndex.ts";
+import TurnItemCounts from "./Migrations/085_TurnItemCounts.ts";
+import QueuedTurnInputIndex from "./Migrations/086_QueuedTurnInputIndex.ts";
+import ProjectionProjectsCustomTitle from "./Migrations/087_ProjectionProjectsCustomTitle.ts";
+import TurnItemTypeStatusIndex from "./Migrations/088_TurnItemTypeStatusIndex.ts";
+import ShellThreadReadIndexes from "./Migrations/089_ShellThreadReadIndexes.ts";
+import AuthConnectDevices from "./Migrations/090_AuthConnectDevices.ts";
+import AuthConnectDeniedRequests from "./Migrations/091_AuthConnectDeniedRequests.ts";
+import QueuedTurnInputIndexJsonValid from "./Migrations/092_QueuedTurnInputIndexJsonValid.ts";
+import ProviderTurnAttemptIndex from "./Migrations/093_ProviderTurnAttemptIndex.ts";
+import TurnItemMessageOrdinalIndex from "./Migrations/094_TurnItemMessageOrdinalIndex.ts";
+import TurnItemInlineWorkOutput from "./Migrations/095_TurnItemInlineWorkOutput.ts";
 
 // The runner only runs ids above the highest recorded one, so every upstream
 // migration numbered below the fork's block was skipped on a fork database.
 // Each sync that takes upstream numbers again adds a generation here.
-// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, now 81-88. See FORK.md "Migrations".
+// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, 81-88. See FORK.md "Migrations".
 const FORK_NAMES = [
   "RepairUpstreamMigrationsAfterFork",
   "RepairThreadTitleStateColumn",
@@ -37,7 +52,7 @@ const FORK_NAMES = [
   "RepairThreadAutoSettleColumn",
   "RepairUpstream57To60AfterFork",
 ] as const;
-const FORK_FIRST_ID = 81;
+const FORK_FIRST_ID = 96;
 const FORK_OLDEST_GENERATION_ID = 61;
 
 /**
@@ -241,6 +256,93 @@ export const reconcileForkMigrationLedger = Effect.fn("reconcileForkMigrationLed
           yield* ScheduledTaskThreadMode;
         }
         applied.push([80, "ScheduledTaskThreadMode"]);
+      }
+      // 81 and 95 add their column with a bare ALTER TABLE, so each checks for it first.
+      if (!recorded.has("ProjectionMessageSearchText")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(orchestration_v2_projection_messages)
+          `;
+        if (!columns.some((column) => column.name === "search_text")) {
+          yield* ProjectionMessageSearchText;
+        }
+        applied.push([81, "ProjectionMessageSearchText"]);
+      }
+      // 82, 83, 84, 88, 89 and 94 create their indexes with IF NOT EXISTS, 92 drops first,
+      // and 87, 90 and 91 check for what they change. All are safe to run again.
+      if (!recorded.has("TurnItemConversationIndex")) {
+        yield* TurnItemConversationIndex;
+        applied.push([82, "TurnItemConversationIndex"]);
+      }
+      if (!recorded.has("CommandReadIndexes")) {
+        yield* CommandReadIndexes;
+        applied.push([83, "CommandReadIndexes"]);
+      }
+      if (!recorded.has("LastExecutedRunIndex")) {
+        yield* LastExecutedRunIndex;
+        applied.push([84, "LastExecutedRunIndex"]);
+      }
+      // 85 creates its table and triggers without IF NOT EXISTS.
+      if (!recorded.has("TurnItemCounts")) {
+        const table = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'orchestration_v2_projection_turn_item_counts'
+          `;
+        if (table.length === 0) yield* TurnItemCounts;
+        applied.push([85, "TurnItemCounts"]);
+      }
+      // 86 and 93 create their indexes without IF NOT EXISTS.
+      if (!recorded.has("QueuedTurnInputIndex")) {
+        const index = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_queued_input_idx'
+          `;
+        if (index.length === 0) yield* QueuedTurnInputIndex;
+        applied.push([86, "QueuedTurnInputIndex"]);
+      }
+      if (!recorded.has("ProjectionProjectsCustomTitle")) {
+        yield* ProjectionProjectsCustomTitle;
+        applied.push([87, "ProjectionProjectsCustomTitle"]);
+      }
+      if (!recorded.has("TurnItemTypeStatusIndex")) {
+        yield* TurnItemTypeStatusIndex;
+        applied.push([88, "TurnItemTypeStatusIndex"]);
+      }
+      if (!recorded.has("ShellThreadReadIndexes")) {
+        yield* ShellThreadReadIndexes;
+        applied.push([89, "ShellThreadReadIndexes"]);
+      }
+      if (!recorded.has("AuthConnectDevices")) {
+        yield* AuthConnectDevices;
+        applied.push([90, "AuthConnectDevices"]);
+      }
+      if (!recorded.has("AuthConnectDeniedRequests")) {
+        yield* AuthConnectDeniedRequests;
+        applied.push([91, "AuthConnectDeniedRequests"]);
+      }
+      if (!recorded.has("QueuedTurnInputIndexJsonValid")) {
+        yield* QueuedTurnInputIndexJsonValid;
+        applied.push([92, "QueuedTurnInputIndexJsonValid"]);
+      }
+      if (!recorded.has("ProviderTurnAttemptIndex")) {
+        const index = yield* sql`
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'index' AND name = 'orchestration_v2_projection_provider_turns_attempt_idx'
+          `;
+        if (index.length === 0) yield* ProviderTurnAttemptIndex;
+        applied.push([93, "ProviderTurnAttemptIndex"]);
+      }
+      if (!recorded.has("TurnItemMessageOrdinalIndex")) {
+        yield* TurnItemMessageOrdinalIndex;
+        applied.push([94, "TurnItemMessageOrdinalIndex"]);
+      }
+      if (!recorded.has("TurnItemInlineWorkOutput")) {
+        const columns = yield* sql<{ readonly name: string }>`
+            PRAGMA table_info(orchestration_v2_projection_turn_items)
+          `;
+        if (!columns.some((column) => column.name === "inline_work_output")) {
+          yield* TurnItemInlineWorkOutput;
+        }
+        applied.push([95, "TurnItemInlineWorkOutput"]);
       }
 
       // Highest id first so each move lands on an id the block released.

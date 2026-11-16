@@ -5,7 +5,7 @@ import type {
   DesktopBridge,
 } from "@t3tools/contracts";
 
-interface BrowserIdentity {
+export interface BrowserIdentity {
   readonly userAgent: string;
   readonly platform: string;
   readonly maxTouchPoints: number;

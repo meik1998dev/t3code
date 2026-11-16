@@ -1,7 +1,7 @@
 import type { OrchestrationV2ThreadProjection, ThreadId } from "@t3tools/contracts";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { HttpClient } from "effect/http";
 import type { Atom } from "effect/reactivity";
@@ -20,9 +20,10 @@ import { createEnvironmentCommand } from "./runtime.ts";
 // Long enough for a slow but alive server to finish; a cold open has no fallback for older pages.
 const DEFAULT_FULL_THREAD_SNAPSHOT_TIMEOUT_MS = 20_000;
 
-class FullThreadHistoryError extends Data.TaggedError("FullThreadHistoryError")<{
-  readonly message: string;
-}> {}
+class FullThreadHistoryError extends Schema.TaggedError<FullThreadHistoryError>()(
+  "FullThreadHistoryError",
+  { message: Schema.String },
+) {}
 
 const fetchFullThreadSnapshot = Effect.fn("fullThreadHistory.fetchSnapshot")(function* (input: {
   readonly prepared: PreparedConnection;

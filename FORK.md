@@ -4,7 +4,7 @@ This fork (`meik1998dev/t3code`) carries changes on top of upstream `pingdotgg/t
 Read this before every upstream sync. Update it in the same PR as any fork change.
 
 - Upstream remote: `pingdotgg`. Fork remote: `origin`.
-- Last synced upstream commit: `4f0b74e190` (2026-11-09, `feat(web): first run is one Welcome page instead of a 3-step wizard`, v0.1.7).
+- Last synced upstream commit: `70abb6c002` (2026-11-15, `fix(azure-devops): pull request titles like @notes.txt are saved as typed`, v0.1.10).
 - Fork commits since that sync: `git log --first-parent pingdotgg/main..origin/main`.
 
 Each entry says what the change does, which files carry it, how to check it after a sync,
@@ -30,33 +30,38 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If upstream and the fork both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This happened with upstream 48, 50–53, 54, 57–60, 68–69, 70–77 and 78–80. The repair migrations below
+This happened with upstream 48, 50–53, 54, 57–60, 68–69, 70–77, 78–80 and 81–95. The repair migrations below
 and `reconcileForkMigrationLedger.ts` make both upgrade paths safe.
 
 Fork migrations today:
 
 | Number | File                                         | From          |
 | ------ | -------------------------------------------- | ------------- |
-| 81     | `081_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
-| 82     | `082_RepairThreadTitleStateColumn.ts`        | Sync repair   |
-| 83     | `083_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
-| 84     | `084_ProjectionThreadsParentThreadId.ts`     | Agent threads |
-| 85     | `085_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
-| 86     | `086_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
-| 87     | `087_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
-| 88     | `088_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
+| 96     | `096_RepairUpstreamMigrationsAfterFork.ts`   | Sync repair   |
+| 97     | `097_RepairThreadTitleStateColumn.ts`        | Sync repair   |
+| 98     | `098_RepairOrchestrationV2AfterFork.ts`      | Sync repair   |
+| 99     | `099_ProjectionThreadsParentThreadId.ts`     | Agent threads |
+| 100    | `100_RepairThreadBranchPullRequestColumn.ts` | Sync repair   |
+| 101    | `101_RepairPullRequestFilesViewedTable.ts`   | Sync repair   |
+| 102    | `102_RepairThreadAutoSettleColumn.ts`        | Sync repair   |
+| 103    | `103_RepairUpstream57To60AfterFork.ts`       | Sync repair   |
 
-Upstream owns 1–80. Since upstream added a startup check (`assertV2MigrationsCanRun` in
+Upstream owns 1–95. Since upstream added a startup check (`assertV2MigrationsCanRun` in
 `Migrations.ts`), a recorded name that differs from this build's name at the same id (55 and
 up) stops the server. A repair migration cannot fix that, because the check runs before any
 migration. So a clash is fixed by `reconcileForkMigrationLedger.ts`, which runs before the
-check: it normalises the fork block onto 81–88 wherever an earlier generation recorded it (61–68
+check: it normalises the fork block onto 96–103 wherever an earlier generation recorded it (61–68
 from the v0.0.46 sync, 63–70 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix, 70–77 from
-the v0.1.3 sync, 78–85 from the v0.1.6 sync), and applies the upstream migrations that generation skipped, safely twice.
+the v0.1.3 sync, 78–85 from the v0.1.6 sync, 81–88 from the v0.1.7 sync), and applies the upstream migrations that generation skipped, safely twice.
 Nothing runs twice, and the ledger then matches a fresh database. Fresh databases run upstream
-1–80 and the fork's 81–88 do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are
+1–95 and the fork's 96–103 do nothing harmful. Older ledgers (fork block at 50–54 or 55–60) are
 left to the migrator and the startup check, because the replays need the V2 tables those
 ledgers do not have yet.
+The v0.1.10 sync added upstream 81–95 (message search text, turn-item conversation, count,
+ordinal and type/status indexes, command read indexes, last-executed run, queued-turn input
+indexes and their JSON repair, project custom title, shell thread read indexes, auth connect
+devices and denied requests, provider turn attempt, and inline work output) and moved the block
+from 81–88 to 96–103.
 The v0.1.7 sync added upstream 78–80 (drop the unused event correlation index, delegated
 recovery indexes, scheduled-task thread mode) and moved the block from 78–85 to 81–88.
 The v0.1.6 sync added upstream 70–77 (peer links and their fence, waiting-link and active-turn
@@ -67,11 +72,11 @@ the 4.6 GB Mac database).
 Older history: the v0.1.1 sync added upstream 63–67 (drop unused V1 projections, canonicalise
 thread PR links, Codex usage index, settled-timestamp repair, webhook dedupe) below the fork's
 block, and moved the block from 63–70 to 68–75. The v0.0.46 sync moved the fork's old 57–60 up.
-Under today's numbers: 88 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
-missing) and 58–60, and 83 runs upstream 55 (only when `orchestration_v2_events` is missing)
-and upstream 56. Both rename ledger rows to upstream's names. 87 reruns upstream 54, 86 replays
-upstream 53, 82 adds `title_state_json` for databases that recorded the fork's own 52, and 81
-reapplies upstream 50–51 for databases that recorded the fork's old 50–54. 84 keeps
+Under today's numbers: 103 runs upstream 57 (only when `scheduled_tasks.webhook_token` is
+missing) and 58–60, and 98 runs upstream 55 (only when `orchestration_v2_events` is missing)
+and upstream 56. Both rename ledger rows to upstream's names. 102 reruns upstream 54, 101 replays
+upstream 53, 97 adds `title_state_json` for databases that recorded the fork's own 52, and 96
+reapplies upstream 50–51 for databases that recorded the fork's old 50–54. 99 keeps
 `projection_threads.parent_thread_id`; the v1 thread importer
 (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) maps it to `createdBy: "agent"` when old
 threads are copied into the new orchestrator on first start. Databases still on a ledger from
@@ -108,7 +113,7 @@ Many fork entries touch these files. Expect conflicts here on each sync.
 
 ## Remote server (VPS) deploy
 
-The fork's server side (GitHub account per repo, agent ports, and repair migrations 81–88)
+The fork's server side (GitHub account per repo, agent ports, and repair migrations 96–103)
 only runs on a machine that has the **fork build**. Every path that
 installs a server for you pulls **upstream** `t3` from npm instead: `npx t3 …`,
 `t3 service install|update`, and the desktop "SSH environment" mode. Upstream looks the
@@ -179,7 +184,7 @@ Move it into `scripts/` when it stabilises.
   missing (service restarting, or an old copy deleted it on exit) it starts upstream
   `npx t3 serve` on 3774 in the same `~/.t3`, which then hijacks the T3 Connect tunnel too.
   Restart order: quit the desktop app → `systemctl --user restart t3code` → reopen. Check
-  `ss -ltnp | grep 377` shows only 3773. See [Shared runtime state](#shared-runtime-state-and-refresh-direct-commit).
+  `ss -ltnp | grep 377` shows only 3773. See [Shared runtime state](#shared-runtime-state-direct-commit).
 - The service runs as **root**. Claude Code refuses Full access (`--dangerously-skip-permissions`)
   as root and exits, which surfaces as `turn/setPermissionMode failed` +
   `Claude runtime stream failed`. Fix: `IS_SANDBOX=1` in a systemd drop-in
@@ -191,7 +196,7 @@ Move it into `scripts/` when it stabilises.
   `$HOME/.claude/skills` is discovered a second time as a "project" root
   (`apps/server/src/provider/Drivers/ClaudeSkills.ts`). Possible fork fix: validate the field
   and show a warning in the provider card.
-- Database: migration 70 repairs databases that previously ran the fork's clashing 50–54
+- Database: migration 96 repairs databases that previously ran the fork's clashing 50–54
   sequence. Test upgrades on a snapshot before each deploy; see [Migrations](#migrations).
 - Check after each deploy: `~/.t3/userdata/logs/boot-service.log` prints "Spindle", the
   `$` picker lists user skills inside a worktree thread, and a repo with `gh.account` set
@@ -224,40 +229,31 @@ Host <hostname>.local
 ### OpenCode 2 cold model catalog (direct commit)
 
 - What: a cold managed OpenCode 2 server can take ~10 s to list models on a large data store, and
-  on the VPS it fails outright with `Location plugins did not finish activating`. Upstream's 5 s
-  loader timeout returned an empty catalog ("did not list any models"). The fork now connects to
-  the already-running `opencode serve --service` advertised in `$XDG_STATE_HOME/opencode/service.json`
-  (or `~/.local/state/opencode/service.json`) before spawning a managed server. The managed path
-  still waits 90 s, keeps the server warm for 5 minutes, and returns as soon as two reads agree.
+  on the VPS it fails outright with `Location plugins did not finish activating`. The fork connects
+  to the already-running `opencode serve --service` advertised in
+  `$XDG_STATE_HOME/opencode/service.json` (or `~/.local/state/opencode/service.json`) before
+  spawning a managed server; the managed path keeps its server warm for 5 minutes. Upstream owns
+  the catalog wait now, so the fork no longer patches `status.ts`.
 - Key files: `packages/provider-opencode/src/server/v2/OpenCode2Server.ts`
   (`discoverService`), `packages/provider-opencode/src/server/driver.ts` (provides `FileSystem`
-  and `Path`), `packages/provider-opencode/src/server/status.ts`
-  (`OPENCODE2_CATALOG_TIMEOUT`), `packages/provider-opencode/src/server/OpenCodeServerOwner.ts`
+  and `Path`), `packages/provider-opencode/src/server/OpenCodeServerOwner.ts`
   (`OPENCODE_SERVER_IDLE_TTL`).
 - Tests: `packages/provider-opencode/src/server/v2/OpenCode2Server.test.ts` (service discovery),
-  `packages/provider-opencode/src/server/status.test.ts` ("waits past five seconds for a cold
-  OpenCode 2 catalog"), `driver.test.ts` (empty-catalog recovery).
+  `packages/provider-opencode/src/server/driver.test.ts` (empty-catalog recovery).
 - Check: on the VPS, restart T3 and open Settings → Providers; OpenCode lists 69 models without a
   manual Refresh, even while its managed server would still be cold.
 - Drop when: upstream uses the already-running OpenCode service or fixes the managed cold start.
 
-### Shared runtime state and Refresh (direct commit)
+### Shared runtime state (direct commit)
 
-- What: two server fixes for a machine that runs the background service. (1) A server
-  removes `server-runtime.json` on shutdown only when the recorded pid is its own, so a
-  second server sharing `~/.t3` cannot erase the service's record. (2) A provider Refresh
-  drops the cached per-cwd `workspaceSnapshots`; the composer requests them again, so new
-  skills, plugins and commands show without a restart.
-- Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`),
-  `apps/server/src/provider/ProviderRegistry.ts` (`mergeProviderSnapshot`, and the `baseline`
-  compare in the per-cwd scan).
-- Tests: `apps/server/src/serverRuntimeState.test.ts`,
-  `apps/server/src/provider/ProviderRegistry.test.ts`.
-- Check: add a skill dir under `~/.claude/skills`, Settings → Providers → Refresh, open a
-  thread in that project, type `$` — the skill is listed. Restart the service while the
-  desktop SSH environment is connected: `ss -ltnp | grep 377` still shows only 3773.
-- Drop when: upstream guards the runtime-state clear by pid and invalidates workspace
-  snapshots on refresh.
+- What: a server removes `server-runtime.json` on shutdown only when the recorded pid is its
+  own, so a second server sharing `~/.t3` cannot erase the service's record on exit. Upstream
+  now invalidates per-cwd provider snapshots on Refresh, so the fork's old Refresh half is gone.
+- Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`).
+- Tests: `apps/server/src/serverRuntimeState.test.ts`.
+- Check: restart the service while the desktop T3 Connect environment is connected:
+  `ss -ltnp | grep 377` on the server still shows only 3773.
+- Drop when: upstream guards the runtime-state clear by pid.
 
 ### Agent thread tools (#37; on upstream's tools since v0.0.45)
 
@@ -285,8 +281,8 @@ Host <hostname>.local
   agent mark. Ask that child to start another thread; it gets `capability_denied`. Change routing
   notes in Settings and confirm `orchestrator_capabilities` returns the new text.
 - Drop when: upstream adds a depth limit and routing preferences of its own.
-- Sync note (v0.1.7): `agentContextBudget.json` `mcpToolListJsonBytes` is 48265 after the
-  routing-notes sentence (upstream is 48233). A sync grows it with upstream's text, so the PR needs
+- Sync note (v0.1.7): `agentContextBudget.json` `mcpToolListJsonBytes` is 49770 after the
+  routing-notes sentence (upstream is 49738). A sync grows it with upstream's text, so the PR needs
   the `agent-context-increase` label. Raise it only with the fork's addition; run the evals before cutting text.
 
 ### Local agent worktrees are not test inputs (direct commit)
@@ -557,6 +553,10 @@ Host <hostname>.local
   `clientInfo.name: "T3 Code"`, so Codex replay tests such as
   `OrchestratorMcpToolkit.integration.test.ts` fail on the fork with a frame mismatch. New
   upstream strings arrive as `T3 Code`; the fork renames them only where a sync conflicts.
+- Sync note (v0.1.10): the agent-started mark is `BotIcon` on web and `SymbolView name="robot"`
+  on mobile, because upstream's `t3code/no-sparkles-icon` lint rule bans Sparkles. Spindle also
+  shows up in `providerMaintenanceRunner` messages and `useOpenLocalWorkspace`'s add-project
+  error.
 
 ### Brand icons from one master SVG (direct commit)
 
