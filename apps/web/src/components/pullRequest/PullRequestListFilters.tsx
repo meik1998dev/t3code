@@ -530,6 +530,7 @@ function PullRequestProjectFilter({
   unavailable: ReadonlyMap<string, string>;
   onChange: (projects: ReadonlyArray<PullRequestProjectOption>) => void;
 }) {
+  const gt = useGT();
   const ordered = projects.toSorted(
     (left, right) =>
       Number(unavailable.has(pullRequestProjectKey(left))) -
@@ -538,10 +539,10 @@ function PullRequestProjectFilter({
   const picked = ordered.filter((project) => selected.has(pullRequestProjectKey(project)));
   const summary =
     picked.length === 0
-      ? "All"
+      ? gt("All", { $context: "every project" })
       : picked.length === 1
-        ? (picked[0]?.title ?? "All")
-        : `${picked.length} selected`;
+        ? (picked[0]?.title ?? gt("All", { $context: "every project" }))
+        : gt("{count} selected", { count: picked.length });
   return (
     <MenuSub>
       <MenuSubTrigger>
@@ -557,7 +558,7 @@ function PullRequestProjectFilter({
         ) : (
           <LayersIcon aria-hidden className="size-3.5" />
         )}
-        <span className="flex-1">Project</span>
+        <span className="flex-1">{gt("Project", { $context: "pull request filter" })}</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">{summary}</span>
       </MenuSubTrigger>
       <MenuSubPopup className="w-72">
@@ -569,11 +570,15 @@ function PullRequestProjectFilter({
           }}
         >
           <LayersIcon aria-hidden className="size-3.5" />
-          <span className="flex-1">All projects</span>
+          <span className="flex-1">
+            <T>All projects</T>
+          </span>
         </MenuItem>
         <MenuSeparator />
         {ordered.length === 0 ? (
-          <MenuItem disabled>No projects in this view</MenuItem>
+          <MenuItem disabled>
+            <T>No projects in this view</T>
+          </MenuItem>
         ) : (
           ordered.map((project) => {
             const key = pullRequestProjectKey(project);
@@ -597,7 +602,9 @@ function PullRequestProjectFilter({
                   <ProjectFavicon project={project} className="size-3.5" />
                   <span className="min-w-0 flex-1 truncate">{project.title}</span>
                   {reason ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      <T>Unavailable</T>
+                    </span>
                   ) : null}
                 </span>
               </MenuCheckboxItem>

@@ -3311,8 +3311,8 @@ export default function ChatView(props: ChatViewProps) {
     if (transcript === null) {
       toastManager.add({
         type: "error",
-        title: "Could not fork chat",
-        description: "The selected message is not in the saved chat history yet.",
+        title: gt("Could not fork chat"),
+        description: gt("The selected message is not in the saved chat history yet."),
       });
       return;
     }
@@ -3335,8 +3335,8 @@ export default function ChatView(props: ChatViewProps) {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: "Could not fork chat",
-          description: chatActionErrorMessage(error),
+          title: gt("Could not fork chat"),
+          description: chatActionErrorMessage(error, messages),
         });
       })
       .then(() => setIsForkingMessage(false));

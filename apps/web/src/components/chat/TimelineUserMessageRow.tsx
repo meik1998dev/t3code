@@ -1179,13 +1179,16 @@ function UserMessageIntentMarker({
 
 /** Fork: message actions menu with "Fork to new chat". */
 function MessageForkMenu({ messageId }: { messageId: MessageId }) {
+  const gt = useGT();
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
 
   return (
     <Menu>
       <MenuTrigger
-        render={<Button type="button" size="xs" variant="ghost" aria-label="Message actions" />}
+        render={
+          <Button type="button" size="xs" variant="ghost" aria-label={gt("Message actions")} />
+        }
       >
         <EllipsisIcon aria-hidden="true" className="size-3" />
       </MenuTrigger>
@@ -1194,7 +1197,7 @@ function MessageForkMenu({ messageId }: { messageId: MessageId }) {
           disabled={activity.isWorking || activity.isForkingMessage}
           onClick={() => ctx.onForkMessage(messageId)}
         >
-          Fork to new chat
+          <T>Fork to new chat</T>
         </MenuItem>
       </MenuPopup>
     </Menu>

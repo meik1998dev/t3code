@@ -1173,10 +1173,17 @@ export function resolveSidebarProjectScopeSelection(
 
 /** Trigger label for the project scope menu: the single project's name, a
     count when several are scoped, or the unscoped default. */
-export function formatSidebarProjectScopeLabel(scopedNames: readonly string[]): string {
-  if (scopedNames.length === 0) return "All projects";
+export function formatSidebarProjectScopeLabel(
+  scopedNames: readonly string[],
+  resolve: MessageResolver = m,
+): string {
+  if (scopedNames.length === 0) return resolve(msg("All projects"));
   if (scopedNames.length === 1) return scopedNames[0]!;
-  return `${scopedNames.length} projects`;
+  return resolve(
+    msg("{count, plural, one {{count} project} other {{count} projects}}", {
+      count: scopedNames.length,
+    }),
+  );
 }
 
 interface SidebarProjectScopeMenuState {

@@ -528,6 +528,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     const activity = startAgentLiveActivity(
       {
         text: agentActivityText(1, m),
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
         title: "Spindle",
         subtitle: m(msg("Agent work in progress")),
         activeCount: 1,

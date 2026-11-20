@@ -1120,14 +1120,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           render={
             <span
               role="img"
-              aria-label="Started by an agent"
+              aria-label={gt("Started by an agent")}
               className="inline-flex shrink-0 items-center text-muted-foreground/65"
             />
           }
         >
           <BotIcon aria-hidden className="size-3" />
         </TooltipTrigger>
-        <TooltipPopup side="top">Started by an agent</TooltipPopup>
+        <TooltipPopup side="top">
+          <T>Started by an agent</T>
+        </TooltipPopup>
       </Tooltip>
     ) : null;
 

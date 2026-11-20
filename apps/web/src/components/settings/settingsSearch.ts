@@ -873,9 +873,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "thread-routing-notes",
-    title: "Thread routing notes",
+    title: msg("Thread routing notes"),
     to: "/settings/general",
-    searchTerms: ["agent start threads model effort orchestrator routing choose pick"],
+    searchTerms: [msg("agent start threads model effort orchestrator routing choose pick")],
   },
   {
     id: "ghq-clone-layout",

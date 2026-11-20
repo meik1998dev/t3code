@@ -1991,12 +1991,14 @@ export function ThreadsSettingsPanel() {
         />
         <SettingsRow
           serverScoped
-          {...searchableSetting("thread-routing-notes")}
-          description="Tell agents which model and effort to use when they start threads. When empty, new threads use the project's default model, or the agent's own."
+          {...setting("thread-routing-notes")}
+          description={gt(
+            "Tell agents which model and effort to use when they start threads. When empty, new threads use the project's default model, or the agent's own.",
+          )}
           resetAction={
             settings.threadRoutingNotes !== DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes ? (
               <SettingResetButton
-                label="thread routing notes"
+                ariaLabel={gt("Reset thread routing notes to default")}
                 onClick={() =>
                   updateSettings({
                     threadRoutingNotes: DEFAULT_UNIFIED_SETTINGS.threadRoutingNotes,
@@ -2011,8 +2013,10 @@ export function ThreadsSettingsPanel() {
               size="sm"
               {...threadRoutingNotesDraft}
               maxLength={THREAD_ROUTING_NOTES_MAX_LENGTH}
-              placeholder="Fable: architecture, hard bugs. Soul: default. Flash: renames, docs."
-              aria-label="Thread routing notes"
+              placeholder={gt(
+                "Fable: architecture, hard bugs. Soul: default. Flash: renames, docs.",
+              )}
+              aria-label={gt("Thread routing notes")}
             />
           </div>
         </SettingsRow>

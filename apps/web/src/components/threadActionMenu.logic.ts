@@ -292,7 +292,11 @@ export function buildThreadActionMenuItems(
           icon: "message-square",
         },
         { id: "copy-thread-id", label: resolve(msg("Thread ID")), icon: "hash" },
-        { id: "copy-transcript", label: "Transcript", icon: "file-text" },
+        {
+          id: "copy-transcript",
+          label: resolve(msg("Transcript", { $context: "copy the full thread transcript" })),
+          icon: "file-text",
+        },
       ],
     },
     { id: "project-settings", label: resolve(msg("Project settings")), icon: "settings" },

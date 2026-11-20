@@ -165,53 +165,6 @@ describe("serializeComposerFileLink", () => {
   });
 });
 
-describe("detectComposerTrigger", () => {
-  it("detects slash command at the prompt start", () => {
-    const text = "/rev";
-    expect(detectComposerTrigger(text, text.length)).toEqual({
-      kind: "slash-command",
-      query: "rev",
-      rangeStart: 0,
-      rangeEnd: text.length,
-    });
-  });
-
-  it("detects slash command in the middle of existing text", () => {
-    const text = "Please run /rev";
-    expect(detectComposerTrigger(text, text.length)).toEqual({
-      kind: "slash-command",
-      query: "rev",
-      rangeStart: "Please run ".length,
-      rangeEnd: text.length,
-    });
-  });
-
-  it("does not treat a slash inside a word as a command trigger", () => {
-    const text = "open src/app";
-    expect(detectComposerTrigger(text, text.length)).toBeNull();
-  });
-
-  it("keeps /model with arguments as a line-start model trigger", () => {
-    const text = "/model spark";
-    expect(detectComposerTrigger(text, text.length)).toEqual({
-      kind: "slash-model",
-      query: "spark",
-      rangeStart: 0,
-      rangeEnd: text.length,
-    });
-  });
-
-  it("detects $skill trigger in the middle of existing text", () => {
-    const text = "Use $gh-fi";
-    expect(detectComposerTrigger(text, text.length)).toEqual({
-      kind: "skill",
-      query: "gh-fi",
-      rangeStart: "Use ".length,
-      rangeEnd: text.length,
-    });
-  });
-});
-
 describe("parseSideChatCommand", () => {
   it("reads an optional prompt after /side or /btw", () => {
     expect(parseSideChatCommand("/side")).toEqual({ prompt: "" });

@@ -12,7 +12,7 @@ const preferences = {
   involvement: "reviewing",
   state: "open",
   environmentId: EnvironmentId.make("remote"),
-  projectId: ProjectId.make("project"),
+  projectIds: [ProjectId.make("project")],
   host: "github.example.com",
   q: "label:bug authentication",
   draft: "hide",

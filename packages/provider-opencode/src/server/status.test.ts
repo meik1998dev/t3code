@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
+import * as TestClock from "effect/testing/TestClock";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { beforeEach } from "vite-plus/test";

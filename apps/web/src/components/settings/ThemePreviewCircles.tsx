@@ -59,6 +59,7 @@ const STANDARD_THEME_PREVIEW_COLORS: Record<
 export const STANDARD_THEME_CARDS: ReadonlyArray<ThemeCardDefinition> = [
   {
     id: "default",
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
     label: "Spindle",
     previews: (["light", "dark"] as const).map((mode) => ({
       mode,
