@@ -355,17 +355,12 @@ export const mergeProviderSnapshot = (
         modelsPending: true,
       }));
   const nextWorkspaceSnapshots = nextProvider.workspaceSnapshots;
-  // Fork: a fresh probe (new checkedAt) without folder snapshots drops the old ones, so a Refresh
-  // shows new skills; a lost snapshot makes the client rescan that folder at once.
-  const freshProbeDropsFolders =
-    nextWorkspaceSnapshots === undefined && nextProvider.checkedAt !== previousProvider.checkedAt;
   // A provider reports only folders its own sessions saw, so registry scans of other folders stay.
-  const workspaceSnapshots = freshProbeDropsFolders
-    ? undefined
-    : nextWorkspaceSnapshots === undefined ||
-        !nextProvider.enabled ||
-        nextProvider.auth.status === "unauthenticated" ||
-        (!nextProvider.installed && nextProvider.status === "error")
+  const workspaceSnapshots =
+    nextWorkspaceSnapshots === undefined ||
+    !nextProvider.enabled ||
+    nextProvider.auth.status === "unauthenticated" ||
+    (!nextProvider.installed && nextProvider.status === "error")
       ? (nextWorkspaceSnapshots ?? previousWorkspaceSnapshots)
       : [
           ...(previousWorkspaceSnapshots ?? []).filter(

@@ -16,7 +16,6 @@ import {
   findScopedProject,
   mergePullRequestLists,
   pullRequestEntryKey,
-  pullRequestEnvironmentSetKey,
   groupPullRequestsByInvolvement,
   matchesPullRequestFilters,
   matchesPullRequestQuery,

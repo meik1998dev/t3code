@@ -224,7 +224,7 @@ const migrationEntries = [
   [100, "TurnStartReadIndexes", Migration0100],
   [101, "DelegatedTaskReadIndexes", Migration0101],
   [102, "ThreadItemCounts", Migration0102],
-  // Spindle fork migrations, recorded at 61-68, 63-70, 68-75, 70-77, 78-85 or 81-88 by earlier
+  // Spindle fork migrations, recorded at 61-68 up to 96-103 by earlier
   // syncs. reconcileForkMigrationLedger drops those rows so these run again. See FORK.md "Migrations".
   [103, "RepairUpstreamMigrationsAfterFork", Migration0103],
   [104, "RepairThreadTitleStateColumn", Migration0104],

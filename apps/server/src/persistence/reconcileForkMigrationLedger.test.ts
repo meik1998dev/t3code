@@ -217,3 +217,23 @@ freshDatabase("moves fork rows 81-88 to 103-110 and applies upstream 81-102", ()
     yield* assertNormalized(81);
   }),
 );
+
+freshDatabase("moves fork rows 96-103 to 103-110 and applies upstream 96-102", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    // A fork database as the v0.1.10 sync left it: upstream 1-95 are recorded,
+    // and the fork block sits on 96-103.
+    yield* runMigrations({ toMigrationInclusive: 95 });
+    for (const [, migration] of FORK_MIGRATIONS) yield* migration;
+    for (const [id, name] of forkLedger(96)) {
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
+    }
+
+    const ran = yield* runMigrations();
+    assert.deepStrictEqual(
+      ran.map(([id]) => id),
+      Array.from({ length: 15 }, (_, index) => 96 + index),
+    );
+    yield* assertNormalized(96);
+  }),
+);

@@ -1,7 +1,7 @@
 # Antigravity
 
 Spindle runs Google's official Antigravity ACP agent on your selected environment.
-T3 manages its own CLI installation and sign-in, separate from your terminal or IDE. Google controls
+Spindle manages its own CLI installation and sign-in, separate from your terminal or IDE. Google controls
 which models and account access are available through this agent.
 
 ## Set up Antigravity

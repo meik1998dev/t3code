@@ -30,7 +30,7 @@ One-time setup per clone: `git config rerere.enabled true && git config rerere.a
 
 The migration runner tracks migrations by number only. If upstream and the fork both use a
 number, a database that already ran the fork migration skips the upstream one without an error.
-This happened with upstream 48, 50–53, 54, 57–60, 68–69, 70–77, 78–80 and 81–88. The repair migrations below
+This happened with upstream 48, 50–53, 54, 57–60, 68–69, 70–77, 78–80, 81–95 and 96–102. The repair migrations below
 and `reconcileForkMigrationLedger.ts` make both upgrade paths safe.
 
 Fork migrations today:
@@ -52,7 +52,7 @@ up) stops the server. A repair migration cannot fix that, because the check runs
 migration. So a clash is fixed by `reconcileForkMigrationLedger.ts`, which runs before the
 check. Wherever an earlier generation recorded the fork block (61–68 from the v0.0.46 sync, 63–70
 from the v0.1.1 sync, 68–75 from the v0.1.1 ledger fix, 70–77 from the v0.1.3 sync, 78–85 from
-the v0.1.6 sync, 81–88 from the v0.1.7 sync), it replays the upstream 61–80 migrations that
+the v0.1.6 sync, 81–88 from the v0.1.7 sync, 96–103 from the v0.1.10 sync), it replays the upstream 61–80 migrations that
 generation skipped, safely twice, and **deletes** the fork rows. The runner then applies upstream
 81–102 normally (one transaction each) and the fork block again at 103–110, which is safe because
 every fork migration is idempotent. The ledger then matches a fresh database. Fresh databases run
@@ -61,9 +61,14 @@ Since the v0.1.11 sync, prefer that delete-and-rerun shape over replaying new up
 inside the reconcile: upstream's own runner gives each migration its own transaction and progress log. Older ledgers (fork block at 50–54 or 55–60) are
 left to the migrator and the startup check, because the replays need the V2 tables those
 ledgers do not have yet.
-The v0.1.11 sync added upstream 81–102 (message search text, turn item and command read indexes,
-item counts, queued input indexes, project custom titles, T3 Connect device approval tables,
-issue tracker bindings, and more) and moved the block from 81–88 to 103–110.
+The v0.1.11 sync added upstream 96–102 (stale title regeneration repair, issue tracker bindings,
+active shell, background recovery, turn start and delegated task read indexes, thread item
+counts) and moved the block from 96–103 to 103–110.
+The v0.1.10 sync added upstream 81–95 (message search text, turn-item conversation, count,
+ordinal and type/status indexes, command read indexes, last-executed run, queued-turn input
+indexes and their JSON repair, project custom title, shell thread read indexes, auth connect
+devices and denied requests, provider turn attempt, and inline work output) and moved the block
+from 81–88 to 96–103.
 The v0.1.7 sync added upstream 78–80 (drop the unused event correlation index, delegated
 recovery indexes, scheduled-task thread mode) and moved the block from 78–85 to 81–88.
 The v0.1.6 sync added upstream 70–77 (peer links and their fence, waiting-link and active-turn
@@ -186,7 +191,7 @@ Move it into `scripts/` when it stabilises.
   missing (service restarting, or an old copy deleted it on exit) it starts upstream
   `npx t3 serve` on 3774 in the same `~/.t3`, which then hijacks the T3 Connect tunnel too.
   Restart order: quit the desktop app → `systemctl --user restart t3code` → reopen. Check
-  `ss -ltnp | grep 377` shows only 3773. See [Shared runtime state](#shared-runtime-state-and-refresh-direct-commit).
+  `ss -ltnp | grep 377` shows only 3773. See [Shared runtime state](#shared-runtime-state-direct-commit).
 - The service runs as **root**. Claude Code refuses Full access (`--dangerously-skip-permissions`)
   as root and exits, which surfaces as `turn/setPermissionMode failed` +
   `Claude runtime stream failed`. Fix: `IS_SANDBOX=1` in a systemd drop-in
@@ -247,27 +252,16 @@ Host <hostname>.local
   manual Refresh.
 - Drop when: upstream uses the already-running OpenCode service.
 
-### Shared runtime state and Refresh (direct commit)
+### Shared runtime state (direct commit)
 
-- What: two server fixes for a machine that runs the background service. (1) A server
-  removes `server-runtime.json` on shutdown only when the recorded pid is its own, so a
-  second server sharing `~/.t3` cannot erase the service's record. (2) A provider Refresh
-  drops the cached per-cwd `workspaceSnapshots`; the composer requests them again, so new
-  skills, plugins and commands show without a restart.
-- Sync note (v0.1.11): upstream keeps folder snapshots across machine refreshes and rescans them
-  from SessionStart hooks (`workspaceRescannedAt`). The fork now drops them only when a probe has a
-  new `checkedAt` (`freshProbeDropsFolders` in `mergeProviderSnapshot`), so upstream's rescan
-  tests and the fork's Refresh test both pass.
-- Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`),
-  `apps/server/src/provider/ProviderRegistry.ts` (`mergeProviderSnapshot`, and the `baseline`
-  compare in the per-cwd scan).
-- Tests: `apps/server/src/serverRuntimeState.test.ts`,
-  `apps/server/src/provider/ProviderRegistry.test.ts`.
-- Check: add a skill dir under `~/.claude/skills`, Settings → Providers → Refresh, open a
-  thread in that project, type `$` — the skill is listed. Restart the service while the
-  desktop SSH environment is connected: `ss -ltnp | grep 377` still shows only 3773.
-- Drop when: upstream guards the runtime-state clear by pid and invalidates workspace
-  snapshots on refresh.
+- What: a server removes `server-runtime.json` on shutdown only when the recorded pid is its
+  own, so a second server sharing `~/.t3` cannot erase the service's record on exit. Upstream
+  now invalidates per-cwd provider snapshots on Refresh, so the fork's old Refresh half is gone.
+- Key files: `apps/server/src/serverRuntimeState.ts` (`clearPersistedServerRuntimeState`).
+- Tests: `apps/server/src/serverRuntimeState.test.ts`.
+- Check: restart the service while the desktop T3 Connect environment is connected:
+  `ss -ltnp | grep 377` on the server still shows only 3773.
+- Drop when: upstream guards the runtime-state clear by pid.
 
 ### Agent thread tools (#37; on upstream's tools since v0.0.45)
 
@@ -573,6 +567,10 @@ Host <hostname>.local
   `clientInfo.name: "T3 Code"`, so Codex replay tests such as
   `OrchestratorMcpToolkit.integration.test.ts` fail on the fork with a frame mismatch. New
   upstream strings arrive as `T3 Code`; the fork renames them only where a sync conflicts.
+- Sync note (v0.1.10): the agent-started mark is `BotIcon` on web and `SymbolView name="robot"`
+  on mobile, because upstream's `t3code/no-sparkles-icon` lint rule bans Sparkles. Spindle also
+  shows up in `providerMaintenanceRunner` messages and `useOpenLocalWorkspace`'s add-project
+  error.
 
 ### Brand icons from one master SVG (direct commit)
 

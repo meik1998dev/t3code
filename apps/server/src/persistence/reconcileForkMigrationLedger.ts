@@ -25,7 +25,7 @@ import ScheduledTaskThreadMode from "./Migrations/080_ScheduledTaskThreadMode.ts
 
 // The runner only runs ids above the highest recorded one, so every upstream
 // migration numbered below the fork's block was skipped on a fork database.
-// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, 81-88, now 103-110. See FORK.md "Migrations".
+// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, 81-88, 96-103, now 103-110. See FORK.md "Migrations".
 const FORK_NAMES = [
   "RepairUpstreamMigrationsAfterFork",
   "RepairThreadTitleStateColumn",

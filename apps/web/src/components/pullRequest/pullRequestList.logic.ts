@@ -709,9 +709,13 @@ export function scorePullRequestMatch(entry: PullRequestListEntry, query: string
   const needle = query.trim().toLowerCase();
   if (needle.length === 0) return 0;
   const number = needle.replace(/^#/u, "");
-  if (String(entry.number) === number) return 100;
-
   const title = entry.title.toLowerCase();
+  if (/^\d+$/u.test(number)) {
+    if (String(entry.number) === number) return 100;
+    // A number can also be part of a title, but it never outranks the pull request with that number.
+    return title.includes(number) ? 30 : 0;
+  }
+
   const terms = needle.split(/\s+/u).filter((term) => term.length > 0);
   if (title === needle) return 90;
   if (title.includes(needle)) return 80;

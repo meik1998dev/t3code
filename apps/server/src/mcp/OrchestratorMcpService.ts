@@ -2810,7 +2810,7 @@ const make = Effect.gen(function* () {
       if (input.target !== undefined && environmentId !== undefined) {
         yield* requireCapability(callerScope);
         const scope = yield* requireThreadScope(callerScope, "delegate_task");
-        const parent = yield* loadProjection(scope.thread.threadId);
+        const parent = yield* loadCallerRecords(scope.thread.threadId, ["runs"]);
         yield* assertMayStartThreads(parent.thread);
         // The task's child runs as an ordinary thread there; this thread keeps the task.
         const { taskId } = yield* remoteDelegation.delegate(scope, {

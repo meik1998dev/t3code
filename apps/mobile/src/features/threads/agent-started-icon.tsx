@@ -7,7 +7,7 @@ export function AgentStartedIcon({ selected = false }: { readonly selected?: boo
   return (
     <View accessible accessibilityLabel="Started by an agent">
       <SymbolView
-        name="sparkles"
+        name="robot"
         size={11}
         tintColorClassName={
           selected ? "accent-user-bubble-foreground-muted" : "accent-foreground-muted"
