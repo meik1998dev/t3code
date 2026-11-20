@@ -11,11 +11,14 @@ for agent-to-agent thread orchestration, checkpoint and compaction forks, task
 visibility and multi-project workflows.
 
 Works with your existing Claude Code, Codex, Cursor, Grok Build, OpenCode,
-Antigravity, and fx subscriptions. Install and authenticate a provider before starting work.
+Antigravity, Kiro, Pi, Muse Code, fx, and any ACP agent. Install and authenticate
+a provider before starting work.
 
 ## Run from source
 
 Install [Vite+](https://viteplus.dev/guide/), then:
+
+This installs the `t3` command. Run `t3` to start the server and open the web app.
 
 ```bash
 git clone https://github.com/meik1998dev/t3code.git
@@ -33,22 +36,17 @@ listings still distribute T3 Code, not Spindle. The existing `.t3` data director
 
 ## Documentation
 
-Full docs live in [docs/](./docs). There's no docs site yet.
-
-- [FAQ](./docs/user/faq.md)
 - [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Appearance preferences](./docs/user/appearance.md)
 - [Remote access from a phone or another machine](./docs/user/remote-access.md)
 - [Connect Claude Code, Codex, ChatGPT and other agents over MCP](./docs/user/outside-agents.md)
 - [Keeping app and server in sync](./docs/user/updating.md)
+- [Permission modes](./docs/user/permission-modes.md)
 - [Source control integrations](./docs/user/source-control.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
 - [Run Spindle as a background service](./docs/user/background-service.md)
+- [FAQ](./docs/user/faq.md)
 
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+[All docs](./docs/README.md) has the full list.
 
 ## Contributing
 
@@ -59,3 +57,7 @@ with this fork in [meik1998dev/t3code](https://github.com/meik1998dev/t3code/iss
 
 Built on T3 Code by T3 Tools and its contributors. Original copyright and MIT
 license notices are preserved in [LICENSE](LICENSE).
+
+## License
+
+[MIT](./LICENSE)
