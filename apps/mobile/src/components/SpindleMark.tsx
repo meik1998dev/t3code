@@ -13,6 +13,7 @@ export function SpindleMark(props: {
 }) {
   return (
     <Svg
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
       accessibilityLabel="Spindle"
       height={props.height}
       width={props.height}

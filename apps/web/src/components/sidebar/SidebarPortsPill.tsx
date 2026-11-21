@@ -10,6 +10,8 @@ import {
   type AgentPortsScope,
   type EnvironmentId,
 } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { useGT } from "gt-react";
 import * as Schema from "effect/Schema";
 import { CopyIcon, EthernetPortIcon, ExternalLinkIcon, SquareIcon } from "lucide-react";
 import * as Option from "effect/Option";
@@ -29,6 +31,7 @@ import { cn } from "../../lib/utils";
 import { resolveRemoteOpenState, type RemoteOpenState } from "../../remoteOpen";
 import { agentPortsEnvironment } from "../../state/agentPorts";
 import { useProjects, useThreadShells } from "../../state/entities";
+import { hostEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -39,13 +42,13 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const PORTS_SCOPE_KEY = "t3code:agent-ports:show-all";
 
-function copyText(title: string, value: string): void {
+function copyText(copied: string, failed: string, value: string): void {
   void navigator.clipboard.writeText(value).then(
     () => {
-      toastManager.add({ type: "success", title: `${title} copied`, description: value });
+      toastManager.add({ type: "success", title: copied, description: value });
     },
     () => {
-      toastManager.add({ type: "error", title: `Could not copy ${title.toLowerCase()}` });
+      toastManager.add({ type: "error", title: failed });
     },
   );
 }
@@ -69,6 +72,7 @@ const AgentPortRow = memo(function AgentPortRow({
   remote: RemoteOpenState;
   cwdRoots: ReadonlyArray<string>;
 }) {
+  const gt = useGT();
   const openLink = useOpenLink(null);
   const stopPort = useAtomCommand(agentPortsEnvironment.stop, { reportFailure: false });
   const [isStopping, setIsStopping] = useState(false);
@@ -81,22 +85,25 @@ const AgentPortRow = memo(function AgentPortRow({
     remoteHost === null ? null : agentPortTunnelCommand({ port: port.port, sshHost: remoteHost });
   const canOpenHere = remote.mode === "local-exec" || threadRef !== null;
 
+  const copyTunnel = (command: string) =>
+    copyText(gt("Tunnel command copied"), gt("Could not copy tunnel command"), command);
+
   const handleOpen = () => {
     if (canOpenHere) {
       void openLink(url, threadRef === null ? {} : { threadRef }).catch(() => {
-        toastManager.add({ type: "error", title: `Could not open ${url}` });
+        toastManager.add({ type: "error", title: gt("Could not open {url}", { url }) });
       });
       return;
     }
-    if (tunnel !== null) copyText("Tunnel command", tunnel);
+    if (tunnel !== null) copyTunnel(tunnel);
   };
 
   const handleCopy = () => {
     if (tunnel !== null) {
-      copyText("Tunnel command", tunnel);
+      copyTunnel(tunnel);
       return;
     }
-    copyText("URL", url);
+    copyText(gt("URL copied"), gt("Could not copy URL"), url);
   };
 
   const handleStop = () => {
@@ -108,16 +115,16 @@ const AgentPortRow = memo(function AgentPortRow({
     })
       .then((result) => {
         if (result._tag === "Success" && result.value.stopped) {
-          toastManager.add({ type: "success", title: `Stopped :${port.port}` });
+          toastManager.add({ type: "success", title: gt("Stopped :{port}", { port: port.port }) });
           return;
         }
         toastManager.add({
           type: "error",
-          title: `Could not stop :${port.port}`,
+          title: gt("Could not stop :{port}", { port: port.port }),
           description:
             result._tag === "Success"
-              ? "The process is not an agent port any more. The list was refreshed."
-              : "The environment did not accept the request.",
+              ? gt("The process is not an agent port any more. The list was refreshed.")
+              : gt("The environment did not accept the request."),
         });
       })
       .finally(() => setIsStopping(false));
@@ -126,10 +133,11 @@ const AgentPortRow = memo(function AgentPortRow({
   const canStop = port.origin !== "system";
   const owned = ownerLabel(owner, port.cwd);
   const primaryTitle = canOpenHere
-    ? `Open ${url}`
+    ? gt("Open {url}", { url })
     : tunnel === null
-      ? "No SSH route to this environment"
-      : `Copy: ${tunnel}`;
+      ? gt("No SSH route to this environment")
+      : gt("Copy: {command}", { command: tunnel });
+  const copyLabel = tunnel === null ? gt("Copy URL") : gt("Copy SSH tunnel command");
 
   return (
     <div className="group/port flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-sidebar-row-hover">
@@ -170,7 +178,7 @@ const AgentPortRow = memo(function AgentPortRow({
           render={
             <button
               type="button"
-              aria-label={tunnel === null ? "Copy URL" : "Copy SSH tunnel command"}
+              aria-label={copyLabel}
               className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 outline-hidden hover:text-sidebar-foreground focus-visible:opacity-100 group-hover/port:opacity-100"
               onClick={handleCopy}
             >
@@ -179,7 +187,7 @@ const AgentPortRow = memo(function AgentPortRow({
           }
         />
         <TooltipPopup align="end" className="max-w-80 break-all" side="top">
-          {tunnel === null ? "Copy URL" : "Copy SSH tunnel command"}
+          {copyLabel}
         </TooltipPopup>
       </Tooltip>
       {canStop ? (
@@ -188,7 +196,7 @@ const AgentPortRow = memo(function AgentPortRow({
             render={
               <button
                 type="button"
-                aria-label={`Stop the process on port ${port.port}`}
+                aria-label={gt("Stop the process on port {port}", { port: port.port })}
                 aria-disabled={isStopping || undefined}
                 className={cn(
                   "inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-hidden focus-visible:opacity-100 group-hover/port:opacity-100",
@@ -203,7 +211,12 @@ const AgentPortRow = memo(function AgentPortRow({
             }
           />
           <TooltipPopup align="end" side="top">
-            {isStopping ? "Stopping…" : `Stop ${formatAgentPortCommand(port)} (pid ${port.pid})`}
+            {isStopping
+              ? gt("Stopping…")
+              : gt("Stop {command} (pid {pid})", {
+                  command: formatAgentPortCommand(port),
+                  pid: port.pid,
+                })}
           </TooltipPopup>
         </Tooltip>
       ) : null}
@@ -218,9 +231,11 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   environment: EnvironmentPresentation;
   scope: AgentPortsScope;
 }) {
+  const gt = useGT();
   const environmentId = environment.environmentId;
   const projects = useProjects();
   const threads = useThreadShells();
+  const hostEnvironmentId = useAtomValue(hostEnvironmentIdAtom);
   const connected = environment.connection.phase === "connected";
   const cwdRoots = collectAgentPortCwdRoots({ environmentId, projects, threads });
   const query = useEnvironmentQuery(
@@ -234,6 +249,7 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
         profile !== null && profile._tag === "SshConnectionProfile" ? profile.target : null,
       remoteOpenTargets: environment.serverConfig?.remoteOpenTargets,
       isDesktopRenderer: window.desktopBridge !== undefined,
+      hostEnvironmentId,
     });
   })();
 
@@ -242,21 +258,24 @@ const EnvironmentPortsSection = memo(function EnvironmentPortsSection({
   const usageLine = formatAgentPortsUsage(query.data?.usage);
 
   const status = !connected
-    ? "offline"
+    ? gt("offline", { $context: "environment connection state" })
     : query.error !== null
-      ? "unavailable"
+      ? gt("unavailable", { $context: "port scan state" })
       : query.data === null
-        ? "scanning…"
+        ? gt("scanning…")
         : !query.data.supported
-          ? "not supported here"
+          ? gt("not supported here")
           : count === 0
             ? scope === "all"
-              ? "no ports"
-              : "no agent ports"
+              ? gt("no ports")
+              : gt("no agent ports")
             : null;
 
   return (
-    <section aria-label={`${environment.label} ports`} className="flex flex-col gap-0.5">
+    <section
+      aria-label={gt("{environment} ports", { environment: environment.label })}
+      className="flex flex-col gap-0.5"
+    >
       <header className="flex flex-col gap-0.5 px-1 pt-1 pb-0.5">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -290,8 +309,10 @@ export function SidebarPortsPill() {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useLocalStorage(PORTS_SCOPE_KEY, false, Schema.Boolean);
   const { environments } = useEnvironments();
+  const gt = useGT();
   const scope: AgentPortsScope = showAll ? "all" : "agent";
-  const tooltip = "Agent ports";
+  const tooltip = gt("Agent ports");
+  const title = showAll ? gt("All ports") : tooltip;
 
   const trigger = (
     <button
@@ -319,17 +340,15 @@ export function SidebarPortsPill() {
         </Tooltip>
         <PopoverPopup
           align="end"
-          aria-label={showAll ? "All ports" : "Agent ports"}
+          aria-label={title}
           className="w-80 max-w-[calc(100vw-2rem)]"
           side="top"
         >
           <div className="p-1.5">
             <div className="flex items-center justify-between gap-2 px-1 pb-1">
-              <span className="text-xs font-medium text-sidebar-foreground">
-                {showAll ? "All ports" : "Agent ports"}
-              </span>
+              <span className="text-xs font-medium text-sidebar-foreground">{title}</span>
               <div className="flex items-center gap-2">
-                <span className="text-2xs text-muted-foreground">refreshes every 4 s</span>
+                <span className="text-2xs text-muted-foreground">{gt("refreshes every 4 s")}</span>
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -344,14 +363,14 @@ export function SidebarPortsPill() {
                         )}
                         onClick={() => setShowAll(!showAll)}
                       >
-                        All
+                        {gt("All", { $context: "show every listening port" })}
                       </button>
                     }
                   />
                   <TooltipPopup align="end" side="top">
                     {showAll
-                      ? "Show only ports agent sessions opened"
-                      : "Show every listening port, system services included"}
+                      ? gt("Show only ports agent sessions opened")
+                      : gt("Show every listening port, system services included")}
                   </TooltipPopup>
                 </Tooltip>
               </div>
@@ -359,7 +378,9 @@ export function SidebarPortsPill() {
             {open ? (
               <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
                 {environments.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-muted-foreground">No environments.</p>
+                  <p className="px-1 py-2 text-xs text-muted-foreground">
+                    {gt("No environments.")}
+                  </p>
                 ) : (
                   environments.map((environment) => (
                     <EnvironmentPortsSection

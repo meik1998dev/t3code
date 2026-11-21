@@ -28,7 +28,7 @@ const imageProps = {
   title="Download | Spindle"
   description="Download Spindle for macOS, Windows, or Linux."
   jsonLd={[
-    softwareJsonLd(),
+    softwareJsonLd(messagesFor(locale).layout.defaultDescription),
     breadcrumbJsonLd([
       { name: "Spindle", path: localizedHref(locale, "/") },
       { name: t.breadcrumb, path: localizedHref(locale, "/download") },

@@ -23,8 +23,10 @@ export function StandalonePageHeader({
   return (
     <>
       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name */}
         <span className="flex items-baseline gap-1.5" role="img" aria-label="Spindle">
           <SpindleMark className="size-4 shrink-0 text-foreground" aria-hidden />
+          {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product wordmark */}
           <span className="text-lg font-medium tracking-tight">Spindle</span>
         </span>
         {context ? <span className="text-sm">{context}</span> : null}

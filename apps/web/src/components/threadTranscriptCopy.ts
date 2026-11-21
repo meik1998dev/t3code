@@ -1,7 +1,9 @@
+import { msg } from "gt-react";
 import { buildThreadTranscript } from "@t3tools/client-runtime/thread-transcript";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
-import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { m } from "../i18n/messages";
 import { loadFullThreadHistory } from "../state/threads";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 
@@ -13,17 +15,17 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
 export async function copyThreadTranscript(threadRef: ScopedThreadRef, title: string) {
   const toastId = toastManager.add({
     type: "loading",
-    title: "Copying transcript…",
+    title: m(msg("Copying transcript…")),
     description: title,
     timeout: 0,
   });
   try {
     const projection = await loadFullThreadHistory(threadRef);
     const transcript = buildThreadTranscript(projection.thread.title, projection.messages);
-    await writeTextToClipboard(transcript, "transcript");
+    await writeTextToClipboard(transcript, namedClipboardTarget("transcript"));
     toastManager.update(toastId, {
       type: "success",
-      title: "Transcript copied",
+      title: m(msg("Transcript copied")),
       description: projection.thread.title,
       timeout: TRANSCRIPT_RESULT_TOAST_MS,
     });
@@ -32,8 +34,8 @@ export async function copyThreadTranscript(threadRef: ScopedThreadRef, title: st
       toastId,
       stackedThreadToast({
         type: "error",
-        title: "Failed to copy transcript",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: m(msg("Failed to copy transcript")),
+        description: error instanceof Error ? error.message : m(msg("An error occurred.")),
         timeout: TRANSCRIPT_RESULT_TOAST_MS,
       }),
     );

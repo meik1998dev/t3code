@@ -25,8 +25,7 @@ import ScheduledTaskThreadMode from "./Migrations/080_ScheduledTaskThreadMode.ts
 
 // The runner only runs ids above the highest recorded one, so every upstream
 // migration numbered below the fork's block was skipped on a fork database.
-// Each sync that takes upstream numbers again adds a generation here.
-// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, now 81-88. See FORK.md "Migrations".
+// Generations: 61-68, 63-70, 68-75, 70-77, 78-85, 81-88, 96-103, now 103-110. See FORK.md "Migrations".
 const FORK_NAMES = [
   "RepairUpstreamMigrationsAfterFork",
   "RepairThreadTitleStateColumn",
@@ -37,7 +36,7 @@ const FORK_NAMES = [
   "RepairThreadAutoSettleColumn",
   "RepairUpstream57To60AfterFork",
 ] as const;
-const FORK_FIRST_ID = 81;
+const FORK_FIRST_ID = 103;
 const FORK_OLDEST_GENERATION_ID = 61;
 
 /**
@@ -83,7 +82,6 @@ export const reconcileForkMigrationLedger = Effect.fn("reconcileForkMigrationLed
       ) {
         return [];
       }
-      const shift = FORK_FIRST_ID - forkStart;
 
       // Keyed by name, not id: a fork row sits on the id an upstream migration
       // needs, so an id check would report upstream as applied when it is not.
@@ -243,11 +241,12 @@ export const reconcileForkMigrationLedger = Effect.fn("reconcileForkMigrationLed
         applied.push([80, "ScheduledTaskThreadMode"]);
       }
 
-      // Highest id first so each move lands on an id the block released.
-      for (let index = FORK_NAMES.length - 1; index >= 0; index -= 1) {
+      // Dropping the fork rows lets the runner apply upstream's later migrations in order and then
+      // the fork block again at its new ids; every fork migration is safe to run twice.
+      for (const [index, name] of FORK_NAMES.entries()) {
         yield* sql`
-            UPDATE effect_sql_migrations SET migration_id = ${forkStart + index + shift}
-            WHERE migration_id = ${forkStart + index} AND name = ${FORK_NAMES[index]}
+            DELETE FROM effect_sql_migrations
+            WHERE migration_id = ${forkStart + index} AND name = ${name}
           `;
       }
       // Recorded only now, while the ids the fork block just vacated are free.
